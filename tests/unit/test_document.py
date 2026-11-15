@@ -10,18 +10,23 @@ import itertools
 import random
 import subprocess
 import sys
+from dataclasses import dataclass, field
 
 import pytest
 
-from optar.tag import Tag
+from optar.tag import Tag, make_tag
 from optar_gui.document import (
+    DocState,
     Document,
     GroupView,
+    Health,
     PageOutcome,
     PageSlot,
+    PageView,
     ScanInfo,
     ScanState,
     ScanView,
+    Summary,
 )
 
 A = "0-65-93-24-3-1-2-24"
@@ -1108,6 +1113,292 @@ def test_property_user_work_survives_a_printout_going_away_and_back():
     _check_background_order(_away_and_back_scenario, _away_and_back_operations, 300, 7 * 10**6)
 
 
+# --- Page health, document state, assembling and verifying -------------------
+
+PAGE = 1000  # bytes per page in these tests
+
+
+def page_out(data, lost=0, repaired=0):
+    return PageOutcome(data, (1000, repaired, 0, 0), lost)
+
+
+def split(data, pages=None):
+    """The pages a file is printed on, the last one padded with zeros."""
+    pages = pages or max(1, -(-len(data) // PAGE))
+    padded = data.ljust(pages * PAGE, b"\0")
+    return [padded[i * PAGE:(i + 1) * PAGE] for i in range(pages)]
+
+
+def decoded(tag, pages, name="doc.tar"):
+    """A document whose pages (None: not added) are all identified and decoded."""
+    doc = Document()
+    ids = []
+    for number, data in enumerate(pages, 1):
+        if data is None:
+            ids.append(None)
+            continue
+        scan_id = add(doc, number)
+        doc.set_identified(scan_id, info(number, total=len(pages), name=name, tag=tag))
+        doc.set_outcome(scan_id, page_out(data))
+        ids.append(scan_id)
+    return doc, ids
+
+
+def health(doc):
+    return [p.health for p in doc.pages()]
+
+
+def counts(s):
+    return (s.good, s.repaired, s.damaged, s.unreadable, s.missing)
+
+
+@dataclass(frozen=True)
+class CountingTag:
+    """A tag that counts how often the document hashes the assembled data."""
+
+    size: int
+    fingerprint: str
+    calls: list = field(default_factory=list, compare=False, hash=False)
+
+    def matches(self, data):
+        self.calls.append(len(data))
+        return make_tag(data) == Tag(self.size, self.fingerprint)
+
+
+def test_health_of_each_slot_state():
+    doc, (good, rep, dmg, waiting, working, bad) = build(
+        info(1, total=7), info(2, total=7), info(3, total=7), None, None, None
+    )
+    doc.set_outcome(good, page_out(b"g" * PAGE))
+    doc.set_outcome(rep, page_out(b"r" * PAGE, repaired=198))
+    doc.set_outcome(dmg, page_out(b"d" * PAGE, lost=37, repaired=5))
+    doc.assign_page(waiting, 4)
+    doc.assign_page(working, 5)
+    doc.set_working(working)
+    doc.assign_page(bad, 6)
+    doc.set_unreadable(bad, "no page found")
+    assert health(doc) == [
+        Health.GOOD,
+        Health.REPAIRED,
+        Health.DAMAGED,
+        Health.WAITING,
+        Health.WORKING,
+        Health.UNREADABLE,
+        Health.MISSING,
+    ]
+    pages = doc.pages()
+    assert pages[0] == PageView(1, Health.GOOD, good, (), 0, 0, (1000, 0, 0, 0))
+    assert pages[1] == PageView(2, Health.REPAIRED, rep, (), 198, 0, (1000, 198, 0, 0))
+    assert (pages[2].repaired, pages[2].lost) == (5, 37)
+    assert pages[3] == PageView(4, Health.WAITING, waiting, (), 0, 0, None)
+    assert pages[6] == PageView(7, Health.MISSING, None, (), 0, 0, None)
+
+
+def test_identified_page_without_an_outcome_is_working():
+    doc, (a, b) = build(info(1, total=2), info(1, total=2))
+    doc.set_outcome(b, page_out(b"b" * PAGE))
+    assert doc.scan(a).state == ScanState.WORKING
+    assert doc.pages()[0] == PageView(1, Health.GOOD, b, (a,), 0, 0, (1000, 0, 0, 0))
+    doc, (a,) = build(info(1, total=2))
+    assert health(doc) == [Health.WORKING, Health.MISSING]
+    assert doc.summary().state == DocState.WORKING
+
+
+def test_summary_counts_and_states():
+    doc, (p1, p2, p3) = build(info(1), info(2), None)
+    doc.set_outcome(p1, page_out(b"1" * PAGE))
+    doc.set_outcome(p2, page_out(b"2" * PAGE, repaired=3))
+    s = doc.summary()
+    assert s == Summary(DocState.INCOMPLETE, 1, 1, 0, 0, 1, TAG.size)
+    doc.assign_page(p3, 3)
+    doc.set_unreadable(p3, "label unreadable")
+    assert counts(doc.summary()) == (1, 1, 0, 1, 0)
+    assert doc.summary().state == DocState.INCOMPLETE
+
+
+def test_summary_of_an_empty_document():
+    doc = Document()
+    assert doc.summary() == Summary(DocState.EMPTY, 0, 0, 0, 0, 0, None)
+    assert doc.pages() == ()
+    assert doc.page_bytes is None
+    assert not doc.can_save
+    assert doc.suggested_name == "recovered.bin"
+
+
+def test_working_while_any_slot_is_waiting():
+    data = bytes(range(256)) * 10
+    doc, ids = decoded(make_tag(data), split(data))
+    assert doc.summary().state == DocState.VERIFIED
+    late = add(doc, "late")
+    doc.set_identified(late, info(2, total=3, tag=make_tag(data)))  # a spare, no outcome
+    assert doc.summary().state == DocState.VERIFIED  # the page in use is decoded
+    lost_page = add(doc, "x")
+    doc.assign_page(lost_page, 2)  # in use now, waiting
+    doc.use_scan(lost_page)
+    assert doc.pages()[1].health == Health.WAITING
+    assert doc.summary().state == DocState.WORKING
+    assert counts(doc.summary()) == (2, 0, 0, 0, 0)
+
+
+def test_verified_when_assembled_data_matches_tag():
+    data = bytes(range(256)) * 10  # 2560 bytes over pages of 1000 bytes
+    tag = make_tag(data)
+    pages = [data[0:1000], data[1000:2000], data[2000:] + b"\0" * 440]
+    doc, _ = decoded(tag, pages)
+    s = doc.summary()
+    assert s.state == DocState.VERIFIED and s.size == 2560
+    assert counts(s) == (3, 0, 0, 0, 0)
+    assert doc.page_bytes == PAGE
+    assert doc.assemble() == data and len(doc.assemble()) == 2560
+    assert doc.can_save
+
+
+def test_mismatch_when_a_page_is_silently_wrong():
+    data = bytes(range(256)) * 10
+    pages = split(data)
+    pages[1] = pages[1][:10] + bytes([pages[1][10] ^ 1]) + pages[1][11:]
+    doc, _ = decoded(make_tag(data), pages)
+    assert health(doc) == [Health.GOOD] * 3
+    assert doc.summary().state == DocState.MISMATCH
+    assert len(doc.assemble()) == len(data) and doc.assemble() != data
+
+
+def test_untagged_complete_document_is_unverifiable_and_padded():
+    data = bytes(range(256)) * 10
+    doc, _ = decoded(None, split(data))
+    s = doc.summary()
+    assert s == Summary(DocState.UNVERIFIABLE, 3, 0, 0, 0, 0, None)
+    assert doc.assemble() == data + b"\0" * 440
+    assert len(doc.assemble()) == 3 * doc.page_bytes
+
+
+def test_missing_page_contributes_zeros_and_keeps_offsets():
+    data = bytes(range(1, 251)) * 12  # 3000 bytes, no zero byte
+    pages = split(data)
+    doc, _ = decoded(make_tag(data), [pages[0], None, pages[2]])
+    assert health(doc) == [Health.GOOD, Health.MISSING, Health.GOOD]
+    assert doc.summary().state == DocState.INCOMPLETE
+    got = doc.assemble()
+    assert len(got) == 3000
+    assert got[:1000] == data[:1000]
+    assert got[1000:2000] == bytes(1000)
+    assert got[2000:] == data[2000:]
+
+
+def test_damaged_page_contributes_its_data():
+    data = bytes(range(1, 251)) * 12
+    pages = split(data)
+    doc, (p1, p2, p3) = decoded(make_tag(data), pages)
+    doc.set_outcome(p2, page_out(b"\xff" * PAGE, lost=4))
+    assert health(doc) == [Health.GOOD, Health.DAMAGED, Health.GOOD]
+    assert doc.summary().state == DocState.INCOMPLETE
+    assert doc.assemble() == pages[0] + b"\xff" * PAGE + pages[2]
+
+
+def test_assigned_unreadable_scan_shows_unreadable_and_contributes_zeros():
+    data = bytes(range(1, 251)) * 8  # 2000 bytes: two pages
+    pages = split(data)
+    doc, (p1, _) = decoded(make_tag(data), [pages[0], None])
+    bad = add(doc, "bad")
+    doc.assign_page(bad, 2)
+    doc.set_unreadable(bad, "decoding failed")
+    assert doc.pages()[1] == PageView(2, Health.UNREADABLE, bad, (), 0, 0, None)
+    assert doc.summary() == Summary(DocState.INCOMPLETE, 1, 0, 0, 1, 0, 2000)
+    assert doc.assemble() == pages[0] + bytes(PAGE)
+
+
+def test_assemble_with_nothing_decoded_raises():
+    with pytest.raises(ValueError):
+        Document().assemble()
+    doc, _ = build(info(1), info(2))
+    assert not doc.can_save
+    assert doc.page_bytes is None
+    with pytest.raises(ValueError):
+        doc.assemble()
+
+
+def test_assemble_refuses_pages_of_different_sizes():
+    doc, (p1, p2) = build(info(1, total=2, tag=None), info(2, total=2, tag=None))
+    doc.set_outcome(p1, page_out(b"a" * PAGE))
+    doc.set_outcome(p2, page_out(b"b" * (PAGE + 1)))
+    with pytest.raises(ValueError, match="pages have different sizes"):
+        doc.assemble()
+
+
+def test_empty_file_assembles_to_nothing():
+    tag = make_tag(b"")
+    doc, (only,) = build(info(1, total=0, tag=tag))
+    assert doc.summary().state == DocState.WORKING
+    doc.set_outcome(only, page_out(bytes(PAGE)))
+    assert doc.summary() == Summary(DocState.VERIFIED, 1, 0, 0, 0, 0, 0)
+    assert doc.assemble() == b""
+
+
+def test_verdict_updates_after_replacing_a_page():
+    data = bytes(range(256)) * 10
+    pages = split(data)
+    wrong = b"\x01" + pages[2][1:]
+    doc, (p1, p2, p3) = decoded(make_tag(data), [pages[0], pages[1], wrong])
+    assert doc.summary().state == DocState.MISMATCH
+    spare = add(doc, "spare")
+    doc.set_identified(spare, info(3, tag=make_tag(data)))
+    doc.set_outcome(spare, page_out(pages[2], repaired=2))
+    assert doc.pages()[2].scan_id == p3  # fewer repaired wins until the user chooses
+    assert doc.summary().state == DocState.MISMATCH
+    doc.use_scan(spare)
+    assert doc.pages()[2] == PageView(3, Health.REPAIRED, spare, (p3,), 2, 0, (1000, 2, 0, 0))
+    assert doc.summary().state == DocState.VERIFIED
+    assert doc.assemble() == data
+
+
+def test_verdict_changes_when_a_page_is_removed():
+    data = bytes(range(256)) * 10
+    doc, (p1, p2, p3) = decoded(make_tag(data), split(data))
+    assert doc.summary().state == DocState.VERIFIED
+    doc.remove_scan(p2)
+    assert doc.summary() == Summary(DocState.INCOMPLETE, 2, 0, 0, 0, 1, 2560)
+
+
+def test_verdict_is_computed_once_until_the_document_changes():
+    data = bytes(range(256)) * 10
+    real = make_tag(data)
+    tag = CountingTag(real.size, real.fingerprint)
+    pages = split(data)
+    doc, (p1, p2, p3) = decoded(tag, pages)
+    assert doc.summary().state == DocState.VERIFIED
+    assert doc.summary().state == DocState.VERIFIED
+    assert tag.calls == [2560]
+    other = add(doc, "other")  # unrelated: nothing assembled changes
+    doc.set_identified(other, info(1, tag=OTHER_TAG))
+    assert doc.summary().state == DocState.VERIFIED
+    assert len(tag.calls) == 1
+    doc.set_outcome(p2, page_out(b"\x01" + pages[1][1:]))  # same scan, new outcome
+    assert doc.summary().state == DocState.MISMATCH
+    doc.set_outcome(p2, page_out(pages[1]))
+    assert doc.summary().state == DocState.VERIFIED
+    assert len(tag.calls) == 3
+
+
+def test_suggested_name():
+    doc, _ = build(info(1, name="doc.tar"))
+    assert doc.suggested_name == "doc.tar"
+    doc, _ = build(info(1, name="", tag=None))
+    assert doc.suggested_name == "recovered.bin"
+    doc, _ = build(info(1, name="photos.tar  ", tag=None))
+    assert doc.suggested_name == "photos.tar"
+
+
+def test_can_save_once_any_page_is_decoded():
+    tag = make_tag(bytes(2500))
+    doc, (p1, p2) = build(info(1, tag=tag), info(2, tag=tag))
+    assert not doc.can_save
+    doc.set_outcome(p2, page_out(b"x" * PAGE, lost=900))
+    assert doc.can_save
+    assert doc.page_bytes == PAGE
+    # Cut to the tag's size, with zeros where no page was decoded.
+    assert doc.assemble() == bytes(PAGE) + b"x" * PAGE + bytes(500)
+
+
 # --- Values and imports -------------------------------------------------------
 
 
@@ -1124,9 +1415,10 @@ def test_views_are_frozen():
     assert isinstance(doc.current, GroupView)
 
 
-def test_document_imports_without_qt_or_numpy():
+@pytest.mark.parametrize("module", ["optar_gui.document", "optar_gui.text"])
+def test_document_imports_without_qt_or_numpy(module):
     code = (
-        "import sys, optar_gui.document\n"
+        f"import sys, {module}\n"
         "bad = [m for m in ('PySide6', 'numpy', 'PIL') if m in sys.modules]\n"
         "print(','.join(bad))\n"
     )

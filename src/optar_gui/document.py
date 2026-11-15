@@ -101,6 +101,26 @@ Pages. ``slots()`` has one slot per page ``1..max(total, 1)`` of the document.
 Within a page the scan in use is the one chosen with ``use_scan``; otherwise the
 one with the best outcome (fewest lost, then fewest repaired, then earliest
 added), scans with no outcome last. Spares follow in the same order.
+
+Health. ``pages()`` gives each slot a health from its scan in use: no scan is
+``MISSING``; a scan waiting or working is ``WAITING`` or ``WORKING`` (an
+identified scan with no outcome yet is still working); an unreadable scan (one
+assigned by hand stays in its slot) is ``UNREADABLE``; otherwise the outcome
+decides: any lost block is ``DAMAGED``, else any repaired block is ``REPAIRED``,
+else ``GOOD``.
+
+The whole document. ``summary()`` is ``EMPTY`` with no document; ``WORKING``
+while any page is waiting or working; ``VERIFIED`` or ``MISMATCH`` when every page
+is good or repaired and the document has a tag, by assembling the file and
+checking it against the tag; ``UNVERIFIABLE`` when every page is good or repaired
+and there is no tag; otherwise ``INCOMPLETE``. The verdict is cached until the
+scans in use, their outcomes or the tag change.
+
+Assembling. ``assemble()`` joins pages ``1..max(total, 1)`` in order. A page whose
+scan in use has an outcome gives its data, damaged or not; any other page gives
+``page_bytes`` zero bytes, so later pages keep their offsets. With a tag the
+result is cut to the tag's size. Every page of a document has the same capacity;
+pages of different sizes are refused.
 """
 
 from __future__ import annotations
@@ -115,6 +135,7 @@ if TYPE_CHECKING:
     from optar.tag import Tag
 
 OUT_OF_RANGE = "page number out of range"
+RECOVERED_NAME = "recovered.bin"
 
 
 @dataclass(frozen=True)
@@ -182,6 +203,51 @@ class PageSlot:
     spare_ids: tuple[int, ...]
 
 
+class Health:
+    GOOD = "good"
+    REPAIRED = "repaired"
+    DAMAGED = "damaged"
+    UNREADABLE = "unreadable"
+    MISSING = "missing"
+    WAITING = "waiting"
+    WORKING = "working"
+
+
+# Pages that count towards a complete document.
+_SOUND = (Health.GOOD, Health.REPAIRED)
+
+
+@dataclass(frozen=True)
+class PageView:
+    number: int
+    health: str
+    scan_id: int | None
+    spare_ids: tuple[int, ...]
+    repaired: int
+    lost: int
+    histogram: tuple[int, int, int, int] | None
+
+
+class DocState:
+    EMPTY = "empty"
+    WORKING = "working"
+    INCOMPLETE = "incomplete"
+    UNVERIFIABLE = "unverifiable"
+    VERIFIED = "verified"
+    MISMATCH = "mismatch"
+
+
+@dataclass(frozen=True)
+class Summary:
+    state: str
+    good: int
+    repaired: int
+    damaged: int
+    unreadable: int
+    missing: int
+    size: int | None  # the tag's size, or None without a tag
+
+
 @dataclass
 class _Scan:
     id: int
@@ -190,6 +256,7 @@ class _Scan:
     working: bool = False
     info: ScanInfo | None = None
     outcome: PageOutcome | None = None
+    outcome_serial: int = 0  # changes with every outcome, for the verdict cache
     unreadable_reason: str | None = None
 
 
@@ -258,6 +325,8 @@ class Document:
         self._assigned: dict[int, tuple[_Anchor, int]] = {}  # scan -> (document, page)
         self._preferred: dict[int, tuple[_Anchor, int]] = {}  # scan -> (document, serial)
         self._serial = 0
+        self._outcomes = 0  # outcomes recorded so far
+        self._verdict: tuple[tuple, bool] | None = None  # (what was assembled, matches)
         self._layout = _Layout()
 
     # --- Adding and reporting on scans ---------------------------------------
@@ -288,7 +357,10 @@ class Document:
         self._settle()
 
     def set_outcome(self, scan_id: int, outcome: PageOutcome) -> None:
-        self._get(scan_id).outcome = outcome
+        s = self._get(scan_id)
+        self._outcomes += 1
+        s.outcome = outcome
+        s.outcome_serial = self._outcomes
         self._settle()
 
     def set_unreadable(self, scan_id: int, reason: str) -> None:
@@ -410,6 +482,62 @@ class Document:
             slots.append(PageSlot(page, ranked[0] if ranked else None, tuple(ranked[1:])))
         return tuple(slots)
 
+    def pages(self) -> tuple[PageView, ...]:
+        return tuple(self._page_view(slot) for slot in self.slots())
+
+    def summary(self) -> Summary:
+        cur = self._layout.current
+        if cur is None:
+            return Summary(DocState.EMPTY, 0, 0, 0, 0, 0, None)
+        healths = [p.health for p in self.pages()]
+        tally = {h: healths.count(h) for h in set(healths)}
+        if tally.get(Health.WAITING) or tally.get(Health.WORKING):
+            state = DocState.WORKING
+        elif all(h in _SOUND for h in healths):
+            if cur.tag is None:
+                state = DocState.UNVERIFIABLE
+            else:
+                state = DocState.VERIFIED if self._verified(cur.tag) else DocState.MISMATCH
+        else:
+            state = DocState.INCOMPLETE
+        return Summary(
+            state,
+            tally.get(Health.GOOD, 0),
+            tally.get(Health.REPAIRED, 0),
+            tally.get(Health.DAMAGED, 0),
+            tally.get(Health.UNREADABLE, 0),
+            tally.get(Health.MISSING, 0),
+            cur.tag.size if cur.tag is not None else None,
+        )
+
+    @property
+    def page_bytes(self) -> int | None:
+        """Bytes per page: the length of the first outcome among the pages in use."""
+        outcomes = self._outcomes_in_use()
+        return next((len(o.data) for o in outcomes if o is not None), None)
+
+    def assemble(self) -> bytes:
+        outcomes = self._outcomes_in_use()
+        sizes = {len(o.data) for o in outcomes if o is not None}
+        if not sizes:
+            raise ValueError("no page has been decoded")
+        if len(sizes) > 1:
+            raise ValueError("pages have different sizes")
+        blank = bytes(sizes.pop())
+        data = b"".join(o.data if o is not None else blank for o in outcomes)
+        tag = self._layout.current.tag
+        return data[: tag.size] if tag is not None else data
+
+    @property
+    def can_save(self) -> bool:
+        return any(o is not None for o in self._outcomes_in_use())
+
+    @property
+    def suggested_name(self) -> str:
+        cur = self.current
+        name = cur.title.strip() if cur is not None else ""
+        return name or RECOVERED_NAME
+
     def others(self) -> tuple[GroupView, ...]:
         return tuple(self._group_view(g, shown, tuple(shown)) for g, shown in self._layout.others)
 
@@ -500,6 +628,47 @@ class Document:
         if s.working or s.info is not None or s.outcome is not None:
             return ScanState.WORKING
         return ScanState.WAITING
+
+    def _page_view(self, slot: PageSlot) -> PageView:
+        def view(health: str, o: PageOutcome | None = None) -> PageView:
+            if o is None:
+                return PageView(slot.number, health, slot.scan_id, slot.spare_ids, 0, 0, None)
+            return PageView(
+                slot.number, health, slot.scan_id, slot.spare_ids, o.repaired, o.lost, o.histogram
+            )
+
+        if slot.scan_id is None:
+            return view(Health.MISSING)
+        s = self._scans[slot.scan_id]
+        state = self._state(s)
+        if state == ScanState.WAITING:
+            return view(Health.WAITING)
+        if state == ScanState.UNREADABLE:
+            return view(Health.UNREADABLE)
+        if state != ScanState.DONE:
+            return view(Health.WORKING)
+        o = s.outcome
+        if o.lost > 0:
+            return view(Health.DAMAGED, o)
+        return view(Health.REPAIRED if o.repaired > 0 else Health.GOOD, o)
+
+    def _outcomes_in_use(self) -> list[PageOutcome | None]:
+        """The outcome of each page's scan in use, in page order (None: no data)."""
+        return [
+            self._scans[slot.scan_id].outcome if slot.scan_id is not None else None
+            for slot in self.slots()
+        ]
+
+    def _verified(self, tag: Tag) -> bool:
+        """Whether the assembled file matches the tag; hashed once per distinct input."""
+        key = (tag,) + tuple(
+            (slot.scan_id, self._scans[slot.scan_id].outcome_serial)
+            for slot in self.slots()
+            if slot.scan_id is not None
+        )
+        if self._verdict is None or self._verdict[0] != key:
+            self._verdict = (key, tag.matches(self.assemble()))
+        return self._verdict[1]
 
     def _view(self, s: _Scan) -> ScanView:
         return ScanView(
