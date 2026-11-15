@@ -206,6 +206,7 @@ def test_detail_text_of_pages_without_an_outcome():
         ("no page found", "No optar page found in this image"),
         ("label unreadable", "The label at the bottom of the page could not be read"),
         ("page number out of range", "The label's page number does not fit this document"),
+        ("page count out of range", "The label's page count is not possible"),
         ("cannot open file", "cannot open file"),
     ],
 )

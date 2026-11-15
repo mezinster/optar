@@ -19,7 +19,10 @@ file are not recognised as the same scan.
 
 Grouping. A scan is *grouped* when it is identified, not unreadable and its page
 lies in ``1..max(total, 1)``; a page outside that range makes it unreadable with
-the reason ``"page number out of range"``. ``set_unreadable`` is final and keeps
+the reason ``"page number out of range"``. A label read off a scan is not
+trusted: a total above ``MAX_TOTAL_PAGES`` (the encoder's limit) makes the scan
+unreadable with the reason ``"page count out of range"``, so no document ever has
+more pages than a real printout can. ``set_unreadable`` is final and keeps
 the identity for display.
 
 - A tagged scan belongs to the group of its ``(format, total, tag)``.
@@ -116,16 +119,20 @@ checking it against the tag; ``UNVERIFIABLE`` when every page is good or repaire
 and there is no tag; otherwise ``INCOMPLETE``. The verdict is cached until the
 scans in use, their outcomes or the tag change.
 
-Assembling. ``assemble()`` joins pages ``1..max(total, 1)`` in order. A page whose
-scan in use has an outcome gives its data, damaged or not; any other page gives
-``page_bytes`` zero bytes, so later pages keep their offsets. With a tag the
-result is cut to the tag's size. Every page of a document has the same capacity;
-pages of different sizes are refused.
+Assembling. ``chunks()`` yields the recovered file page by page, ``1..max(total,
+1)`` in order, without building it in memory. A page whose scan in use has an
+outcome gives its data, damaged or not; any other page gives ``page_bytes`` zero
+bytes (one shared block), so later pages keep their offsets. With a tag the file
+is cut to the tag's size. Every page of a document has the same capacity; pages
+of different sizes are refused. ``assemble()`` joins the chunks, for small
+documents. The verdict is computed by hashing the chunks as they are produced.
 """
 
 from __future__ import annotations
 
+import hashlib
 import os
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -135,6 +142,10 @@ if TYPE_CHECKING:
     from optar.tag import Tag
 
 OUT_OF_RANGE = "page number out of range"
+COUNT_OUT_OF_RANGE = "page count out of range"
+# The encoder's page limit (optar.encoder.MAX_PAGES), repeated here because
+# importing optar at run time loads numpy.
+MAX_TOTAL_PAGES = 9999
 RECOVERED_NAME = "recovered.bin"
 
 
@@ -440,8 +451,8 @@ class Document:
         self._settle()
 
     def start_by_hand(self, format: str, total: int) -> None:
-        if total < 0:
-            raise ValueError("total must not be negative")
+        if not 0 <= total <= MAX_TOTAL_PAGES:
+            raise ValueError(f"total must be between 0 and {MAX_TOTAL_PAGES}")
         self._leave_document()
         self._hand = _HandDocument(format, total)
         self._settle()
@@ -516,17 +527,39 @@ class Document:
         outcomes = self._outcomes_in_use()
         return next((len(o.data) for o in outcomes if o is not None), None)
 
-    def assemble(self) -> bytes:
+    def chunks(self) -> Iterator[bytes]:
+        """The recovered file, page by page; cut to the tag's size with a tag.
+
+        Checks before anything is produced: raises ``ValueError`` when no page has
+        been decoded or the pages have different sizes.
+        """
         outcomes = self._outcomes_in_use()
         sizes = {len(o.data) for o in outcomes if o is not None}
         if not sizes:
             raise ValueError("no page has been decoded")
         if len(sizes) > 1:
             raise ValueError("pages have different sizes")
-        blank = bytes(sizes.pop())
-        data = b"".join(o.data if o is not None else blank for o in outcomes)
         tag = self._layout.current.tag
-        return data[: tag.size] if tag is not None else data
+        return self._chunks(outcomes, bytes(sizes.pop()), None if tag is None else tag.size)
+
+    @staticmethod
+    def _chunks(
+        outcomes: list[PageOutcome | None], blank: bytes, size: int | None
+    ) -> Iterator[bytes]:
+        left = size
+        for o in outcomes:
+            chunk = o.data if o is not None else blank
+            if left is not None:
+                if left <= 0:
+                    return
+                if len(chunk) > left:
+                    chunk = chunk[:left]
+                left -= len(chunk)
+            yield chunk
+
+    def assemble(self) -> bytes:
+        """The whole recovered file in memory; callers that save use ``chunks()``."""
+        return b"".join(self.chunks())
 
     @property
     def can_save(self) -> bool:
@@ -607,6 +640,8 @@ class Document:
     def _unreadable_reason(s: _Scan) -> str | None:
         if s.unreadable_reason is not None:
             return s.unreadable_reason
+        if s.info is not None and s.info.total > MAX_TOTAL_PAGES:
+            return COUNT_OUT_OF_RANGE
         if s.info is not None and not 1 <= s.info.page <= _pages(s.info.total):
             return OUT_OF_RANGE
         return None
@@ -667,7 +702,13 @@ class Document:
             if slot.scan_id is not None
         )
         if self._verdict is None or self._verdict[0] != key:
-            self._verdict = (key, tag.matches(self.assemble()))
+            digest = hashlib.sha256()
+            produced = 0
+            for chunk in self.chunks():
+                digest.update(chunk)
+                produced += len(chunk)
+            fingerprint = digest.hexdigest()[: len(tag.fingerprint)]
+            self._verdict = (key, produced == tag.size and fingerprint == tag.fingerprint)
         return self._verdict[1]
 
     def _view(self, s: _Scan) -> ScanView:

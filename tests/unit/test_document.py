@@ -10,12 +10,13 @@ import itertools
 import random
 import subprocess
 import sys
-from dataclasses import dataclass, field
+import tracemalloc
 
 import pytest
 
 from optar.tag import Tag, make_tag
 from optar_gui.document import (
+    MAX_TOTAL_PAGES,
     DocState,
     Document,
     GroupView,
@@ -1152,17 +1153,20 @@ def counts(s):
     return (s.good, s.repaired, s.damaged, s.unreadable, s.missing)
 
 
-@dataclass(frozen=True)
-class CountingTag:
-    """A tag that counts how often the document hashes the assembled data."""
+def count_passes(doc):
+    """Counts the passes over ``doc.chunks()`` and the bytes each produced."""
+    passes = []
+    original = doc.chunks
 
-    size: int
-    fingerprint: str
-    calls: list = field(default_factory=list, compare=False, hash=False)
+    def chunks():
+        produced = [0]
+        passes.append(produced)
+        for chunk in original():
+            produced[0] += len(chunk)
+            yield chunk
 
-    def matches(self, data):
-        self.calls.append(len(data))
-        return make_tag(data) == Tag(self.size, self.fingerprint)
+    doc.chunks = chunks
+    return passes
 
 
 def test_health_of_each_slot_state():
@@ -1361,22 +1365,117 @@ def test_verdict_changes_when_a_page_is_removed():
 
 def test_verdict_is_computed_once_until_the_document_changes():
     data = bytes(range(256)) * 10
-    real = make_tag(data)
-    tag = CountingTag(real.size, real.fingerprint)
     pages = split(data)
-    doc, (p1, p2, p3) = decoded(tag, pages)
+    doc, (p1, p2, p3) = decoded(make_tag(data), pages)
+    passes = count_passes(doc)
     assert doc.summary().state == DocState.VERIFIED
     assert doc.summary().state == DocState.VERIFIED
-    assert tag.calls == [2560]
+    assert passes == [[2560]]
     other = add(doc, "other")  # unrelated: nothing assembled changes
     doc.set_identified(other, info(1, tag=OTHER_TAG))
     assert doc.summary().state == DocState.VERIFIED
-    assert len(tag.calls) == 1
+    assert len(passes) == 1
     doc.set_outcome(p2, page_out(b"\x01" + pages[1][1:]))  # same scan, new outcome
     assert doc.summary().state == DocState.MISMATCH
     doc.set_outcome(p2, page_out(pages[1]))
     assert doc.summary().state == DocState.VERIFIED
-    assert len(tag.calls) == 3
+    assert len(passes) == 3
+
+
+def test_page_count_above_the_encoders_limit_is_unreadable():
+    doc, (a, b) = build(info(1, total=99999), info(1, total=MAX_TOTAL_PAGES, tag=None))
+    assert doc.scan(a).state == ScanState.UNREADABLE
+    assert doc.scan(a).reason == "page count out of range"
+    assert picture(doc)["unreadable"] == [a]
+    assert picture(doc)["current"] == (b,)
+    assert len(doc.slots()) == MAX_TOTAL_PAGES
+    doc, (a,) = build(info(1, total=MAX_TOTAL_PAGES + 1))
+    assert picture(doc) == {"current": None, "slots": [], "others": [], "unreadable": [a]}
+
+
+def test_max_total_pages_is_the_encoders_limit():
+    from optar.encoder import MAX_PAGES
+
+    assert MAX_TOTAL_PAGES == MAX_PAGES
+
+
+@pytest.mark.parametrize("total", [-1, MAX_TOTAL_PAGES + 1, 99999])
+def test_start_by_hand_refuses_impossible_page_counts(total):
+    doc = Document()
+    with pytest.raises(ValueError):
+        doc.start_by_hand(A, total)
+    assert doc.current is None
+
+
+def test_start_by_hand_accepts_the_page_count_limits():
+    doc = Document()
+    doc.start_by_hand(A, MAX_TOTAL_PAGES)
+    assert len(doc.slots()) == MAX_TOTAL_PAGES
+    doc.start_by_hand(A, 0)
+    assert len(doc.slots()) == 1
+
+
+def test_chunks_of_a_tagged_document_stop_at_its_size():
+    data = bytes(range(1, 251)) * 10  # 2500 bytes: the third page holds 500
+    doc, _ = decoded(make_tag(data), split(data))
+    chunks = list(doc.chunks())
+    assert [len(c) for c in chunks] == [1000, 1000, 500]
+    assert b"".join(chunks) == data == doc.assemble()
+
+
+def test_chunks_never_yield_pages_past_the_tags_size():
+    data = bytes(range(1, 251)) * 4  # 1000 bytes: one page, though the label says three
+    doc, _ = decoded(make_tag(data), [data, b"\xff" * PAGE, b"\xff" * PAGE])
+    assert list(doc.chunks()) == [data]
+
+
+def test_chunks_of_an_untagged_document_are_whole_pages():
+    data = bytes(range(1, 251)) * 10
+    doc, _ = decoded(None, split(data))
+    chunks = list(doc.chunks())
+    assert [len(c) for c in chunks] == [PAGE] * 3
+    assert b"".join(chunks) == doc.assemble() == data + bytes(500)
+
+
+def test_missing_pages_share_one_zero_block():
+    doc, (p1, p2, p3, p4) = decoded(None, [None, b"x" * PAGE, None, None])
+    chunks = list(doc.chunks())
+    assert chunks[1] == b"x" * PAGE
+    assert chunks[0] == bytes(PAGE)
+    assert chunks[0] is chunks[2] is chunks[3]
+
+
+def test_chunks_check_before_producing_anything():
+    doc, _ = build(info(1), info(2))
+    with pytest.raises(ValueError, match="no page has been decoded"):
+        doc.chunks()
+    doc, (p1, p2) = build(info(1, total=2, tag=None), info(2, total=2, tag=None))
+    doc.set_outcome(p1, page_out(b"a" * PAGE))
+    doc.set_outcome(p2, page_out(b"b" * (PAGE + 1)))
+    with pytest.raises(ValueError, match="pages have different sizes"):
+        doc.chunks()
+
+
+def test_short_file_against_a_larger_tag_size_does_not_match():
+    data = bytes(range(1, 251)) * 12  # 3000 bytes
+    short = Tag(5000, make_tag(data).fingerprint)  # fingerprint of what is produced
+    doc, _ = decoded(short, split(data))
+    assert doc.assemble() == data  # shorter than the tag says: returned as is
+    assert doc.summary().state == DocState.MISMATCH
+
+
+def test_chunks_of_the_largest_document_use_little_memory():
+    page_bytes = 200_000
+    doc, (only,) = build(info(5000, total=MAX_TOTAL_PAGES, tag=None))
+    doc.set_outcome(only, page_out(b"x" * page_bytes))
+    tracemalloc.start()
+    try:
+        produced = sum(len(c) for c in doc.chunks())
+        peak = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+    assert produced == MAX_TOTAL_PAGES * page_bytes
+    assert peak < 50_000_000
 
 
 def test_suggested_name():
