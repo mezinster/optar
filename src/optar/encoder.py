@@ -9,9 +9,9 @@ from typing import BinaryIO
 
 import numpy as np
 
-from optar.errors import OptarError
+from optar.errors import FormatError, OptarError
 from optar.fec import encode_symbols
-from optar.font import label_text, render_label
+from optar.font import LABEL_HEIGHT, label_text, render_label
 from optar.format import PageFormat
 from optar.layout import channel_xy
 
@@ -28,6 +28,20 @@ class Page:
 def page_count(nbytes: int, fmt: PageFormat) -> int:
     """Number of pages for nbytes of data (0 for an empty file, as in C)."""
     return (nbytes * 8 + fmt.net_bits - 1) // fmt.net_bits
+
+
+def check_encodable(nbytes: int, fmt: PageFormat) -> int:
+    """Return the page count for nbytes, or raise if the data cannot be encoded.
+
+    Raises FormatError for a label band the font cannot draw and OptarError
+    for more than MAX_PAGES pages. encode() runs the same check.
+    """
+    if fmt.text_height != LABEL_HEIGHT:
+        raise FormatError(f"label band must be {LABEL_HEIGHT} rows, not {fmt.text_height}")
+    total = page_count(nbytes, fmt)
+    if total > MAX_PAGES:
+        raise OptarError(f"too many pages: {total} needed, at most {MAX_PAGES}")
+    return total
 
 
 def blank_page(fmt: PageFormat, label_text: str) -> np.ndarray:
@@ -74,9 +88,7 @@ def encode(data: bytes | BinaryIO, fmt: PageFormat, label: str = "") -> Iterator
         data.seek(0)
         data = data.read()
     nbytes = len(data)
-    total = page_count(nbytes, fmt)
-    if total > MAX_PAGES:
-        raise OptarError(f"too many pages: {total} needed, at most {MAX_PAGES}")
+    total = check_encodable(nbytes, fmt)
     if total == 0:
         yield Page(1, 0, blank_page(fmt, label_text(fmt, 1, 0, label)))
         return

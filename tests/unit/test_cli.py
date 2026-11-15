@@ -158,3 +158,128 @@ def test_decode_unwritable_output_names_file(a4_scan, tmp_path, capsys):
     assert main(["decode", base, "-o", str(tmp_path / "nodir" / "out.bin")]) == 2
     err = capsys.readouterr().err
     assert err.splitlines()[-1].startswith("optar: ") and "nodir" in err and "Traceback" not in err
+
+
+def _encode_args(infile, out, *extra):
+    return ["encode", str(infile), "-o", str(out), *extra]
+
+
+def _no_temp_files(directory):
+    return not list(directory.glob("*.tmp"))
+
+
+@pytest.mark.skipif(os.name == "nt" or os.geteuid() == 0, reason="needs POSIX permissions")
+def test_failed_write_keeps_existing_read_only_pdf(tmp_path, infile, capsys):
+    ro = tmp_path / "ro"
+    ro.mkdir()
+    existing = ro / "x.pdf"
+    existing.write_bytes(b"precious")
+    existing.chmod(0o444)
+    ro.chmod(0o555)
+    try:
+        assert main(_encode_args(infile, ro / "x")) == 2
+        assert existing.read_bytes() == b"precious"
+        assert _no_temp_files(ro)
+        assert "cannot write" in capsys.readouterr().err
+    finally:
+        ro.chmod(0o755)
+
+
+@pytest.mark.skipif(os.name == "nt" or os.geteuid() == 0, reason="needs POSIX permissions")
+def test_read_only_existing_file_in_writable_directory_is_kept(tmp_path, infile, capsys):
+    existing = tmp_path / "x.pdf"
+    existing.write_bytes(b"precious")
+    existing.chmod(0o444)
+    assert main(_encode_args(infile, tmp_path / "x")) == 2
+    assert existing.read_bytes() == b"precious"
+    assert _no_temp_files(tmp_path)
+    assert "cannot write" in capsys.readouterr().err
+
+
+def test_failed_encode_keeps_existing_pdf(tmp_path, infile, capsys, monkeypatch):
+    import optar.encoder
+
+    monkeypatch.setattr(optar.encoder, "MAX_PAGES", 0)
+    existing = tmp_path / "lim.pdf"
+    existing.write_bytes(b"precious")
+    assert main(_encode_args(infile, tmp_path / "lim")) == 2
+    assert existing.read_bytes() == b"precious"
+    assert _no_temp_files(tmp_path)
+    assert "too many pages" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("kind", ["pdf", "png", "pgm"])
+def test_page_limit_creates_no_file(tmp_path, infile, capsys, monkeypatch, kind):
+    import optar.encoder
+
+    monkeypatch.setattr(optar.encoder, "MAX_PAGES", 0)
+    assert main(_encode_args(infile, tmp_path / "big", "--to", kind)) == 2
+    err = capsys.readouterr().err
+    assert "too many pages: 1 needed, at most 0" in err
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["in.bin"]
+
+
+def test_failure_during_pdf_keeps_existing_file(tmp_path, infile, monkeypatch):
+    import optar.cli
+
+    def broken(data, fmt, label=""):
+        yield from list(encode(data, fmt, label))[:1]
+        raise RuntimeError("boom")
+
+    existing = tmp_path / "x.pdf"
+    existing.write_bytes(b"precious")
+    monkeypatch.setattr(optar.cli, "encode", broken)
+    with pytest.raises(RuntimeError, match="boom"):
+        main(_encode_args(infile, tmp_path / "x"))
+    assert existing.read_bytes() == b"precious"
+    assert _no_temp_files(tmp_path)
+
+
+def test_failed_page_file_write_keeps_existing_page(tmp_path, infile, monkeypatch):
+    import optar.cli
+
+    existing = tmp_path / "x_0001.png"
+    existing.write_bytes(b"precious")
+
+    def half_write(path, pixels):
+        with open(path, "wb") as f:
+            f.write(b"trunc")
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(optar.cli, "write_png", half_write)
+    assert main(_encode_args(infile, tmp_path / "x", "--to", "png")) == 2
+    assert existing.read_bytes() == b"precious"
+    assert _no_temp_files(tmp_path)
+
+
+def test_successful_encode_replaces_existing_file(tmp_path, infile):
+    existing = tmp_path / "x.pdf"
+    existing.write_bytes(b"old")
+    assert main(_encode_args(infile, tmp_path / "x")) == 0
+    assert existing.read_bytes().startswith(b"%PDF-")
+    assert len(parse_pdf(existing)) == 1
+    assert _no_temp_files(tmp_path)
+    if os.name != "nt":
+        umask = os.umask(0)
+        os.umask(umask)
+        assert existing.stat().st_mode & 0o777 == 0o666 & ~umask
+
+
+def test_failed_decode_write_keeps_existing_output(a4_scan, tmp_path, monkeypatch):
+    import optar.cli
+
+    base, data = a4_scan
+    out = tmp_path / "out.bin"
+    out.write_bytes(b"precious")
+    real_replace = os.replace
+
+    def failing_replace(src, dst):
+        raise OSError(13, "Permission denied")
+
+    monkeypatch.setattr(optar.cli.os, "replace", failing_replace)
+    assert main(["decode", base, "-o", str(out)]) == 2
+    assert out.read_bytes() == b"precious"
+    assert _no_temp_files(tmp_path)
+    monkeypatch.setattr(optar.cli.os, "replace", real_replace)
+    assert main(["decode", base, "-o", str(out)]) == 0
+    assert out.read_bytes()[: len(data)] == data
