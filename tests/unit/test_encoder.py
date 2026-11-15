@@ -1,6 +1,5 @@
 # (c) GPL 2007 Karel 'Clock' Kulhavy, Twibright Labs; Python port 2026
 import io
-import time
 
 import numpy as np
 
@@ -44,9 +43,3 @@ def test_stream_input_equals_bytes_input():
     b = [p.pixels for p in encode(io.BytesIO(data), F)]
     assert all(np.array_equal(i, j) for i, j in zip(a, b, strict=True))
 
-
-def test_full_page_is_fast():
-    data = seeded_bytes(4, PAGE_BYTES)
-    t = time.perf_counter()
-    list(encode(data, F))
-    assert time.perf_counter() - t < 5

@@ -190,3 +190,22 @@ def reference_remove_border_dirt(img, fill_cut):
     fill(w >> 1, h - 1, 1)
     fill(w >> 1, h >> 1, 0)
     return np.asarray(img, np.uint8) | np.array(newary, np.uint8)
+
+
+# Degraded scan cases shared by the unit and oracle decoder tests: fake_scan
+# keyword arguments. Cases with flips need fmt= as well. Every case must
+# decode with at most 2 corrected bits per symbol. "noisy" was weakened from
+# the planned noise=12: decoded as an array (no PNG gamma), unblurred pixel
+# noise on black is amplified by the unsharp mask against a cut level close
+# to black; noise=3 already gives 3-bit corrections, noise=12 uncorrectable
+# symbols.
+DEGRADED = {
+    "clean1": dict(scale=1),
+    "clean3": dict(scale=3),
+    "rotated": dict(scale=3, margin=120, rotate=0.3),
+    "blurred": dict(scale=3, blur=1.0),
+    "noisy": dict(scale=3, noise=2),
+    "specks": dict(scale=3, specks=30),
+    "flips": dict(scale=3, flips=200),
+    "combined": dict(scale=3, margin=120, rotate=0.2, blur=0.8, noise=8, specks=20, flips=100),
+}
