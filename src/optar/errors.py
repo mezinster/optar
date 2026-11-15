@@ -18,3 +18,16 @@ class DecodeError(OptarError):
     def __init__(self, *args: object, page: int | None = None) -> None:
         super().__init__(*args)
         self.page = page
+
+
+class IdentifyError(DecodeError):
+    """A scan could not be identified from its label.
+
+    `reason` is "no page found" (no page outline in any orientation) or
+    "label unreadable" (a page was found, but no orientation and paper gave
+    a label that reads, parses and agrees with itself).
+    """
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
