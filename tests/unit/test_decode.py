@@ -4,7 +4,17 @@
 import numpy as np
 import pytest
 
-from optar import PAPERS, PageFormat, PageStats, decode, decode_page, encode, read_scan
+from optar import (
+    PAPERS,
+    BitPacker,
+    PageFormat,
+    PageStats,
+    decode,
+    decode_page,
+    decode_pages,
+    encode,
+    read_scan,
+)
 from optar.errors import DecodeError
 from tests.helpers import DEGRADED, fake_scan, save_scan, seeded_bytes
 
@@ -122,3 +132,46 @@ def test_page_stats_max_corrected():
 def test_decode_no_pages():
     res = decode(iter(()), A4)
     assert res.data == b"" and res.pages == () and res.uncorrectable == 0
+
+
+def test_decode_pages_is_lazy():
+    pulled = []
+
+    def scans():
+        for p in encode(seeded_bytes(3, A4.net_bits // 8 + 10), A4):
+            pulled.append(p.number)
+            yield fake_scan(p.pixels, scale=1)
+
+    results = decode_pages(scans(), A4)
+    assert pulled == []
+    first = next(results)
+    assert pulled == [1] and first.stats.uncorrectable == 0
+    assert first.bits.size == A4.net_bits
+    next(results)
+    assert pulled == [1, 2]
+    assert next(results, None) is None
+
+
+def test_decode_pages_error_carries_page_number():
+    good = fake_scan(next(encode(b"abc", A4)).pixels, scale=1)
+    blank = np.full((A4.height, A4.width), 255, np.uint8)
+    results = decode_pages(iter([good, blank]), A4)
+    next(results)
+    with pytest.raises(DecodeError, match="corner") as e:
+        next(results)
+    assert e.value.page == 2
+
+
+def test_decode_error_page_defaults_to_none():
+    assert DecodeError("x").page is None
+    assert DecodeError("x", page=3).page == 3 and str(DecodeError("x", page=3)) == "x"
+
+
+@pytest.mark.parametrize("sizes", [[3, 5, 13, 1, 0, 8, 7], [7, 7, 7, 7], [16], [5]])
+def test_bit_packer_matches_packbits_of_whole_stream(sizes):
+    rng = np.random.default_rng(len(sizes))
+    chunks = [rng.integers(0, 2, n, dtype=np.uint8) for n in sizes]
+    packer = BitPacker()
+    out = b"".join(packer.feed(c) for c in chunks)
+    stream = np.concatenate(chunks)
+    assert out == np.packbits(stream[: stream.size // 8 * 8]).tobytes()

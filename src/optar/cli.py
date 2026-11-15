@@ -17,7 +17,7 @@ import numpy as np
 from PIL import Image
 
 from optar import __version__
-from optar.decoder import decode_page
+from optar.decoder import BitPacker, decode_pages
 from optar.encoder import check_encodable, encode
 from optar.errors import DecodeError, FormatError, OptarError
 from optar.format import PAPERS, PageFormat, Paper
@@ -148,42 +148,50 @@ def _save_debug_image(path: str, image: np.ndarray) -> None:
 def _decode(args: argparse.Namespace) -> int:
     _, fmt = _resolve_format(args)
     name = os.path.basename(args.base)
-    chunks: list[np.ndarray] = []
-    uncorrectable = 0
     gap = False
 
-    number = 1
-    while True:
-        path = f"{args.base}_{number:04d}.png"
-        if not os.path.exists(path):
-            if number > 1 and os.path.exists(f"{args.base}_{number + 1:04d}.png"):
-                _eprint(
-                    f"optar: {name}_{number:04d}.png is missing "
-                    f"but {name}_{number + 1:04d}.png exists"
-                )
-                gap = True
-            break
-        try:
-            result = decode_page(read_scan(path), fmt, debug=args.debug_images)
-        except DecodeError as e:
-            raise DecodeError(f"{name}_{number:04d}.png: {e}") from e
-        stats = result.stats
-        corrected = sum(stats.error_histogram[1:])
-        _eprint(
-            f"page {number}: {stats.symbols} symbols, {corrected} corrected, "
-            f"{stats.uncorrectable} uncorrectable"
-        )
-        uncorrectable += stats.uncorrectable
-        chunks.append(result.bits)
-        if args.debug_images and result.debug_image is not None:
-            _save_debug_image(f"{args.base}_{number:04d}_debug.png", result.debug_image)
-        number += 1
+    def scan_name(number: int) -> str:
+        return f"{name}_{number:04d}.png"
+
+    def scans() -> Iterator[np.ndarray]:
+        nonlocal gap
+        number = 1
+        while True:
+            path = f"{args.base}_{number:04d}.png"
+            if not os.path.exists(path):
+                if number > 1 and os.path.exists(f"{args.base}_{number + 1:04d}.png"):
+                    _eprint(
+                        f"optar: {scan_name(number)} is missing but {scan_name(number + 1)} exists"
+                    )
+                    gap = True
+                return
+            yield read_scan(path)
+            number += 1
+
+    packer = BitPacker()
+    chunks: list[bytes] = []
+    uncorrectable = 0
+    pages = decode_pages(scans(), fmt, debug=args.debug_images)
+    try:
+        for number, result in enumerate(pages, start=1):
+            stats = result.stats
+            corrected = sum(stats.error_histogram[1:])
+            _eprint(
+                f"page {number}: {stats.symbols} symbols, {corrected} corrected, "
+                f"{stats.uncorrectable} uncorrectable"
+            )
+            uncorrectable += stats.uncorrectable
+            chunks.append(packer.feed(result.bits))
+            if args.debug_images and result.debug_image is not None:
+                _save_debug_image(f"{args.base}_{number:04d}_debug.png", result.debug_image)
+    except DecodeError as e:
+        page = e.page or len(chunks) + 1
+        raise DecodeError(f"{scan_name(page)}: {e}", page=page) from e
 
     if not chunks:
         raise OptarError(f"cannot open {args.base}_0001.png")
 
-    bits = np.concatenate(chunks)
-    data = np.packbits(bits[: len(bits) // 8 * 8]).tobytes()
+    data = b"".join(chunks)
     if args.output:
         with _replacing(args.output) as temp, open(temp, "wb") as f:
             f.write(data)

@@ -4,12 +4,14 @@
 __version__ = "0.1.0"
 
 from optar.decoder import (  # noqa: E402
+    BitPacker,
     DecodeOptions,
     DecodeResult,
     PageResult,
     PageStats,
     decode,
     decode_page,
+    decode_pages,
 )
 from optar.encoder import Page, encode  # noqa: E402
 from optar.errors import DecodeError, FormatError, OptarError  # noqa: E402
@@ -26,6 +28,8 @@ __all__ = [
     "Page",
     "decode",
     "decode_page",
+    "decode_pages",
+    "BitPacker",
     "DecodeOptions",
     "DecodeResult",
     "PageResult",

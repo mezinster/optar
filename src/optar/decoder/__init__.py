@@ -1,15 +1,16 @@
 # (c) GPL 2007 Karel 'Clock' Kulhavy, Twibright Labs; Python port 2026
 """Decoder for scanned optar pages (port of unoptar.c).
 
-decode_page runs the stages in process_file order; decode concatenates the
-pages' payload bits into one stream, as C's static accumulator in
-read_payload_bit does, and drops a trailing partial byte.
+decode_page runs the stages in process_file order; decode_pages runs it over
+a sequence of scans; decode concatenates the pages' payload bits into one
+stream with BitPacker, as C's static accumulator in read_payload_bit does,
+and drops a trailing partial byte.
 """
 
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 
 import numpy as np
@@ -25,7 +26,16 @@ from optar.errors import DecodeError
 from optar.fec import decode_symbols
 from optar.format import PageFormat
 
-__all__ = ["DecodeOptions", "DecodeResult", "PageResult", "PageStats", "decode", "decode_page"]
+__all__ = [
+    "BitPacker",
+    "DecodeOptions",
+    "DecodeResult",
+    "PageResult",
+    "PageStats",
+    "decode",
+    "decode_page",
+    "decode_pages",
+]
 
 _HISTOGRAM_SIZE = 4  # symbols with 0, 1, 2, 3 corrected bits
 
@@ -137,6 +147,45 @@ def decode_page(
     return PageResult(bits=bits, stats=stats, debug_image=debug_image)
 
 
+def decode_pages(
+    images: Iterable[np.ndarray],
+    fmt: PageFormat,
+    options: DecodeOptions | None = None,
+    *,
+    debug: bool = False,
+) -> Iterator[PageResult]:
+    """Decode scans one at a time, yielding a PageResult per image.
+
+    Images are taken from the iterable only as results are requested. A
+    DecodeError raised for a page has its `page` attribute set to the page's
+    1-based number.
+    """
+    for number, image in enumerate(images, start=1):
+        try:
+            result = decode_page(image, fmt, options, debug=debug)
+        except DecodeError as e:
+            e.page = number
+            raise
+        yield result
+
+
+class BitPacker:
+    """Packs a bit stream fed in chunks into bytes, most significant bit first.
+
+    Each feed returns the bytes completed so far and keeps the leftover bits
+    for the next chunk; a trailing partial byte is never emitted.
+    """
+
+    def __init__(self) -> None:
+        self._carry = np.zeros(0, np.uint8)
+
+    def feed(self, bits: np.ndarray) -> bytes:
+        stream = np.concatenate((self._carry, np.asarray(bits, np.uint8)))
+        whole = stream.size - stream.size % 8
+        self._carry = stream[whole:].copy()
+        return np.packbits(stream[:whole]).tobytes()
+
+
 def decode(
     images: Iterable[np.ndarray],
     fmt: PageFormat,
@@ -149,15 +198,11 @@ def decode(
     The pages' payload bits form one stream; trailing bits that do not fill
     a byte are dropped, as C does. Pages are consumed one at a time.
     """
+    packer = BitPacker()
     chunks: list[bytes] = []
     pages: list[PageStats] = []
-    carry = np.zeros(0, np.uint8)
-    for number, image in enumerate(images, start=1):
-        result = decode_page(image, fmt, options)
-        stream = np.concatenate((carry, result.bits))
-        whole = stream.size - stream.size % 8
-        chunks.append(np.packbits(stream[:whole]).tobytes())
-        carry = stream[whole:]
+    for number, result in enumerate(decode_pages(images, fmt, options), start=1):
+        chunks.append(packer.feed(result.bits))
         pages.append(result.stats)
         if progress is not None:
             progress(number, result.stats)
