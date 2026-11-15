@@ -22,6 +22,7 @@ from PIL import Image
 from optar.cli import main
 from optar.encoder import encode
 from optar.format import PAPERS, PIXELS_PER_INCH, PageFormat
+from optar.tag import make_tag, tagged_label
 from tests.helpers import seeded_bytes
 
 pytestmark = pytest.mark.gs
@@ -94,7 +95,7 @@ def test_ghostscript_render_decodes(ghostscript, tmp_path, paper_name, capsys):
 
     paper = PAPERS[paper_name]
     fmt = PageFormat.for_paper(paper)
-    expected = [p.pixels for p in encode(data, fmt, LABEL)]
+    expected = [p.pixels for p in encode(data, fmt, tagged_label(make_tag(data), LABEL))]
     renders = sorted(tmp_path.glob("r_*.png"))
     assert len(renders) == len(expected) == 2
     width, height = RENDER_SIZES[paper_name]

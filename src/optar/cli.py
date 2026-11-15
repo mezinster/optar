@@ -20,6 +20,7 @@ from optar.fileio import io_error, replacing
 from optar.format import PAPERS, PageFormat, Paper
 from optar.imageio import read_scan, write_pgm, write_png
 from optar.pdf import write_pdf
+from optar.tag import make_tag, tagged_label
 
 PAPER_HINT = "Check that --paper matches the printout and that the page is scanned upright."
 ACTUAL_SIZE = 'Print at actual size (100%), not "fit to page".'
@@ -54,6 +55,11 @@ def _build_parser() -> argparse.ArgumentParser:
     enc.add_argument(
         "--label", help="text printed on each page (default: the file name given with -o)"
     )
+    enc.add_argument(
+        "--no-tag",
+        action="store_true",
+        help="do not add the size-and-fingerprint tag to the page labels",
+    )
     common(enc)
 
     dec = sub.add_parser("decode", help="decode scanned pages back into a file")
@@ -86,7 +92,8 @@ def _encode(args: argparse.Namespace) -> int:
 
     check_encodable(len(data), fmt)  # before any file is created
     base = args.output or "optar_out"
-    label = args.label if args.label is not None else Path(args.output or "").name
+    name = args.label if args.label is not None else Path(args.output or "").name
+    label = name if args.no_tag else tagged_label(make_tag(data), name)
     written: list[str] = []
     if args.to == "pdf":
         path = f"{base}.pdf"

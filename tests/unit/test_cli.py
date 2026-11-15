@@ -302,7 +302,7 @@ def test_failed_decode_write_keeps_existing_output(a4_scan, tmp_path, monkeypatc
     assert out.read_bytes()[: len(data)] == data
 
 
-def test_default_label_is_output_file_name(tmp_path, infile, monkeypatch):
+def _spy_labels(monkeypatch):
     import optar.cli
 
     labels = []
@@ -312,11 +312,76 @@ def test_default_label_is_output_file_name(tmp_path, infile, monkeypatch):
         return encode(data, fmt, label)
 
     monkeypatch.setattr(optar.cli, "encode", spy)
+    return labels
+
+
+def test_default_label_is_tagged_output_file_name(tmp_path, infile, monkeypatch):
+    from optar.tag import make_tag, tagged_label
+
+    labels = _spy_labels(monkeypatch)
+    tag = make_tag(infile.read_bytes())
     assert main(_encode_args(infile, tmp_path / "sub" / "name", "--to", "pgm")) == 2  # no dir
     (tmp_path / "sub").mkdir()
     assert main(_encode_args(infile, tmp_path / "sub" / "name", "--to", "pgm")) == 0
-    assert main(_encode_args(infile, tmp_path / "x", "--to", "pgm", "--label", "mine")) == 0
-    assert labels[-2:] == ["name", "mine"]
+    assert main(_encode_args(infile, tmp_path / "x", "--to", "pgm", "--label", "my name")) == 0
+    assert labels[-2:] == [tagged_label(tag, "name"), tagged_label(tag, "my name")]
+    assert labels[-1] == f"[{tag.size}:{tag.fingerprint}] my name"
+
+
+def test_no_tag_keeps_plain_label(tmp_path, infile, monkeypatch):
+    labels = _spy_labels(monkeypatch)
+    (tmp_path / "sub").mkdir()
+    assert main(_encode_args(infile, tmp_path / "sub" / "name", "--to", "pgm", "--no-tag")) == 0
+    args = _encode_args(infile, tmp_path / "x", "--to", "pgm", "--label", "mine", "--no-tag")
+    assert main(args) == 0
+    assert main(_encode_args(infile, tmp_path / "y", "--to", "pgm", "--no-tag")) == 0
+    assert labels == ["name", "mine", "y"]
+
+
+def test_encode_adds_tag_by_default(tmp_path, infile):
+    from optar.imageio import pgm_bytes
+    from optar.tag import make_tag, tagged_label
+
+    data = infile.read_bytes()
+    assert main(_encode_args(infile, tmp_path / "out", "--to", "pgm")) == 0
+    fmt = PageFormat.for_paper(PAPERS["a4"])
+    want = next(encode(data, fmt, tagged_label(make_tag(data), "out"))).pixels
+    assert (tmp_path / "out_0001.pgm").read_bytes() == pgm_bytes(want)
+
+
+def test_no_tag_output_is_plain_label_output(tmp_path, infile):
+    from optar.imageio import pgm_bytes
+
+    fmt = PageFormat.for_paper(PAPERS["a4"])
+    want = next(encode(infile.read_bytes(), fmt, "out")).pixels
+    assert main(_encode_args(infile, tmp_path / "out", "--to", "pgm", "--no-tag")) == 0
+    assert (tmp_path / "out_0001.pgm").read_bytes() == pgm_bytes(want)
+
+
+def test_empty_input_gets_empty_tag(tmp_path, monkeypatch):
+    labels = _spy_labels(monkeypatch)
+    empty = tmp_path / "empty.bin"
+    empty.write_bytes(b"")
+    assert main(_encode_args(empty, tmp_path / "e", "--to", "pgm")) == 0
+    assert labels == ["[0:e3b0c442] e"]
+    assert sorted(p.name for p in tmp_path.glob("e_*.pgm")) == ["e_0001.pgm"]
+
+
+def test_written_tag_parses_back(tmp_path, monkeypatch):
+    from optar.tag import split_label
+
+    labels = _spy_labels(monkeypatch)
+    data = seeded_bytes(5, 250_000)
+    src = tmp_path / "big.bin"
+    src.write_bytes(data)
+    assert main(_encode_args(src, tmp_path / "big", "--to", "pgm")) == 0
+    fmt = PageFormat.for_paper(PAPERS["a4"])
+    total = len(list(encode(data, fmt)))
+    assert total == 2
+    tag, name = split_label(labels[-1])
+    assert tag is not None and name == "big"
+    assert tag.matches(data)
+    assert tag.fits(total, fmt)
 
 
 def test_every_option_has_help():
