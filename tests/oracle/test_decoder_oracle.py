@@ -122,3 +122,19 @@ def test_uncorrectable_symbols_decode_like_c(c_build, tmp_path, overrides, fmt):
     res = decode([read_scan(path)], fmt)
     assert res.uncorrectable > 0
     assert c_out == res.data
+
+
+@pytest.mark.slow
+def test_1200_dpi_scan_decodes_like_c(c_build, tmp_path, degraded_page):
+    # Scale 6 is a 1200 dpi scan of a 200 pixels-per-inch page: min/max runs
+    # 3 passes and blur 2 cycles, where the scale 3 tests above run 1 of each.
+    # About 30 s and 3.5 GB peak (mostly fake_scan's noise), hence slow.
+    build = _unoptar(c_build, {})
+    path = tmp_path / "scan_0001.png"
+    save_scan(path, fake_scan(degraded_page, scale=6, rotate=0.2, blur=1.5, noise=8, seed=1))
+    c_out = _run_unoptar(build, A4, tmp_path)
+    res = decode([read_scan(path)], A4)
+    assert len(res.data) == A4.net_bits // 8
+    assert c_out == res.data
+    assert res.data[: len(DEGRADED_DATA)] == DEGRADED_DATA
+    assert res.uncorrectable == 0 and res.pages[0].max_corrected <= 2

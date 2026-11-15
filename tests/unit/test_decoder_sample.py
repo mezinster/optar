@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 
 from optar.decoder.crosses import sync_crosses
-from optar.decoder.filters import blur, minmax
+from optar.decoder.filters import _minmax_passes, blur, minmax
 from optar.decoder.geometry import compute_geometry, find_corners
 from optar.decoder.levels import analyze_levels
 from optar.decoder.options import DecodeOptions
@@ -28,6 +28,54 @@ def test_minmax_scale_3_removes_a_one_pixel_dark_speck():
     specked[2, 2] = 0
     assert np.array_equal(minmax(specked, G(3), OPTS), minmax(img, G(3), OPTS))  # 1 pass each
     assert np.array_equal(minmax(specked, G(1), OPTS), specked)  # floor(1*0.5) = 0 passes
+
+
+def _c_max(ary, width, height):
+    """Literal port of max() in unoptar.c: pointer walks over a flat array."""
+    ptr = width * height
+    for _ in range(height):
+        linestart = ptr - width
+        ptr -= 1
+        while ptr > linestart:
+            ary[ptr] = max(ary[ptr], ary[ptr - 1])
+            ptr -= 1
+    end = width
+    ptr = width * height - 1
+    while ptr >= end:
+        ary[ptr] = max(ary[ptr], ary[ptr - width])
+        ptr -= 1
+
+
+def _c_min(ary, width, height):
+    """Literal port of min() in unoptar.c."""
+    ptr = 0
+    for _ in range(height):
+        end = ptr + width - 1
+        while ptr < end:
+            ary[ptr] = min(ary[ptr], ary[ptr + 1])
+            ptr += 1
+        ptr += 1
+    end = width * (height - 1)
+    ptr = 0
+    while ptr < end:
+        ary[ptr] = min(ary[ptr], ary[ptr + width])
+        ptr += 1
+
+
+@pytest.mark.parametrize("scale,passes", [(5, 2), (6, 3)])
+def test_minmax_multi_pass_matches_literal_c_port(scale, passes):
+    # process_minmax: npix = floor(sqrt(vpixel * hpixel) * 0.5) passes of max(), then of min().
+    rng = np.random.default_rng(scale)
+    height, width = 9, 13
+    img = rng.integers(0, 256, (height, width), dtype=np.uint8)
+    ary = [int(v) for v in img.ravel()]
+    for _ in range(passes):
+        _c_max(ary, width, height)
+    for _ in range(passes):
+        _c_min(ary, width, height)
+    want = np.array(ary, np.uint8).reshape(height, width)
+    assert _minmax_passes(G(scale), OPTS) == passes
+    assert np.array_equal(minmax(img, G(scale), OPTS), want)
 
 
 def test_minmax_one_pass_follows_c_neighbours():
