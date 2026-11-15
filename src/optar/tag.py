@@ -13,11 +13,15 @@ from dataclasses import dataclass
 from .format import PageFormat
 
 FINGERPRINT_DIGITS = 8
+# Sizes are written with at most this many decimal digits. Generous for any
+# encodable file; the bound keeps parsing of unreadable labels from raising.
+MAX_SIZE_DIGITS = 12
 
 _FINGERPRINT = re.compile(rf"[0-9a-f]{{{FINGERPRINT_DIGITS}}}")
 # ASCII digits only, no leading zeros except "0" itself; then end or one space.
 _TAG = re.compile(
-    rf"\[(0|[1-9][0-9]*):([0-9a-f]{{{FINGERPRINT_DIGITS}}})\](?: |\Z)", re.ASCII)
+    rf"\[(0|[1-9][0-9]{{0,{MAX_SIZE_DIGITS - 1}}})"
+    rf":([0-9a-f]{{{FINGERPRINT_DIGITS}}})\](?: |\Z)", re.ASCII)
 
 
 @dataclass(frozen=True)
@@ -26,9 +30,12 @@ class Tag:
     fingerprint: str
 
     def __post_init__(self):
-        if self.size < 0:
-            raise ValueError(f"size must not be negative: {self.size}")
-        if not _FINGERPRINT.fullmatch(self.fingerprint):
+        if not isinstance(self.size, int) or isinstance(self.size, bool):
+            raise ValueError(f"size must be an int: {self.size!r}")
+        if not 0 <= self.size < 10 ** MAX_SIZE_DIGITS:
+            raise ValueError(
+                f"size must be between 0 and 10**{MAX_SIZE_DIGITS} - 1: {self.size}")
+        if not isinstance(self.fingerprint, str) or not _FINGERPRINT.fullmatch(self.fingerprint):
             raise ValueError(
                 f"fingerprint must be {FINGERPRINT_DIGITS} lower-case hex digits: "
                 f"{self.fingerprint!r}")

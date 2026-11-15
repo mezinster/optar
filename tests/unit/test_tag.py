@@ -4,7 +4,7 @@ import hashlib
 import pytest
 
 from optar.format import PageFormat
-from optar.tag import FINGERPRINT_DIGITS, Tag, make_tag, split_label, tagged_label
+from optar.tag import FINGERPRINT_DIGITS, MAX_SIZE_DIGITS, Tag, make_tag, split_label, tagged_label
 
 A4 = PageFormat(65, 93)
 LETTER = PageFormat(67, 87)
@@ -25,7 +25,9 @@ def test_tag_is_hashable_and_comparable():
 
 
 @pytest.mark.parametrize("size,fp", [(-1, ZERO), (1, "0" * 7), (1, "0" * 9),
-                                     (1, "ABCDEF01"), (1, "0000000g"), (1, "")])
+                                     (1, "ABCDEF01"), (1, "0000000g"), (1, ""),
+                                     (10 ** 12, ZERO), (True, ZERO), (1.0, ZERO),
+                                     ("1", ZERO), (1, None), (1, b"00000000")])
 def test_tag_rejects_invalid_fields(size, fp):
     with pytest.raises(ValueError):
         Tag(size, fp)
@@ -39,7 +41,8 @@ def test_tagged_label_and_split_round_trip():
     assert split_label("[2481152:3f9a2c1b]") == (t, "")
 
 
-@pytest.mark.parametrize("name", ["a b c", "x  y", "with [brackets] in", "[1:aaaaaaaa]", " lead"])
+@pytest.mark.parametrize(
+    "name", ["a b c", "x  y", "with [brackets] in", "[1:aaaaaaaa]", " lead", " "])
 def test_label_round_trip_names(name):
     t = Tag(7, "0123abcd")
     assert split_label(tagged_label(t, name)) == (t, name)
@@ -89,3 +92,27 @@ def test_fits_letter_capacity():
     assert Tag(b + 1, ZERO).fits(2, LETTER) and not Tag(2 * b + 1, ZERO).fits(2, LETTER)
     # the same size is a different page count on A4
     assert Tag(195000, ZERO).fits(1, A4) and not Tag(195000, ZERO).fits(1, LETTER)
+
+
+def test_split_label_bounds_size_digits():
+    assert MAX_SIZE_DIGITS == 12
+    for digits in ("9" * 5000, "1" + "0" * 12):
+        text = f"[{digits}:aaaaaaaa] x"
+        assert split_label(text) == (None, text)
+    t = Tag(10 ** 12 - 1, "aaaaaaaa")
+    assert len(str(t.size)) == 12
+    assert split_label(tagged_label(t, "x")) == (t, "x")
+
+
+def test_fits_negative_total_is_false():
+    assert not Tag(0, ZERO).fits(-1, A4)
+    assert not Tag(1, ZERO).fits(-1, A4)
+
+
+def test_matches_requires_right_length():
+    d = b"abc"
+    assert not Tag(len(d) + 1, make_tag(d).fingerprint).matches(d)
+
+
+def test_split_label_tag_with_trailing_space_only():
+    assert split_label("[1:aaaaaaaa] ") == (Tag(1, "aaaaaaaa"), "")
