@@ -692,12 +692,12 @@ def test_regression_switch_choice_not_reset_by_an_unreadable_scan(unreadable_fir
              lambda: doc.set_identified(c, info(2, tag=OTHER_TAG))]
     for step in steps if unreadable_first else reversed(steps):
         step()
-    # The choice is {b}; while b is not grouped the default rule shows the earliest
-    # printout, in both orders.
+    # The choice is {b} with b's tagged identity; once b fails, the group with that
+    # identity (c, a later page of the same printout) is the document, in both orders.
     assert picture(doc) == {
-        "current": (a,),
-        "slots": [(1, a, ()), (2, None, ()), (3, None, ())],
-        "others": [(c,)],
+        "current": (c,),
+        "slots": [(1, None, ()), (2, c, ()), (3, None, ())],
+        "others": [(a,)],
         "unreadable": [b],
     }
 
@@ -758,6 +758,71 @@ def test_choice_and_assignments_are_inactive_not_lost_while_their_scans_are_away
         "others": [(a,)],
         "unreadable": [],
     }
+
+
+@pytest.mark.parametrize("fails_first", [True, False])
+def test_regression_chosen_printout_kept_when_its_first_scan_fails(fails_first):
+    doc, (a, b, c, d) = build(info(1), info(1, tag=OTHER_TAG), None, None)
+    doc.switch_to(b)  # the choice is {b}
+    steps = [lambda: doc.set_identified(c, info(2, tag=OTHER_TAG)),
+             lambda: doc.set_identified(d, info(3, tag=OTHER_TAG))]
+    fail = lambda: doc.set_unreadable(b, "decoding failed")  # noqa: E731
+    for step in [fail, *steps] if fails_first else [*steps, fail]:
+        step()
+    assert picture(doc) == {
+        "current": (c, d),
+        "slots": [(1, None, ()), (2, c, ()), (3, d, ())],
+        "others": [(a,)],
+        "unreadable": [b],
+    }
+
+
+def test_regression_assignment_kept_when_the_chosen_printouts_first_scan_fails():
+    doc, (a, b, c, d, bad) = build(info(1), info(1, tag=OTHER_TAG), None, None, None)
+    doc.set_unreadable(bad, "label unreadable")
+    doc.switch_to(b)
+    doc.set_identified(c, info(2, tag=OTHER_TAG))
+    doc.set_identified(d, info(3, tag=OTHER_TAG))
+    doc.assign_page(bad, 1)  # while pages 1-3 of the printout are on screen
+    doc.set_unreadable(b, "decoding failed")
+    assert picture(doc) == {
+        "current": (c, d, bad),
+        "slots": [(1, bad, ()), (2, c, ()), (3, d, ())],
+        "others": [(a,)],
+        "unreadable": [b],
+    }
+    doc.remove_scan(b)  # removing the failed scan does not abandon the printout
+    assert picture(doc)["current"] == (c, d, bad)
+
+
+def test_regression_working_in_the_fallback_document_keeps_it():
+    # The chosen printout's only scan failed, so the default document is shown; working
+    # in it adds it to the choice, and an earlier-added scan of a third printout that is
+    # identified later does not take over.
+    doc, (e, a, b, bad) = build(None, info(1), info(1, tag=OTHER_TAG), None)
+    doc.set_unreadable(bad, "label unreadable")
+    doc.switch_to(b)
+    doc.set_unreadable(b, "decoding failed")
+    doc.assign_page(bad, 2)
+    doc.set_identified(e, info(1, tag=Tag(500000, "cccccccc")))
+    assert picture(doc) == {
+        "current": (a, bad),
+        "slots": [(1, a, ()), (2, bad, ()), (3, None, ())],
+        "others": [(e,)],
+        "unreadable": [b],
+    }
+
+
+def test_title_comes_from_the_scans_a_group_shows():
+    doc, (a, long_name, short_name) = build(
+        info(1, name="a.tar"),
+        info(1, name="report-final.tar", tag=OTHER_TAG),
+        info(2, name="report", tag=OTHER_TAG),
+    )
+    doc.assign_page(long_name, 2)
+    assert doc.others()[0].scan_ids == (short_name,)
+    assert doc.others()[0].title == "report"
+    assert doc.current.title == "a.tar"
 
 
 def test_assigned_scan_that_becomes_unreadable_stays_in_its_slot():
@@ -877,8 +942,8 @@ def _apply(doc, ids, event):
         pass  # the user removed this scan
 
 
-def _run(n, n_ops, events, shuffle, ops, op_rng):
-    """Plays the scenario; chooses the operations (into ops) when op_rng is given."""
+def _run(n, n_ops, events, shuffle, ops, choose):
+    """Plays the scenario; chooses the operations (into ops) when choose is given."""
     doc = Document()
     ids = [add(doc, k) for k in range(n)]
     results = []
@@ -889,8 +954,8 @@ def _run(n, n_ops, events, shuffle, ops, op_rng):
             _apply(doc, ids, event)
         if batch == n_ops:
             break
-        if op_rng is not None:
-            ops.append(_random_operation(op_rng, doc, ids))
+        if choose is not None:
+            ops.append(choose(doc, ids, batch))
         name, *args = ops[batch]
         try:
             getattr(doc, name)(*args)
@@ -900,17 +965,73 @@ def _run(n, n_ops, events, shuffle, ops, op_rng):
     return (doc.current, doc.slots(), doc.others(), doc.unreadable(), doc.scans(), results)
 
 
-def test_property_background_order_never_changes_the_result():
-    scenarios = 1000
+def _away_and_back_scenario(rng):
+    """The family most likely to lose user work: switch to a printout, assign a page or
+    choose a scan in it, the printout goes away (its first scan fails before its later
+    pages arrive, or the user leaves) and comes back.
+
+    Scans: 0 printout T page 1, 1 printout U page 1, 2 and 3 U pages 2 and 3, 4 an
+    unreadable scan, then 0-2 extra scans (a U page 1 duplicate or from the pool).
+    """
+    events = [(0, 0, "identified", info(1)), (0, 1, "identified", info(1, tag=OTHER_TAG)),
+              (0, 4, "unreadable", "label unreadable")]
+    # Mostly after the user's work and in the same batch as the first scan failing, so
+    # that in some orders it fails before the later pages arrive.
+    fails = rng.choice([2, 3])
+    if rng.random() < 0.85:
+        events.append((fails, 1, "unreadable", "decoding failed"))
+    for scan, page in ((2, 2), (3, 3)):
+        if rng.random() < 0.9:
+            batch = fails if rng.random() < 0.75 else rng.randint(1, 3)
+            events.append((batch, scan, "identified", info(page, tag=OTHER_TAG)))
+    extras = rng.randint(0, 2)
+    for scan in range(5, 5 + extras):
+        identity = info(1, tag=OTHER_TAG) if rng.random() < 0.2 else rng.choice(POOL)
+        events.append((rng.randint(0, 3), scan, "identified", identity))
+    for scan in range(5 + extras):
+        if scan != 4 and rng.random() < 0.5:
+            events.append((rng.randint(0, 3), scan, "outcome", out(rng.randint(0, 2))))
+    return 5 + extras, 3, events
+
+
+def _away_and_back_operations(rng):
+    def choose(doc, ids, j):
+        current = doc.current
+        if j == 0:
+            return ("switch_to", ids[1])
+        if j == 1:
+            if rng.random() < 0.6 or not (current and current.scan_ids):
+                pages = max(current.total, 1) if current else 1
+                return ("assign_page", ids[4], rng.randint(1, pages))
+            return ("use_scan", rng.choice(current.scan_ids))
+        return rng.choice([
+            ("switch_to", ids[0]), ("switch_to", ids[2]), ("remove_scan", ids[1]),
+            ("start_by_hand", A, 3), ("use_scan", ids[2]), ("assign_page", ids[4], 3),
+        ])
+    return choose
+
+
+def _check_background_order(scenario, operations, scenarios, salt):
     for seed in range(scenarios):
-        rng = random.Random(seed)
-        n, n_ops, events = _random_scenario(rng)
+        rng = random.Random(seed + salt)
+        n, n_ops, events = scenario(rng)
         ops: list = []
-        expected = _run(n, n_ops, events, lambda _: None, ops, random.Random(seed + 10**6))
+        expected = _run(n, n_ops, events, lambda _: None, ops,
+                        operations(random.Random(seed + salt + 10**6)))
         for rep in range(5):
-            order = random.Random(seed * 31 + rep)
+            order = random.Random(seed * 31 + rep + salt)
             got = _run(n, n_ops, events, order.shuffle, ops, None)
             assert got == expected, (seed, rep, ops)
+
+
+def test_property_background_order_never_changes_the_result():
+    def operations(rng):
+        return lambda doc, ids, j: _random_operation(rng, doc, ids)
+    _check_background_order(_random_scenario, operations, 1000, 0)
+
+
+def test_property_user_work_survives_a_printout_going_away_and_back():
+    _check_background_order(_away_and_back_scenario, _away_and_back_operations, 300, 7 * 10**6)
 
 
 # --- Values and imports -------------------------------------------------------

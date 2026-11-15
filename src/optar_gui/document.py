@@ -33,7 +33,16 @@ the identity for display.
 - A tagged and an untagged scan are never in the same group.
 - A group's key is the id of its earliest-added scan; ``switch_to(key)`` switches
   to the group that now contains that scan, so an old key keeps working.
-- A group's title is the longest name among its grouped scans ("" if none).
+- A group's title is the longest name among the grouped scans it shows ("" if
+  none); a scan assigned by hand into another document does not count.
+
+Remembering a document. User operations remember a document as a *reference*:
+the set of scans in its group at the moment of the operation, plus, for a tagged
+document, its identity ``(format, total, tag)``. A reference *resolves* to the
+group holding its earliest-added grouped scan; if none of its scans is grouped
+and it has a tagged identity, to the group with exactly that identity, if there
+is one (a later page of the same printout, since a tag names one printout);
+otherwise to nothing. A started-by-hand document is remembered as itself.
 
 Which group is the document.
 
@@ -41,29 +50,41 @@ Which group is the document.
   another ``start_by_hand``, or until every scan is removed. It comes first among
   the untagged groups, so matching untagged scans join it, and it exists with no
   scans at all.
-- Otherwise, if the user has made a choice, the document is the group that holds
-  the earliest-added grouped scan of the choice. A choice is the set of scans
-  that were in the document's group when the user made it; it never grows, and
-  shrinks only by ``remove_scan``. It is made by ``switch_to`` (the target
-  group), by ``remove_scan`` of a scan of the document (the rest of the group,
-  so a document with scans left is not abandoned), and by ``assign_page`` or
-  ``use_scan`` when there is no choice yet (the document worked in). While no
-  scan of the choice is grouped the default rule applies, and the choice takes
-  effect again as soon as one is. It is dropped by ``switch_to``,
-  ``start_by_hand``, or when all its scans are removed.
+- Otherwise, if the user has made a choice and it resolves, the document is the
+  group it resolves to. If it does not resolve, the default rule applies, and the
+  choice takes effect again as soon as it resolves.
 - Otherwise (default rule) the document is the group of the earliest-added
   grouped scan.
 
+The choice. Background results never change it; user operations do.
+``switch_to`` replaces it with a reference to the target group. ``assign_page``,
+``use_scan`` and ``remove_scan`` are made while looking at the current document:
+they add the current group's scans to the choice and give it the current group's
+identity (``remove_scan`` only when the scan removed is in the current group or
+the choice resolves to it, so a document with scans left is not abandoned).
+``remove_scan`` then takes the removed scan out. The choice is dropped by
+``switch_to``, ``start_by_hand``, or when it has no scans left.
+
 Pages given by hand and scans chosen by hand. ``assign_page`` and ``use_scan``
-remember the document they were made in (the set of its group's scans at that
-moment, or the hand-started document itself). They apply whenever that document
-is the current one (it holds the earliest-added grouped scan of that set) and are
-inactive, not deleted, otherwise. An active assignment puts the scan into that
-page of the document whatever its label or state says; it is listed in neither
-``others()`` nor ``unreadable()``. An inactive one leaves the scan where its own
-identity puts it. Both are deleted when their scan is removed, when the user
-re-assigns or re-chooses, or when the user leaves their document with
-``switch_to`` or ``start_by_hand``.
+remember the current document as a reference (or the hand-started document).
+They apply whenever that reference resolves to the current document, and are
+inactive, not deleted, otherwise. ``remove_scan`` updates the references that
+resolve to the current document the same way as the choice. An active assignment
+puts the scan into that page of the document whatever its label or state says;
+it is listed in neither ``others()`` nor ``unreadable()``. An inactive one leaves
+the scan where its own identity puts it. Both are deleted when their scan is
+removed, when the user re-assigns or re-chooses, when the user leaves their
+document with ``switch_to`` or ``start_by_hand``, or when their reference has no
+scans left.
+
+For a tagged document, a choice and an assignment made in the same operation
+always resolve to the same group. Known limit of untagged documents: name chains
+are not transitive, so a later identification can split a group, and a reference
+follows its earliest-added grouped scan. Example: scans ``ac``, ``a``, ``ab``
+added in that order; the user chooses the group of ``ab`` while ``a`` and ``ab``
+are grouped together and ``ac`` is not yet identified. When ``ac`` is
+identified, ``a`` joins it and ``ab`` is left alone, so the document becomes
+``{ac, a}``, not the ``ab`` the user picked.
 
 Pages. ``slots()`` has one slot per page ``1..max(total, 1)`` of the document.
 Within a page the scan in use is the one chosen with ``use_scan``; otherwise the
@@ -177,9 +198,20 @@ class _HandDocument:
     total: int
 
 
-# Which document a user operation was made in: a started-by-hand document, or the
-# set of scans in the document's group at that moment.
-_Anchor = _HandDocument | frozenset
+@dataclass(frozen=True)
+class _Choice:
+    """A document remembered by its scans and, if tagged, by its identity."""
+
+    members: frozenset[int]
+    identity: tuple | None  # (format, total, tag) of a tagged document, else None
+
+
+# Which document a user operation was made in.
+_Anchor = _HandDocument | _Choice
+
+
+def _identity(g: _Group) -> tuple | None:
+    return (g.format, g.total, g.tag) if g.tag is not None else None
 
 
 @dataclass
@@ -211,7 +243,7 @@ class Document:
         self._scans: dict[int, _Scan] = {}  # insertion order is add order; ids increase
         self._next_id = 1
         self._hand: _HandDocument | None = None
-        self._choice: frozenset[int] | None = None
+        self._choice: _Choice | None = None
         self._assigned: dict[int, tuple[_Anchor, int]] = {}  # scan -> (document, page)
         self._preferred: dict[int, tuple[_Anchor, int]] = {}  # scan -> (document, serial)
         self._serial = 0
@@ -249,19 +281,30 @@ class Document:
 
     def remove_scan(self, scan_id: int) -> None:
         self._get(scan_id)
-        current = self._layout.current
-        if self._hand is None and current is not None and scan_id in current.members:
-            rest = frozenset(current.members) - {scan_id}
-            self._choice = rest or self._choice
+        lay = self._layout
+        current = lay.current
+        # Removing is done while looking at the current document: what remembers that
+        # document takes in its remaining scans, so it is not abandoned while it has any.
+        if self._hand is None and current is not None and (
+            scan_id in current.members or self._resolves_to_current(self._choice)
+        ):
+            self._choice = self._grown(self._choice)
         if self._choice is not None:
-            self._choice = (self._choice - {scan_id}) or None
+            self._choice = self._without(self._choice, scan_id)
         del self._scans[scan_id]
         self._assigned.pop(scan_id, None)
         self._preferred.pop(scan_id, None)
         for marks in (self._assigned, self._preferred):
-            for other, (anchor, _) in list(marks.items()):
-                if isinstance(anchor, frozenset) and not anchor & self._scans.keys():
+            for other, (anchor, value) in list(marks.items()):
+                if isinstance(anchor, _HandDocument):
+                    continue
+                if self._resolves_to_current(anchor):
+                    anchor = self._grown(anchor)
+                anchor = self._without(anchor, scan_id)
+                if anchor is None:
                     del marks[other]  # every scan of its document is gone
+                else:
+                    marks[other] = (anchor, value)
         if not self._scans:
             self._hand = None
             self._choice = None
@@ -303,7 +346,7 @@ class Document:
         if target is None:
             raise KeyError(key)
         self._leave_document()
-        self._choice = frozenset(target.members)
+        self._choice = _Choice(frozenset(target.members), _identity(target))
         self._settle()
 
     def start_by_hand(self, format: str, total: int) -> None:
@@ -327,7 +370,7 @@ class Document:
         if lay.current is None:
             return None
         ids = tuple(sorted(lay.shown + list(lay.assigned)))
-        return self._group_view(lay.current, ids)
+        return self._group_view(lay.current, lay.shown, ids)
 
     def slots(self) -> tuple[PageSlot, ...]:
         lay = self._layout
@@ -350,7 +393,7 @@ class Document:
         return tuple(slots)
 
     def others(self) -> tuple[GroupView, ...]:
-        return tuple(self._group_view(g, tuple(shown)) for g, shown in self._layout.others)
+        return tuple(self._group_view(g, shown, tuple(shown)) for g, shown in self._layout.others)
 
     def unreadable(self) -> tuple[ScanView, ...]:
         return tuple(
@@ -373,9 +416,28 @@ class Document:
         return self._layout.current
 
     def _pin(self) -> None:
-        """Working in the default document makes it the user's choice."""
-        if self._hand is None and self._choice is None:
-            self._choice = frozenset(self._layout.current.members)
+        """Working in the current document adds it to the user's choice."""
+        if self._hand is None:
+            self._choice = self._grown(self._choice)
+
+    def _grown(self, choice: _Choice | None) -> _Choice:
+        """A choice that also holds the current group's scans and takes its identity."""
+        current = self._layout.current
+        old = choice.members if choice is not None else frozenset()
+        return _Choice(old | frozenset(current.members), _identity(current))
+
+    @staticmethod
+    def _without(choice: _Choice, scan_id: int) -> _Choice | None:
+        members = choice.members - {scan_id}
+        return _Choice(members, choice.identity) if members else None
+
+    def _resolves_to_current(self, anchor: _Anchor | None) -> bool:
+        lay = self._layout
+        if anchor is None or lay.current is None:
+            return False
+        if isinstance(anchor, _HandDocument):
+            return anchor is self._hand
+        return self._resolve(anchor, lay.groups) is lay.current
 
     def _leave_document(self) -> None:
         """Drops what the user did in the current document, and any choice."""
@@ -426,8 +488,9 @@ class Document:
             s.id, s.path, self._state(s), s.info, s.outcome, self._unreadable_reason(s) or ""
         )
 
-    def _group_view(self, g: _Group, scan_ids: tuple[int, ...]) -> GroupView:
-        names = [self._scans[i].info.name for i in g.members]
+    def _group_view(self, g: _Group, shown: list[int], scan_ids: tuple[int, ...]) -> GroupView:
+        """The title comes from the group's own scans that it shows."""
+        names = [self._scans[i].info.name for i in shown]
         title = max(names, key=lambda n: len(n.rstrip(" ")), default="")
         key = scan_ids[0] if scan_ids else None
         return GroupView(key, title, g.total, g.format, g.tag, scan_ids)
@@ -469,11 +532,16 @@ class Document:
         return hand, groups
 
     @staticmethod
-    def _resolve(scans: frozenset, groups: list[_Group]) -> _Group | None:
-        """The group holding the earliest-added grouped scan of a set."""
+    def _resolve(choice: _Choice, groups: list[_Group]) -> _Group | None:
+        """The group holding the earliest-added grouped scan of the choice; if none is
+        grouped, the group with the choice's tagged identity; otherwise None."""
         group_of = {m: g for g in groups for m in g.members}
-        first = min((m for m in scans if m in group_of), default=None)
-        return None if first is None else group_of[first]
+        first = min((m for m in choice.members if m in group_of), default=None)
+        if first is not None:
+            return group_of[first]
+        if choice.identity is not None:
+            return next((g for g in groups if _identity(g) == choice.identity), None)
+        return None
 
     def _settle(self) -> None:
         hand, groups = self._group()
@@ -492,9 +560,10 @@ class Document:
             return self._resolve(anchor, groups) is current
 
         lay = _Layout(current=current, groups=groups)
-        lay.anchor = self._hand if hand is not None else (
-            frozenset(current.members) if current is not None else None
-        )
+        if hand is not None:
+            lay.anchor = self._hand
+        elif current is not None:
+            lay.anchor = _Choice(frozenset(current.members), _identity(current))
         lay.assigned = {s: p for s, (a, p) in self._assigned.items() if active(a)}
         lay.preferred = {s: n for s, (a, n) in self._preferred.items() if active(a)}
         if current is not None:
