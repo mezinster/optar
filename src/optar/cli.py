@@ -44,10 +44,19 @@ def _build_parser() -> argparse.ArgumentParser:
         p.add_argument("--format", metavar="STRING", help="override the page format")
 
     enc = sub.add_parser("encode", help="encode a file into printable pages")
-    enc.add_argument("input", metavar="INPUT")
-    enc.add_argument("-o", dest="output", metavar="BASE", help="output base name")
-    enc.add_argument("--to", choices=["pdf", "png", "pgm"], default="pdf")
-    enc.add_argument("--label", help="text printed on each page")
+    enc.add_argument("input", metavar="INPUT", help="file to encode")
+    enc.add_argument(
+        "-o", dest="output", metavar="BASE", help="output base name (default: optar_out)"
+    )
+    enc.add_argument(
+        "--to",
+        choices=["pdf", "png", "pgm"],
+        default="pdf",
+        help="output type: one PDF (default), or PNG or PGM page files",
+    )
+    enc.add_argument(
+        "--label", help="text printed on each page (default: the file name given with -o)"
+    )
     common(enc)
 
     dec = sub.add_parser("decode", help="decode scanned pages back into a file")
@@ -121,7 +130,7 @@ def _encode(args: argparse.Namespace) -> int:
 
     check_encodable(len(data), fmt)  # before any file is created
     base = args.output or "optar_out"
-    label = args.label if args.label is not None else (args.output or "")
+    label = args.label if args.label is not None else Path(args.output or "").name
     written: list[str] = []
     if args.to == "pdf":
         path = f"{base}.pdf"

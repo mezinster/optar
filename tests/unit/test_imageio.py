@@ -1,8 +1,13 @@
 # (c) GPL 2007 Karel 'Clock' Kulhavy, Twibright Labs; Python port 2026
+import struct
+import warnings
+
 import numpy as np
 import pytest
-from PIL import Image
+from PIL import Image, PngImagePlugin
 
+import optar.imageio
+from optar.errors import OptarError
 from optar.imageio import pgm_bytes, read_scan, write_pgm, write_png
 
 
@@ -60,3 +65,51 @@ def test_unreadable_file(tmp_path):
     (tmp_path / "x.png").write_bytes(b"not an image")
     with pytest.raises(OptarError):
         read_scan(tmp_path / "x.png")
+
+
+def test_colour_pixels_use_libpng_weights_after_linearisation(tmp_path):
+    rgb = np.array([[[255, 0, 0], [0, 255, 0], [192, 0, 0], [255, 255, 255]]], np.uint8)
+    Image.fromarray(rgb).save(tmp_path / "c.png")
+    # Linearised 255 stays 255 and 192 becomes 137 (255 * (192/255)**2.2 + 0.5,
+    # floored); then 255 * 0.212671 = 54.2, 255 * 0.715160 = 182.4,
+    # 137 * 0.212671 = 29.1, each rounded half up.
+    assert read_scan(tmp_path / "c.png").tolist() == [[54, 182, 29, 255]]
+
+
+def test_sixteen_bit_scan_uses_high_byte(tmp_path):
+    # 0xC0F0: high byte 192 (linear 137); rounding the 16-bit value to 8 bits
+    # would give 193 (linear 138) instead.
+    Image.fromarray(np.array([[0xC0F0, 0xFFFF]], np.uint16)).save(tmp_path / "d.png")
+    assert read_scan(tmp_path / "d.png").tolist() == [[137, 255]]
+
+
+def test_gamma_one_png_is_unchanged(tmp_path):
+    info = PngImagePlugin.PngInfo()
+    info.add(b"gAMA", struct.pack(">I", 100000))  # file gamma 1.0
+    Image.fromarray(gradient()).save(tmp_path / "g.png", pnginfo=info)
+    with Image.open(tmp_path / "g.png") as im:
+        assert im.info["gamma"] == 1.0
+    assert np.array_equal(read_scan(tmp_path / "g.png"), gradient())
+
+
+@pytest.mark.slow  # about 350 MB peak
+def test_large_scan_reads_without_decompression_bomb_warning(tmp_path):
+    # 95 megapixels: above Pillow's default warning threshold (about 89.5).
+    height, width = 10000, 9500
+    assert height * width > Image.MAX_IMAGE_PIXELS
+    Image.new("1", (width, height), 1).save(tmp_path / "big.png")
+    limit = Image.MAX_IMAGE_PIXELS
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        out = read_scan(tmp_path / "big.png")
+    assert out.shape == (height, width) and out[0, 0] == 255
+    assert Image.MAX_IMAGE_PIXELS == limit  # global Pillow state restored
+
+
+def test_scan_above_pixel_limit_is_refused(tmp_path, monkeypatch):
+    Image.fromarray(gradient()).save(tmp_path / "g.png")
+    monkeypatch.setattr(optar.imageio, "MAX_SCAN_PIXELS", 1000)
+    limit = Image.MAX_IMAGE_PIXELS
+    with pytest.raises(OptarError, match="1,024 pixels.*1,000"):
+        read_scan(tmp_path / "g.png")
+    assert Image.MAX_IMAGE_PIXELS == limit

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# (c) GPL 2007 Karel 'Clock' Kulhavy, Twibright Labs; Python port 2026
 """Convert binary PGM (P5, maxval 255) pages written by optar into 8-bit
 grayscale PNG files that unoptar can read. Standard library only.
 

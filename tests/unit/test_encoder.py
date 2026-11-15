@@ -43,3 +43,25 @@ def test_stream_input_equals_bytes_input():
     b = [p.pixels for p in encode(io.BytesIO(data), F)]
     assert all(np.array_equal(i, j) for i, j in zip(a, b, strict=True))
 
+
+
+class _NonSeekable(io.RawIOBase):
+    """A pipe-like stream: readable, not seekable."""
+
+    def __init__(self, data: bytes):
+        self._buf = io.BytesIO(data)
+
+    def readable(self):
+        return True
+
+    def readinto(self, b):
+        return self._buf.readinto(b)
+
+
+def test_non_seekable_stream_input():
+    data = seeded_bytes(4, 5000)
+    stream = io.BufferedReader(_NonSeekable(data))
+    assert not stream.seekable()
+    a = [p.pixels for p in encode(data, F)]
+    b = [p.pixels for p in encode(stream, F)]
+    assert all(np.array_equal(i, j) for i, j in zip(a, b, strict=True))

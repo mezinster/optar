@@ -22,7 +22,9 @@ ImageMagick.
 
 Once a release is published, download the executable for your OS from the
 GitHub Releases page of `mezinster/optar`: `optar-<tag>-linux-x86_64`,
-`optar-<tag>-macos-arm64` or `optar-<tag>-windows-x86_64.exe`.
+`optar-<tag>-macos-arm64` or `optar-<tag>-windows-x86_64.exe`. On Linux and
+macOS, run `chmod +x` on the downloaded file; the executables are unsigned, so
+macOS and Windows may warn on first run.
 
 Or install from source (Python 3.10 or newer; installs numpy and Pillow):
 
@@ -96,7 +98,9 @@ C reference implementation
 --------------------------
 
 The original C programs follow. They are also the test oracle for the Python
-version.
+version. The C encoder is also called `optar`: `make` builds it in the repo
+root as `./optar`, so run it as `./optar` to avoid confusion with the Python
+command.
 
 Building
 --------

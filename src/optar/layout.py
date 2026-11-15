@@ -23,7 +23,6 @@ def channel_xy(fmt: PageFormat) -> tuple[np.ndarray, np.ndarray]:
     seq = np.arange(fmt.total_bits, dtype=np.int64)
     rep, s = np.divmod(seq, fmt.rep_pixels)
     y = fmt.rep_height * rep
-    x = np.zeros_like(seq)
 
     wide = s >= fmt.narrow_pixels
     # Wide strip: full-width rows.

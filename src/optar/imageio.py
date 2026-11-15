@@ -8,6 +8,10 @@ from .errors import OptarError
 from .format import PIXELS_PER_INCH
 
 DEFAULT_FILE_GAMMA = 0.454545
+# Largest scan read_scan accepts: a 2400 dpi A4 or Letter scan is about 560
+# megapixels. Pillow's own decompression-bomb limit (about 179 megapixels,
+# warning above 89) would refuse or warn about ordinary 1200 dpi scans.
+MAX_SCAN_PIXELS = 600_000_000
 _GRAY_WEIGHTS = (0.212671, 0.715160, 0.072169)
 
 
@@ -56,13 +60,23 @@ def _to_gray8(im: Image.Image) -> tuple[np.ndarray, bool]:
 
 def read_scan(path) -> np.ndarray:
     """Load a scan as 8-bit gray in linear light, like read_png in unoptar.c."""
+    pillow_limit = Image.MAX_IMAGE_PIXELS
+    Image.MAX_IMAGE_PIXELS = None  # read_scan checks the size itself, below
     try:
         with Image.open(path) as im:
+            pixels = im.width * im.height
+            if pixels > MAX_SCAN_PIXELS:
+                raise OptarError(
+                    f"cannot read image {path}: {pixels:,} pixels is more than "
+                    f"the {MAX_SCAN_PIXELS:,} a scan may have"
+                )
             im.load()
             file_gamma = im.info.get("gamma") or DEFAULT_FILE_GAMMA
             data, is_colour = _to_gray8(im)
     except (OSError, ValueError, SyntaxError, Image.DecompressionBombError) as e:
         raise OptarError(f"cannot read image {path}: {e}") from e
+    finally:
+        Image.MAX_IMAGE_PIXELS = pillow_limit
     table = _gamma_table(float(file_gamma))
     lin = table[data]
     if not is_colour:

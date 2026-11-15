@@ -300,3 +300,30 @@ def test_failed_decode_write_keeps_existing_output(a4_scan, tmp_path, monkeypatc
     monkeypatch.setattr(optar.cli.os, "replace", real_replace)
     assert main(["decode", base, "-o", str(out)]) == 0
     assert out.read_bytes()[: len(data)] == data
+
+
+def test_default_label_is_output_file_name(tmp_path, infile, monkeypatch):
+    import optar.cli
+
+    labels = []
+
+    def spy(data, fmt, label=""):
+        labels.append(label)
+        return encode(data, fmt, label)
+
+    monkeypatch.setattr(optar.cli, "encode", spy)
+    assert main(_encode_args(infile, tmp_path / "sub" / "name", "--to", "pgm")) == 2  # no dir
+    (tmp_path / "sub").mkdir()
+    assert main(_encode_args(infile, tmp_path / "sub" / "name", "--to", "pgm")) == 0
+    assert main(_encode_args(infile, tmp_path / "x", "--to", "pgm", "--label", "mine")) == 0
+    assert labels[-2:] == ["name", "mine"]
+
+
+def test_every_option_has_help():
+    from optar.cli import _build_parser
+
+    parser = _build_parser()
+    subparsers = next(a for a in parser._actions if a.choices and isinstance(a.choices, dict))
+    for name, sub in subparsers.choices.items():
+        for action in sub._actions:
+            assert action.help, f"{name} {action.option_strings or action.dest} has no help"

@@ -82,10 +82,8 @@ def _page_words(buf: np.ndarray, page_index: int, fmt: PageFormat, nwords: int) 
 
 
 def encode(data: bytes | BinaryIO, fmt: PageFormat, label: str = "") -> Iterator[Page]:
-    """Yield the pages that carry data. A stream must be seekable."""
+    """Yield the pages that carry data. A stream is read from its current position."""
     if not isinstance(data, bytes | bytearray | memoryview):
-        data.seek(0, 2)
-        data.seek(0)
         data = data.read()
     nbytes = len(data)
     total = check_encodable(nbytes, fmt)
