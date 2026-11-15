@@ -16,6 +16,8 @@ optar = "optar.cli:main"
 
 [project.optional-dependencies]
 dev = ["pytest", "ruff", "pyinstaller"]
+gui = ["PySide6-Essentials>=6.6"]
+gui-dev = ["optar[gui]", "pytest-qt"]
 
 [tool.hatch.version]
 path = "src/optar/__init__.py"
@@ -31,6 +33,7 @@ markers = [
     "oracle: needs a C compiler (builds the original C tools)",
     "gs: needs Ghostscript",
     "slow: long-running test, deselected by default",
+    "gui: the desktop application (needs PySide6 and pytest-qt)",
 ]
 
 [tool.ruff]
