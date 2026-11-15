@@ -36,7 +36,7 @@
 | `net_bits` (Golay) | 1,598,184 | 1,540,728 |
 | image size in points | 556.56 x 807.12 | 573.84 x 755.28 |
 | paper in points | 595.28 x 841.89 | 612 x 792 |
-| image offset in points (x, y) | 19.22, 17.44 | 19.08, 18.36 |
+| image offset in points (x, y) | 19.20, 17.40 (snapped to the 600 dpi grid; pgm2ps used 19.22, 17.44) | 19.08, 18.36 |
 
 A4 `net_bits` for Hamming orders 2, 3, 4, 5: 799,092; 1,598,184; 2,197,503; 2,597,036.
 

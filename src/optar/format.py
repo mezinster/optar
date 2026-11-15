@@ -47,8 +47,14 @@ class Paper:
         return min(self.margins_for(width_px, height_px)) >= MIN_MARGIN_PT
 
 
+# Image offsets must be whole multiples of 72/600 pt (one 600 dpi printer dot)
+# so that the image edges fall on device-pixel boundaries and each data pixel
+# prints as exactly 3 x 3 dots. pgm2ps placed A4 at 19.22, 17.44, which is off
+# that grid (160.17, 145.33 dots), and a rasteriser filling every partly
+# covered pixel then paints an extra column and row; A4 is snapped to 160 and
+# 145 dots. Letter's 19.08, 18.36 (159, 153 dots) are already on the grid.
 PAPERS: dict[str, Paper] = {
-    "a4": Paper("a4", 595.28, 841.89, 19.22, 17.44, 65, 93),
+    "a4": Paper("a4", 595.28, 841.89, 19.20, 17.40, 65, 93),
     "letter": Paper("letter", 612, 792, 19.08, 18.36, 67, 87),
 }
 

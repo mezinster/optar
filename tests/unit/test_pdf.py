@@ -10,7 +10,7 @@ from tests.helpers import parse_pdf, seeded_bytes
 
 
 @pytest.mark.parametrize("name,cm", [
-    ("a4", (556.56, 0, 0, 807.12, 19.22, 17.44)),
+    ("a4", (556.56, 0, 0, 807.12, 19.20, 17.40)),
     ("letter", (573.84, 0, 0, 755.28, 19.08, 18.36)),
 ])
 def test_pdf_page_geometry_and_pixels(tmp_path, name, cm):

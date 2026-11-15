@@ -56,7 +56,7 @@ def test_bad_format_rejected(bad):
 def test_paper_placement_and_fit():
     a4 = PAPERS["a4"]
     placement = (a4.width_pt, a4.height_pt, a4.offset_x_pt, a4.offset_y_pt)
-    assert placement == (595.28, 841.89, 19.22, 17.44)
+    assert placement == (595.28, 841.89, 19.20, 17.40)
     assert PageFormat.for_paper(a4).fits(a4)
     assert PageFormat.for_paper(PAPERS["letter"]).fits(PAPERS["letter"])
     assert not PageFormat(80, 93).fits(a4)
@@ -64,7 +64,7 @@ def test_paper_placement_and_fit():
         get_paper("legal")
 
 
-CLIPPED = "0-65-95-24-3-1-2-24"  # 0.05 pt top margin on A4
+CLIPPED = "0-65-95-24-3-1-2-24"  # 0.09 pt top margin on A4
 
 
 def test_fits_requires_minimum_margins():
@@ -81,8 +81,23 @@ def test_margins_for_a4_preset():
     a4 = PAPERS["a4"]
     fmt = PageFormat.for_paper(a4)
     left, bottom, right, top = a4.margins_for(fmt.width, fmt.height)
-    assert (left, bottom) == (19.22, 17.44)
-    assert right == pytest.approx(595.28 - 19.22 - 556.56)
-    assert top == pytest.approx(841.89 - 17.44 - 807.12)
+    assert (left, bottom) == (19.20, 17.40)
+    assert right == pytest.approx(595.28 - 19.20 - 556.56)  # 19.52
+    assert top == pytest.approx(841.89 - 17.40 - 807.12)  # 17.37
     clipped = PageFormat.parse(CLIPPED)
-    assert a4.margins_for(clipped.width, clipped.height)[3] == pytest.approx(0.05, abs=1e-6)
+    assert a4.margins_for(clipped.width, clipped.height)[3] == pytest.approx(0.09, abs=1e-6)
+
+
+def _on_600_dpi_grid(points: float) -> bool:
+    dots = points * 600 / 72
+    return abs(dots - round(dots)) < 1e-9
+
+
+@pytest.mark.parametrize("name", list(PAPERS))
+def test_placement_is_on_the_600_dpi_device_grid(name):
+    # Each data pixel prints as exactly 3 x 3 dots only if the image edges
+    # fall on device-pixel boundaries at 600 dpi.
+    paper = PAPERS[name]
+    fmt = PageFormat.for_paper(paper)
+    assert _on_600_dpi_grid(paper.offset_x_pt) and _on_600_dpi_grid(paper.offset_y_pt)
+    assert _on_600_dpi_grid(fmt.width * 72 / 200) and _on_600_dpi_grid(fmt.height * 72 / 200)

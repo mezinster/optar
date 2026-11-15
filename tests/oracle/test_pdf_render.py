@@ -3,10 +3,11 @@
 
 For every rendered page of both papers this proves, on the rendered PNG itself:
 the image rectangle (bounding box of the black pixels) is exactly 3 x the page
-size, sits within 1 pixel of where the paper offsets put it, everything outside
-it is pure white, and its content equals the encoder's page replicated exactly
-3 x 3 (so scale, position, orientation and absence of smoothing). It also checks
-that Ghostscript prints nothing, that the page count and render size are right,
+size, sits exactly where the paper's x offset puts it and within 1 pixel of
+where its y offset puts it, everything outside it is pure white, and its
+content equals the encoder's page replicated exactly 3 x 3 (so scale, position,
+orientation and absence of smoothing). It also checks that Ghostscript prints
+nothing, that the page count and render size are right,
 that the CLI decodes the render with 0 corrected and 0 uncorrectable symbols on
 every page, and that the decoded bytes equal the input.
 """
@@ -45,7 +46,11 @@ def check_render_page(render: np.ndarray, expected_page: np.ndarray, paper, fmt)
     image_height_pt = fmt.height * 72 / PIXELS_PER_INCH
     exp_left = round(paper.offset_x_pt * DPI / 72)
     exp_top = height - round((paper.offset_y_pt + image_height_pt) * DPI / 72)
-    assert abs(left - exp_left) <= 1, (left, exp_left)
+    # The offsets are whole 600 dpi dots, so the left edge is exact. The top
+    # edge is measured from the paper height, which is not a whole number of
+    # dots for A4 (841.89 pt), so it depends on how the renderer rounds the
+    # page height: allow 1 pixel there.
+    assert left == exp_left, (left, exp_left)
     assert abs(top - exp_top) <= 1, (top, exp_top)
 
     outside = render.copy()

@@ -119,7 +119,7 @@ def test_usage_errors(tmp_path, capsys):
     )  # does not fit A4
     assert "fit" in capsys.readouterr().err
     assert not (tmp_path / "o.pdf").exists()
-    # Inside the paper edge but with a 0.05 pt top margin: a printer would clip it.
+    # Inside the paper edge but with a 0.09 pt top margin: a printer would clip it.
     assert main(["encode", str(tmp_path / "in.bin"), "-o", str(tmp_path / "o"),
                  "--format", "0-65-95-24-3-1-2-24"]) == 2  # fmt: skip
     assert "fit" in capsys.readouterr().err

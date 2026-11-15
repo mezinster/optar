@@ -143,7 +143,7 @@ optar --version
 
 The owner wants files that can be sent straight to a printer, PDF preferred.
 
-**What "print-ready" means here.** `pgm2ps` places the page image so that one data pixel is exactly 3 x 3 printer dots at 600 dpi, which is 200 pixels per inch. For A4 the 1546 x 2242 image becomes 556.56 x 807.12 points, at offset 19.22, 17.44 on a 595.28 x 841.89 point page. The unfinished `archive_pdf` Makefile target failed on exactly this: the image was cut off and the PDF had no margins.
+**What "print-ready" means here.** `pgm2ps` places the page image so that one data pixel is exactly 3 x 3 printer dots at 600 dpi, which is 200 pixels per inch. For A4 the 1546 x 2242 image becomes 556.56 x 807.12 points, at offset 19.22, 17.44 on a 595.28 x 841.89 point page. The unfinished `archive_pdf` Makefile target failed on exactly this: the image was cut off and the PDF had no margins. The port places the A4 image at 19.20, 17.40 rather than `pgm2ps`'s 19.22, 17.44: offsets must be whole 600 dpi dots (multiples of 72/600 pt) so the image edges fall on device-pixel boundaries, otherwise a rasteriser that fills every partly covered pixel paints an extra column and row and the data pixels no longer print as uniform 3 x 3 dots (Letter's 19.08, 18.36 is already on the grid).
 
 **PDF (default).** One PDF for the whole file, one page per optar page. Requirements:
 
