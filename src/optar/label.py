@@ -26,27 +26,54 @@ from optar.format import FORMAT_PATTERN, TEXT_WIDTH, PageFormat
 # it cannot be read back exactly: that cell reads as some other character.
 _LAST_DRAWN = FIRST_CHAR + GLYPH_CELLS
 
-# Both thresholds apply to the identity cells: the cells from the first through
-# the last non-space character read. Evidence from synthetic scans of A4 and
-# Letter (every DEGRADED case, stroke width changed by Min/MaxFilter 3-7, the
-# band shifted 1-2 scan pixels against the crosses with blur and noise, noise
-# of sigma 40-250 added to the band after locating, 3600 noisy readings):
+# What these thresholds do and do not give. A reading is reliable only if it
+# passes all of them; that makes the gate a filter, not a guarantee. Some
+# misreads are indistinguishable from print at the level of one cell (a speck
+# the size and place of a ".", a blotch that gives ":" the tail of ";"), and
+# under harsh conditions up to about one reading in a hundred is accepted
+# though wrong. In every condition measured none of those was a well-formed
+# substitution (a digit for a digit, a hex digit for a hex digit) in the format
+# string, the page numbers or the tag: what was accepted no longer parses or no
+# longer matches. Well-formed substitutions are what a check code in the tag
+# is for; this gate does not rule them out.
 #
-# Lowest best-match score (fraction of a cell's pixels that agree with the glyph
-# chosen); 1 - confidence bounds the noise in the worst cell. Exact reads in the
-# DEGRADED cases: minimum 0.962; with band noise up to sigma 60: minimum 0.952.
-# Non-labels (pages turned 180 degrees, a page located with the other paper's
-# format, random bands): maximum 0.404. Under heavy noise (sigma 90-135) a
-# blank cell after the text can read as a sparse glyph ("`", ".") with a margin
-# up to 0.333; those readings had confidence at most 0.878. The threshold is
-# set above them: the margin on that side is thin (0.022).
+# Evidence (synthetic scans of A4 and Letter at scale 3; tests/unit/test_label.py
+# has the perturbations). Ordinary scans, every DEGRADED case with five labels
+# on both papers (80 readings): all exact and reliable, confidence and margin
+# 1.0, ink loss and gain 0, no doubtful cell. Band blur 0.8 with noise 8,
+# noise of sigma 60 or blotchy noise of sigma 50 (1600 readings each), a band
+# offset of 0.45 page pixel (1040): no wrong reading accepted; at most 9 exact
+# readings in 1600 rejected. Wrong readings accepted per 1600 (confidence and
+# margin alone -> all rules):
+#   (a) band strokes thinned (MinFilter 3, blur 1.0, noise 8):          344 -> 0
+#   (b) blotchy noise (blurred over 2 scan pixels), sigma 60, 70, 80:  5, 17, 31 -> 2, 6, 2
+#   (c) a 120 or 100 grey-level ramp across the band, noise 30 or 40:   3, 0 -> 0, 0
+#   (d) the band sampled half a page pixel off in x, either way:        1, 1 -> 0, 0
+#   (e) a white speck of 2-4 page pixels over the text:                 7 -> 2
+#       the same speck always in a blank cell:                         57 -> 21
+# The price: under (a), (c) and (d) nearly every reading is now rejected, and
+# under (b) at sigma 80 three in four.
+#
+# Lowest best-match score over the identity cells (the cells from the first
+# through the last non-space character read): the fraction of a cell's pixels
+# that agree with the glyph chosen. Non-labels (pages turned 180 degrees, a
+# page located with the other paper's format, random bands): at most 0.404.
 MIN_LABEL_CONFIDENCE = 0.90
-# Lowest normalised lead of the best glyph over the runner-up (1 for a perfect
-# read, 0 for a tie; see read_label). Exact reads in the DEGRADED cases, under
-# a 1-pixel band shift and in full-width labels: 1.0; with band noise up to
-# sigma 60: minimum 0.429. Systematic misreads (stroke width, 2-pixel band
-# shift): maximum 0.050.
+# Lowest normalised lead of the best glyph over the runner-up over the identity
+# cells (1 for a perfect read, 0 for a tie; see read_label). Systematic misreads
+# from stroke width or a 2-pixel band shift: at most 0.050.
 MIN_LABEL_MARGIN = 0.20
+# Highest ink loss and ink gain (see LabelReading). In exact readings that
+# confidence and margin accepted: loss at most 0.051 and gain at most 0.031
+# under noise of sigma 60, blotchy noise up to sigma 70 and specks; up to
+# 0.090 and 0.057 under blotchy noise of sigma 80, and 0.076 under a 100-level
+# ramp with noise 30, where some exact readings are now rejected. Thinned
+# strokes (a): loss 0.113-0.138; ramps (c) up to 0.21; half-pixel offsets (d)
+# 0.12-0.14.
+MAX_INK_BIAS = 0.08
+# A glyph must beat the blank by max(_MIN_CLEAR_LEAD, half its ink pixels)
+# agreeing pixels. The sparsest glyphs have 9 ("`") to 31 (";") ink pixels.
+_MIN_CLEAR_LEAD = 6
 
 _LABEL_RE = re.compile(
     rf" *({FORMAT_PATTERN}) ([1-9][0-9]{{0,4}})/(0|[1-9][0-9]{{0,4}})(?: ([ -~]*))?",
@@ -59,10 +86,24 @@ class LabelReading:
     text: str  # trailing spaces removed
     confidence: float  # lowest best-match score over the identity cells, 0..1
     margin: float  # lowest normalised lead of the best glyph over the identity cells, 0..1
+    # Over the cells read as glyphs: the fraction of the chosen glyphs' ink
+    # pixels sampled as background, and of their background pixels sampled as
+    # ink. Both near 0 on a good scan; large when strokes come out thinned or
+    # thickened, which makes sparse glyphs vanish or appear.
+    ink_loss: float = 0.0
+    ink_gain: float = 0.0
+    # Cells that are neither clearly a glyph nor clearly blank (see read_label).
+    doubtful_cells: int = 0
 
     @property
     def reliable(self) -> bool:
-        return self.confidence >= MIN_LABEL_CONFIDENCE and self.margin >= MIN_LABEL_MARGIN
+        return (
+            self.confidence >= MIN_LABEL_CONFIDENCE
+            and self.margin >= MIN_LABEL_MARGIN
+            and self.ink_loss <= MAX_INK_BIAS
+            and self.ink_gain <= MAX_INK_BIAS
+            and self.doubtful_cells == 0
+        )
 
 
 @dataclass(frozen=True)
@@ -93,16 +134,19 @@ def printed_label(fmt: PageFormat, text: str) -> str:
 
 
 @cache
-def _glyphs() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _glyphs() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Glyph bitmaps as rows of 0/1 float32 (cells, h*w), their complements,
-    and the table of pixel counts in which two glyphs differ."""
+    the table of pixel counts in which two glyphs differ, and for each glyph
+    the lead in agreeing pixels it needs over the blank (space) glyph to
+    count as clearly present: max(_MIN_CLEAR_LEAD, half its ink pixels)."""
     strip = glyph_strip()
     h = strip.shape[0]
     cells = strip[:, : TEXT_WIDTH * GLYPH_CELLS].reshape(h, GLYPH_CELLS, TEXT_WIDTH)
     on = (cells.transpose(1, 0, 2).reshape(GLYPH_CELLS, -1) > 0).astype(np.float32)
     off = 1 - on
     distance = on @ off.T + off @ on.T
-    return on, off, distance
+    clear_lead = np.maximum(_MIN_CLEAR_LEAD, on.sum(axis=1) / 2)
+    return on, off, distance, clear_lead
 
 
 def read_label(grid: PageGrid) -> LabelReading:
@@ -112,6 +156,12 @@ def read_label(grid: PageGrid) -> LabelReading:
     that agree. A cell's margin is the lead of the best glyph over the
     runner-up, in units of the pixels in which those two glyphs differ:
     1 when the cell is exactly the best glyph, 0 for a tie.
+
+    A cell is doubtful when it is read as a glyph that does not beat the
+    blank by its clear lead, or when it lies after the text and either some
+    glyph agrees with it as well as the blank does or its agreement with the
+    blank is below MIN_LABEL_CONFIDENCE. A doubtful cell makes the reading
+    unreliable; the text is left as read.
     """
     fmt = grid.fmt
     strip_height = glyph_strip().shape[0]
@@ -131,7 +181,7 @@ def read_label(grid: PageGrid) -> LabelReading:
     # (ncells, text_height * TEXT_WIDTH), rows in the same order as _glyphs().
     cells = white.reshape(fmt.text_height, ncells, TEXT_WIDTH).transpose(1, 0, 2)
     cells = cells.reshape(ncells, -1)
-    on, off, distance = _glyphs()
+    on, off, distance, clear_lead = _glyphs()
     agree = cells @ on.T + (1 - cells) @ off.T  # agreeing pixels, exact in float32
     order = np.argsort(-agree, axis=1, kind="stable")  # ties go to the lowest code
     best, second = order[:, 0], order[:, 1]
@@ -144,8 +194,31 @@ def read_label(grid: PageGrid) -> LabelReading:
     first, last = len(chars) - len(chars.lstrip(" ")), len(text)
     if first >= last:
         return LabelReading(text, 0.0, 0.0)
+
+    # Glyph 0 is the space, which is all background.
+    glyph = best != 0
+    ink, seen = on[best[glyph]], cells[glyph]
+    ink_loss = float((ink * (1 - seen)).sum() / ink.sum())
+    ink_gain = float(((1 - ink) * seen).sum() / (1 - ink).sum())
+
+    # A cell read as a glyph must beat the blank by that glyph's clear lead,
+    # so that a speck or a blotch does not pass for a sparse glyph.
+    doubtful = glyph & (agree[rows, best] - agree[:, 0] < clear_lead[best])
+    # Nothing else scores the cells after the text, where a lost last
+    # character would be: each must read as blank with no glyph tying it, and
+    # agree with the blank as well as the identity cells must agree with
+    # their glyphs.
+    after = rows >= last
+    tied = agree[after, 1:].max(axis=1) >= agree[after, 0]
+    doubtful[after] = tied | (scores[after] < MIN_LABEL_CONFIDENCE)
+
     return LabelReading(
-        text, float(scores[first:last].min()), float(margins[first:last].min())
+        text,
+        float(scores[first:last].min()),
+        float(margins[first:last].min()),
+        ink_loss,
+        ink_gain,
+        int(doubtful.sum()),
     )
 
 
