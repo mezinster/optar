@@ -268,7 +268,7 @@ def test_formats_a_scan_cannot_be_are_refused(tmp_path, ext):
     path = tmp_path / f"x.{ext}"
     Image.fromarray(gradient()).save(path)
     limit = Image.MAX_IMAGE_PIXELS
-    with pytest.raises(OptarError, match="cannot read image"):
+    with pytest.raises(OptarError, match="not a PNG, TIFF, BMP, PGM/PPM or JPEG image"):
         read_scan(path)
     assert Image.MAX_IMAGE_PIXELS == limit
 
@@ -279,7 +279,7 @@ def test_size_change_while_loading_is_refused(tmp_path, monkeypatch):
 
     def growing_load(self):
         result = real_load(self)
-        self._size = (self.width + 1, self.height)
+        self._size = (self.width + 1, self.height)  # the pixel count changes
         return result
 
     monkeypatch.setattr(Image.Image, "load", growing_load)
@@ -321,3 +321,24 @@ def test_other_scan_formats_read(tmp_path, fmt):
 def read_scan_png_reference(tmp_path):
     Image.fromarray(gradient()).save(tmp_path / "ref.png")
     return read_scan(tmp_path / "ref.png")
+
+
+@pytest.mark.parametrize("orientation", [6, 8])
+def test_orientation_tagged_tiff_reads_transposed(tmp_path, orientation):
+    arr = np.tile(np.arange(40, dtype=np.uint8), (20, 1))  # 40 wide, 20 high
+    path = tmp_path / "o.tif"
+    Image.fromarray(arr).save(path, tiffinfo={274: orientation})
+    with Image.open(path) as im:
+        header_size = im.size
+        im.load()
+        loaded_size = im.size
+    assert loaded_size == header_size[::-1]  # the tag took effect: Pillow swapped the size
+    out = read_scan(path)
+    assert out.shape == (loaded_size[1], loaded_size[0])  # what Pillow gives, not the header
+    assert Image.MAX_IMAGE_PIXELS is not None
+
+
+def test_unidentified_file_names_accepted_formats(tmp_path):
+    (tmp_path / "t.txt").write_text("hello")
+    with pytest.raises(OptarError, match=r"t\.txt: not a PNG, TIFF, BMP, PGM/PPM or JPEG image"):
+        read_scan(tmp_path / "t.txt")

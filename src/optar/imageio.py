@@ -4,7 +4,7 @@
 import threading
 
 import numpy as np
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 
 from .errors import OptarError
 from .format import PIXELS_PER_INCH
@@ -65,6 +65,11 @@ def _to_gray8(im: Image.Image) -> tuple[np.ndarray, bool]:
     return np.asarray(im.convert("RGB")), True
 
 
+def _accepted_formats() -> str:
+    names = [{"PPM": "PGM/PPM"}.get(f, f) for f in SCAN_FORMATS]
+    return ", ".join(names[:-1]) + " or " + names[-1]
+
+
 def read_scan(path) -> np.ndarray:
     """Load a scan as 8-bit gray in linear light, like read_png in unoptar.c."""
     # Pillow's size check runs inside Image.open for PNG, but other plugins
@@ -96,17 +101,19 @@ def read_scan(path) -> np.ndarray:
                     f"cannot read image {path}: {pixels:,} pixels is more than "
                     f"the {MAX_SCAN_PIXELS:,} a scan may have"
                 )
-            checked_size = im.size
+            checked_pixels = pixels
             im.load()
             if im.width * im.height > MAX_SCAN_PIXELS:
                 raise OptarError(
                     f"cannot read image {path}: {im.width * im.height:,} pixels is more "
                     f"than the {MAX_SCAN_PIXELS:,} a scan may have"
                 )
-            if im.size != checked_size:
+            if im.width * im.height != checked_pixels:  # a transpose keeps the count
                 raise OptarError(f"cannot read image {path}: image size changed while loading")
             file_gamma = im.info.get("gamma") or DEFAULT_FILE_GAMMA
             data, is_colour = _to_gray8(im)
+    except UnidentifiedImageError as e:
+        raise OptarError(f"cannot read image {path}: not a {_accepted_formats()} image") from e
     except (OSError, ValueError, SyntaxError, Image.DecompressionBombError) as e:
         raise OptarError(f"cannot read image {path}: {e}") from e
     finally:
