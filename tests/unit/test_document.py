@@ -867,6 +867,80 @@ def test_switching_back_after_leaving_drops_what_was_done_there():
     }
 
 
+def test_regression_removing_a_failed_scan_keeps_the_assignment_of_its_printout():
+    # The assignment was made while the chosen printout held only b; when b is removed,
+    # what remembers the printout takes in its remaining scan c instead of being dropped.
+    doc, (a, b, c, bad) = build(info(1), info(1, tag=OTHER_TAG), None, None)
+    doc.set_unreadable(bad, "label unreadable")
+    doc.switch_to(b)
+    doc.assign_page(bad, 3)
+    doc.set_unreadable(b, "decoding failed")
+    doc.set_identified(c, info(2, tag=OTHER_TAG))
+    chosen = {
+        "current": (c, bad),
+        "slots": [(1, None, ()), (2, c, ()), (3, bad, ())],
+        "others": [(a,)],
+        "unreadable": [b],
+    }
+    assert picture(doc) == chosen
+    assert doc.current.tag == OTHER_TAG
+    doc.remove_scan(b)
+    assert picture(doc) == {**chosen, "unreadable": []}
+    assert doc.current.tag == OTHER_TAG
+
+
+def test_working_in_the_fallback_document_gives_the_choice_its_identity():
+    # The choice takes the identity of the document the user worked in (TAG), not the
+    # one switched to earlier (OTHER_TAG). When none of the choice's scans is grouped
+    # and no group has TAG, the default rule picks v, the earliest grouped scan, even
+    # though c is a page of the printout switched to first. A later page of the TAG
+    # printout brings the choice back, with its assignment.
+    third = Tag(500000, "cccccccc")
+    doc, (a, b, v, c, d, bad) = build(info(1), info(1, tag=OTHER_TAG), None, None, None, None)
+    doc.set_unreadable(bad, "label unreadable")
+    doc.switch_to(b)
+    doc.set_unreadable(b, "decoding failed")
+    assert doc.current.scan_ids == (a,)
+    doc.assign_page(bad, 2)
+    doc.set_unreadable(a, "decoding failed")
+    doc.set_identified(v, info(1, tag=third))
+    doc.set_identified(c, info(2, tag=OTHER_TAG))
+    assert picture(doc) == {
+        "current": (v,),
+        "slots": [(1, v, ()), (2, None, ()), (3, None, ())],
+        "others": [(c,)],
+        "unreadable": [a, b, bad],
+    }
+    doc.set_identified(d, info(3))
+    assert picture(doc) == {
+        "current": (d, bad),
+        "slots": [(1, None, ()), (2, bad, ()), (3, d, ())],
+        "others": [(v,), (c,)],
+        "unreadable": [a, b],
+    }
+
+
+@pytest.mark.parametrize("assign", [True, False])
+def test_untagged_limit_an_assignment_follows_the_earliest_scan_of_its_reference(assign):
+    # The documented limit, second route: the user picks the group of "ab", "a" joins
+    # it, a page is assigned; when the earlier-added "ac" is identified, "a" leaves
+    # "ab" for "ac", and the remembered reference {a, ab} follows "a".
+    doc, (x, ac, a, ab, bad) = build(info(1), None, None, None, None)
+    doc.set_unreadable(bad, "label unreadable")
+    doc.set_identified(ab, info(2, name="ab", tag=None))
+    doc.switch_to(ab)
+    doc.set_identified(a, info(1, name="a", tag=None))
+    assert doc.current.scan_ids == (a, ab)
+    if assign:
+        doc.assign_page(bad, 3)  # ab is page 2
+    doc.set_identified(ac, info(2, name="ac", tag=None))
+    if assign:
+        assert doc.current.scan_ids == (ac, a, bad)
+        assert doc.slots()[2].scan_id == bad
+    else:
+        assert doc.current.scan_ids == (ab,)
+
+
 # --- Property: the order of background results does not matter --------------------
 
 POOL = [

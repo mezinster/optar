@@ -84,7 +84,18 @@ follows its earliest-added grouped scan. Example: scans ``ac``, ``a``, ``ab``
 added in that order; the user chooses the group of ``ab`` while ``a`` and ``ab``
 are grouped together and ``ac`` is not yet identified. When ``ac`` is
 identified, ``a`` joins it and ``ab`` is left alone, so the document becomes
-``{ac, a}``, not the ``ab`` the user picked.
+``{ac, a}``, not the ``ab`` the user picked. A second route, through an
+assignment: the user switches to a printout whose only scan is ``ab``; the
+earlier-added ``a`` is then identified and joins it; the user assigns a page; then
+``ac``, added before both, is identified. The choice and the assignment remember
+``{a, ab}`` and follow ``a``, so the document becomes the group of ``ac`` and
+``a``, with the assignment still active. Without the assignment the choice is
+still ``{ab}`` and the document stays ``ab``.
+
+A scan is expected to be identified once. Calling ``set_identified`` again with
+different information is allowed and replaces it, but the guarantees above about
+choices and assignments resolving to the same document assume that a scan's
+identity does not change.
 
 Pages. ``slots()`` has one slot per page ``1..max(total, 1)`` of the document.
 Within a page the scan in use is the one chosen with ``use_scan``; otherwise the
@@ -266,6 +277,13 @@ class Document:
         self._settle()
 
     def set_identified(self, scan_id: int, info: ScanInfo) -> None:
+        """Records what the scan's label says.
+
+        A scan is expected to be identified once. A second call with different
+        information replaces the first, but the guarantees about choices and
+        assignments resolving to the same document assume the identity does not
+        change.
+        """
         self._get(scan_id).info = info
         self._settle()
 
