@@ -11,6 +11,9 @@ requires-python = ">=3.10"
 license = "GPL-2.0-only"
 dependencies = ["numpy", "Pillow"]
 
+[project.scripts]
+optar = "optar.cli:main"
+
 [project.optional-dependencies]
 dev = ["pytest", "ruff", "pyinstaller"]
 
