@@ -14,7 +14,7 @@ from pathlib import Path
 from .errors import OptarError
 
 
-def io_error(verb: str, path, e: OSError) -> OptarError:
+def io_error(verb: str, path: str | os.PathLike, e: OSError) -> OptarError:
     return OptarError(f"cannot {verb} {path}: {e.strerror or e}")
 
 

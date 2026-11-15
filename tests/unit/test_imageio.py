@@ -129,11 +129,11 @@ def test_read_scan_is_safe_from_many_threads(tmp_path):
 
     def worker(p):
         try:
-            with warnings.catch_warnings():
-                warnings.simplefilter("error")  # any DecompressionBombWarning is fatal
-                for _ in range(20):
-                    read_scan(p)
-                    seen.append(Image.MAX_IMAGE_PIXELS)
+            # Warnings are not checked here (images are tiny); the bomb limit is
+            # covered by the deterministic and large-image tests.
+            for _ in range(20):
+                read_scan(p)
+                seen.append(Image.MAX_IMAGE_PIXELS)
         except Exception as e:  # noqa: BLE001
             errors.append(e)
 
@@ -175,4 +175,71 @@ def test_pillow_limit_is_normal_while_pixels_load(tmp_path, monkeypatch):
         release.set()
         t.join()
     assert inside == [normal] and other_thread == [normal]
+    assert Image.MAX_IMAGE_PIXELS == normal
+
+
+def _save_tiff(path, width, height):
+    Image.new("L", (width, height), 200).save(path, compression="tiff_adobe_deflate")
+
+
+@pytest.mark.slow  # about 100 MB of pixels
+def test_large_tiff_reads_without_decompression_bomb_warning(tmp_path):
+    _save_tiff(tmp_path / "big.tif", 10000, 10000)  # 100 MP: above the warning threshold
+    assert 10000 * 10000 > Image.MAX_IMAGE_PIXELS
+    limit = Image.MAX_IMAGE_PIXELS
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        out = read_scan(tmp_path / "big.tif")
+    assert out.shape == (10000, 10000)
+    assert Image.MAX_IMAGE_PIXELS == limit
+
+
+@pytest.mark.slow  # about 200 MB of pixels
+def test_tiff_above_pillow_error_threshold_reads(tmp_path):
+    _save_tiff(tmp_path / "huge.tif", 14000, 14000)  # 196 MP: Pillow alone would refuse
+    assert 14000 * 14000 > 2 * Image.MAX_IMAGE_PIXELS
+    limit = Image.MAX_IMAGE_PIXELS
+    out = read_scan(tmp_path / "huge.tif")
+    assert out.shape == (14000, 14000)
+    assert Image.MAX_IMAGE_PIXELS == limit
+
+
+def test_non_png_load_holds_the_lock_so_other_reads_wait(tmp_path, monkeypatch):
+    import threading
+
+    Image.fromarray(gradient()).save(tmp_path / "g.tif")
+    Image.fromarray(gradient()).save(tmp_path / "g.png")
+    normal = Image.MAX_IMAGE_PIXELS
+    entered, release = threading.Event(), threading.Event()
+    seen, finished = [], threading.Event()
+    real = optar.imageio._to_gray8
+
+    def blocked(im):
+        if im.format == "TIFF":
+            seen.append(Image.MAX_IMAGE_PIXELS)  # lifted while a TIFF loads
+            entered.set()
+            assert release.wait(30)
+        return real(im)
+
+    monkeypatch.setattr(optar.imageio, "_to_gray8", blocked)
+    results = {}
+
+    def read(name):
+        results[name] = read_scan(tmp_path / name)
+
+    tiff = threading.Thread(target=read, args=("g.tif",))
+    png = threading.Thread(target=lambda: (read("g.png"), finished.set()))
+    tiff.start()
+    try:
+        assert entered.wait(30)
+        png.start()
+        assert not finished.wait(0.5)  # the PNG read waits for the TIFF
+    finally:
+        release.set()
+        tiff.join(30)
+        if png.ident is not None:
+            png.join(30)
+    assert not tiff.is_alive() and not png.is_alive()
+    assert seen == [None] and finished.is_set()
+    assert np.array_equal(results["g.tif"], results["g.png"])
     assert Image.MAX_IMAGE_PIXELS == normal

@@ -64,15 +64,26 @@ def _to_gray8(im: Image.Image) -> tuple[np.ndarray, bool]:
 
 def read_scan(path) -> np.ndarray:
     """Load a scan as 8-bit gray in linear light, like read_png in unoptar.c."""
+    # Pillow's size check runs inside Image.open for PNG, but other plugins
+    # (TIFF, GIF, ICNS, ICO, WebP) repeat it while loading. So PNG releases the
+    # lock right after open; every other format keeps the limit lifted and the
+    # lock held until its pixels are loaded and converted.
+    held = True
+    _OPEN_LOCK.acquire()
+    pillow_limit = Image.MAX_IMAGE_PIXELS
+    Image.MAX_IMAGE_PIXELS = None  # read_scan checks the size itself, below
+
+    def release() -> None:
+        nonlocal held
+        if held:
+            held = False
+            Image.MAX_IMAGE_PIXELS = pillow_limit
+            _OPEN_LOCK.release()
+
     try:
-        with _OPEN_LOCK:  # Pillow checks the limit inside Image.open only
-            pillow_limit = Image.MAX_IMAGE_PIXELS
-            Image.MAX_IMAGE_PIXELS = None  # read_scan checks the size itself, below
-            try:
-                im = Image.open(path)
-            finally:
-                Image.MAX_IMAGE_PIXELS = pillow_limit
-        with im:
+        with Image.open(path) as im:
+            if im.format == "PNG":
+                release()
             pixels = im.width * im.height
             if pixels > MAX_SCAN_PIXELS:
                 raise OptarError(
@@ -84,6 +95,8 @@ def read_scan(path) -> np.ndarray:
             data, is_colour = _to_gray8(im)
     except (OSError, ValueError, SyntaxError, Image.DecompressionBombError) as e:
         raise OptarError(f"cannot read image {path}: {e}") from e
+    finally:
+        release()
     table = _gamma_table(float(file_gamma))
     lin = table[data]
     if not is_colour:
