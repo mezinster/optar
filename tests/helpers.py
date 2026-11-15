@@ -57,3 +57,136 @@ def parse_pdf(path) -> list[dict]:
             "pixels": px,
         })
     return pages
+
+
+def fake_scan(
+    pixels,
+    *,
+    scale=3,
+    margin=60,
+    rotate=0.0,
+    blur=0.0,
+    noise=0.0,
+    specks=0,
+    flips=0,
+    seed=0,
+    fmt=None,
+):
+    """A synthetic scan of an encoded page (uint8, 2-D, 0 black, 255 white).
+
+    Order: scale and margin, flips, specks, rotate, blur, noise. Specks are
+    black 4 x 4 squares in the margin, at least 8 pixels from the page and the
+    image edge; flips invert whole page pixels at channel-bit positions (needs
+    fmt). With rotate=0 there is no resampling. Deterministic for a seed.
+    """
+    import numpy as np
+    from PIL import Image, ImageFilter
+
+    from optar.layout import channel_xy
+
+    if flips > 0 and fmt is None:
+        raise ValueError("fake_scan needs fmt when flips > 0")
+    rng = np.random.default_rng(seed)
+    pixels = np.asarray(pixels, np.uint8)
+    ph, pw = pixels.shape[0] * scale, pixels.shape[1] * scale
+    out = np.full((ph + 2 * margin, pw + 2 * margin), 255, np.uint8)
+    out[margin : margin + ph, margin : margin + pw] = np.kron(
+        pixels, np.ones((scale, scale), np.uint8)
+    )
+
+    if flips > 0:
+        xs, ys = channel_xy(fmt)
+        for i in rng.choice(xs.size, flips, replace=False):
+            y = margin + (int(ys[i]) + fmt.border) * scale
+            x = margin + (int(xs[i]) + fmt.border) * scale
+            out[y : y + scale, x : x + scale] = 255 - out[y : y + scale, x : x + scale]
+
+    if specks > 0:
+        gap, size = 8, 4
+        hh, ww = out.shape
+        placed = []
+        for _ in range(specks):
+            for _attempt in range(10000):
+                y = int(rng.integers(gap, hh - gap - size + 1)) if hh >= 2 * gap + size else -1
+                x = int(rng.integers(gap, ww - gap - size + 1)) if ww >= 2 * gap + size else -1
+                if x < 0 or y < 0:
+                    raise ValueError("image too small for specks")
+                near_page = (
+                    y + size + gap > margin
+                    and y < margin + ph + gap
+                    and x + size + gap > margin
+                    and x < margin + pw + gap
+                )
+                overlaps = any(abs(y - py) < size and abs(x - px) < size for py, px in placed)
+                if not near_page and not overlaps:
+                    placed.append((y, x))
+                    out[y : y + size, x : x + size] = 0
+                    break
+            else:
+                raise ValueError("no room for specks in the margin")
+
+    if rotate or blur:
+        im = Image.fromarray(out)
+        if rotate:
+            im = im.rotate(rotate, resample=Image.Resampling.BICUBIC, expand=True, fillcolor=255)
+        if blur:
+            im = im.filter(ImageFilter.GaussianBlur(blur))
+        out = np.asarray(im, np.uint8).copy()
+
+    if noise:
+        noisy = out + rng.normal(0.0, noise, out.shape)
+        out = np.clip(np.rint(noisy), 0, 255).astype(np.uint8)
+    return out
+
+
+def save_scan(path, array) -> None:
+    """Write a 2-D uint8 array as an 8-bit grayscale PNG."""
+    import numpy as np
+    from PIL import Image
+
+    Image.fromarray(np.ascontiguousarray(array, np.uint8)).save(path, format="PNG")
+
+
+def reference_remove_border_dirt(img, fill_cut):
+    """Direct queue-based port of remove_dirt_from_border, for small images."""
+    from collections import deque
+
+    import numpy as np
+
+    h, w = img.shape
+    ary = img.tolist()
+    newary = [[0xFF] * w for _ in range(h)]
+
+    def fill(x, y, test):
+        que = deque()
+
+        def try_copy_white(x, y):
+            if test and ary[y][x] < fill_cut:
+                return
+            if not newary[y][x]:
+                return
+            newary[y][x] = 0
+            que.append((x, y))
+
+        try_copy_white(x, y)
+        while que:
+            x, y = que.popleft()
+            if x + 1 < w:
+                try_copy_white(x + 1, y)
+            if x:
+                try_copy_white(x - 1, y)
+            if y + 1 < h:
+                try_copy_white(x, y + 1)
+            if y:
+                try_copy_white(x, y - 1)
+
+    fill(0, 0, 1)
+    fill(w >> 1, 0, 1)
+    fill(w - 1, 0, 1)
+    fill(0, h >> 1, 1)
+    fill(0, h - 1, 1)
+    fill(w - 1, h - 1, 1)
+    fill(w - 1, h >> 1, 1)
+    fill(w >> 1, h - 1, 1)
+    fill(w >> 1, h >> 1, 0)
+    return np.asarray(img, np.uint8) | np.array(newary, np.uint8)
