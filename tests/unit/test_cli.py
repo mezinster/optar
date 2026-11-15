@@ -327,3 +327,62 @@ def test_every_option_has_help():
     for name, sub in subparsers.choices.items():
         for action in sub._actions:
             assert action.help, f"{name} {action.option_strings or action.dest} has no help"
+
+
+posix_special_files = pytest.mark.skipif(os.name == "nt", reason="uses POSIX special files")
+
+
+@posix_special_files
+def test_decode_to_dev_null_writes_the_device(a4_scan):
+    import stat
+
+    base, _ = a4_scan
+    assert main(["decode", base, "-o", os.devnull]) == 0
+    assert stat.S_ISCHR(os.stat(os.devnull).st_mode)
+
+
+@posix_special_files
+def test_decode_to_fifo_writes_through_the_pipe(a4_scan, tmp_path):
+    import stat
+    import threading
+
+    base, data = a4_scan
+    fifo = tmp_path / "pipe"
+    os.mkfifo(fifo)
+    received = []
+
+    def reader():
+        fd = os.open(fifo, os.O_RDONLY)  # blocks until the CLI opens the pipe
+        with os.fdopen(fd, "rb") as f:
+            received.append(f.read())
+
+    thread = threading.Thread(target=reader, daemon=True)
+    thread.start()
+    code = main(["decode", base, "-o", str(fifo)])
+    thread.join(timeout=30)
+    if thread.is_alive():
+        if stat.S_ISFIFO(os.stat(fifo).st_mode):  # release the blocked reader
+            os.close(os.open(fifo, os.O_WRONLY | os.O_NONBLOCK))
+        pytest.fail("the CLI never wrote to the pipe")
+    assert code == 0
+    assert stat.S_ISFIFO(os.stat(fifo).st_mode)
+    assert received[0][: len(data)] == data
+    assert received[0] == data + bytes(len(received[0]) - len(data))
+    assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_decode_cli_matches_library_when_net_bits_not_byte_aligned(tmp_path):
+    from optar.decoder import decode
+
+    fmt = PageFormat.parse("0-65-93-24-3-2-2-24")  # Hamming order 2
+    assert fmt.net_bits % 8
+    data = seeded_bytes(9, fmt.net_bits // 8 + 1000)
+    pages = [fake_scan(p.pixels, scale=1) for p in encode(data, fmt)]
+    assert len(pages) == 2
+    for number, scan in enumerate(pages, start=1):
+        save_scan(tmp_path / f"h_{number:04d}.png", scan)
+    out = tmp_path / "out.bin"
+    assert main(["decode", str(tmp_path / "h"), "--format", fmt.to_string(), "-o", str(out)]) == 0
+    got = out.read_bytes()
+    assert got == decode(iter(pages), fmt).data
+    assert got.startswith(data) and len(got) == 2 * fmt.net_bits // 8

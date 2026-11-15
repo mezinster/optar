@@ -88,8 +88,22 @@ def _replacing(path: str) -> Iterator[str]:
     An existing file at `path` is left untouched unless the block completes,
     and on any failure only the temporary file is removed. A read-only
     existing file is refused, as opening it for writing would be.
+
+    An existing target that is neither a regular file nor a directory (a
+    device such as /dev/null, a pipe, a socket) is written directly: no
+    temporary file, and nothing is removed if writing fails.
     """
     target = Path(path)
+    try:
+        st = os.stat(target)
+    except OSError:
+        st = None
+    if st is not None and not (stat.S_ISREG(st.st_mode) or stat.S_ISDIR(st.st_mode)):
+        try:
+            yield path
+        except OSError as e:
+            raise _io_error("write", path, e) from e
+        return
     try:
         if target.exists() and not os.access(target, os.W_OK):
             raise PermissionError(errno.EACCES, os.strerror(errno.EACCES), path)
