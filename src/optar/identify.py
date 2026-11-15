@@ -21,7 +21,7 @@ from optar.decoder.options import DecodeOptions
 from optar.encoder import MAX_PAGES
 from optar.errors import DecodeError, IdentifyError
 from optar.format import PAPERS, PageFormat, Paper
-from optar.label import MIN_LABEL_CONFIDENCE, parse_label, read_label
+from optar.label import parse_label, read_label
 from optar.tag import Tag, split_label
 
 __all__ = ["ScanIdentity", "candidate_rotations", "decode_unlabelled", "identify_scan"]
@@ -39,7 +39,8 @@ class ScanIdentity:
     total: int
     tag: Tag | None
     name: str  # the free text after the tag (all of it without a tag), as read
-    confidence: float
+    confidence: float  # the label reading's, as LabelReading
+    margin: float
     grid: PageGrid  # located on the upright image
 
 
@@ -99,7 +100,7 @@ def _identify_upright(
     except DecodeError:
         return None
     reading = read_label(grid)
-    if reading.confidence < MIN_LABEL_CONFIDENCE:
+    if not reading.reliable:
         return None
     info = parse_label(reading.text)
     if info is None or info.format != fmt.to_string():
@@ -111,7 +112,8 @@ def _identify_upright(
     if tag is not None and not tag.fits(info.total, fmt):
         return None
     return ScanIdentity(
-        paper, fmt, rotation, info.page, info.total, tag, name, reading.confidence, grid
+        paper, fmt, rotation, info.page, info.total, tag, name,
+        reading.confidence, reading.margin, grid,
     )
 
 
@@ -120,23 +122,35 @@ def identify_scan(image: np.ndarray, options: DecodeOptions | None = None) -> Sc
 
     Raises IdentifyError("no page found") when no candidate rotation shows a
     page outline, else IdentifyError("label unreadable") when no rotation and
-    paper give a label that is confident, parses, carries the paper's own
+    paper give a label that reads reliably, parses, carries the paper's own
     format string, a page number within the total, a total the encoder could
     have written (at most MAX_PAGES) and a tag (if any) that fits the total.
     """
     image = _check(image)
-    found_page = False
-    for rotation in candidate_rotations(image):
-        upright = _turn(image, rotation)
-        corners = _outline(upright, options)
-        if corners is None:
-            continue
-        found_page = True
-        for paper in _papers_by_shape(corners):
+    rotations = candidate_rotations(image)
+    views: dict[int, tuple[np.ndarray, np.ndarray | None]] = {}
+
+    def view(rotation: int) -> tuple[np.ndarray, np.ndarray | None]:
+        """The upright image for a rotation and its page outline, found once."""
+        if rotation not in views:
+            upright = _turn(image, rotation)
+            views[rotation] = upright, _outline(upright, options)
+        return views[rotation]
+
+    outline = next((c for r in rotations if (c := view(r)[1]) is not None), None)
+    if outline is None:
+        raise IdentifyError(NO_PAGE)
+    # The likelier paper in every orientation before the other paper: a page
+    # turned the wrong way costs one locate, not one per paper.
+    for paper in _papers_by_shape(outline):
+        for rotation in rotations:
+            upright, corners = view(rotation)
+            if corners is None:
+                continue
             ident = _identify_upright(upright, rotation, paper, options)
             if ident is not None:
                 return ident
-    raise IdentifyError(LABEL_UNREADABLE if found_page else NO_PAGE)
+    raise IdentifyError(LABEL_UNREADABLE)
 
 
 def _corrected_bits(result: PageResult) -> int:

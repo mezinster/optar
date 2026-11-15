@@ -1,12 +1,13 @@
 # (c) GPL 2007 Karel 'Clock' Kulhavy, Twibright Labs; Python port 2026
 from functools import cache
+from unittest import mock
 
 import numpy as np
 import pytest
 
 import optar.identify
 from optar import PAPERS, PageFormat, encode
-from optar.decoder import DecodeOptions, PageResult, PageStats, locate_page
+from optar.decoder import DecodeOptions, PageResult, PageStats
 from optar.encoder import MAX_PAGES, blank_page
 from optar.errors import DecodeError, IdentifyError
 from optar.font import label_text
@@ -16,7 +17,7 @@ from optar.identify import (
     decode_unlabelled,
     identify_scan,
 )
-from optar.label import MIN_LABEL_CONFIDENCE, read_label
+from optar.label import MIN_LABEL_CONFIDENCE, MIN_LABEL_MARGIN, read_label
 from optar.tag import make_tag, tagged_label
 from tests.helpers import DEGRADED, fake_scan, seeded_bytes
 
@@ -62,7 +63,7 @@ def check_identity(ident, paper, turns, page=2, total=2, name="doc.tar"):
     assert ident.rotation == turns
     assert (ident.page, ident.total, ident.name) == (page, total, name)
     assert ident.tag == make_tag(data)
-    assert ident.confidence >= MIN_LABEL_CONFIDENCE
+    assert ident.confidence >= MIN_LABEL_CONFIDENCE and ident.margin >= MIN_LABEL_MARGIN
     assert ident.grid.fmt == ident.fmt
 
 
@@ -72,20 +73,42 @@ def test_candidate_rotations():
     assert candidate_rotations(np.zeros((20, 30), np.uint8)) == (1, 3)
 
 
-@pytest.mark.parametrize("paper", ["a4", "letter"])
-@pytest.mark.parametrize("turns", [0, 1, 2, 3])
+# One case per rotation and per paper by default; all eight in the slow run.
+DEFAULT_CLEAN = [("a4", 0), ("letter", 1), ("letter", 2), ("a4", 3)]
+ALL_CLEAN = [(p, t) for p in ("a4", "letter") for t in range(4)]
+
+
+@pytest.mark.parametrize("paper,turns", [
+    pytest.param(p, t, marks=() if (p, t) in DEFAULT_CLEAN else pytest.mark.slow)
+    for p, t in ALL_CLEAN
+])
 def test_identifies_paper_page_tag_and_rotation(paper, turns):
-    check_identity(identified(paper, turns), paper, turns)
+    ident, located = identified(paper, turns)
+    check_identity(ident, paper, turns)
+    # The likelier paper in both orientations first: a page the wrong way up
+    # costs one extra locate, with the same paper.
+    fmt = PageFormat.for_paper(PAPERS[paper])
+    assert located == ((fmt,) if turns in (0, 1) else (fmt, fmt))
 
 
 @cache
 def identified(paper, turns, case=None):
-    return identify_scan(turned(upright(paper, case), turns))
+    """identify_scan of a cached scan, and the formats locate_page was called with."""
+    located = []
+    real = optar.identify.locate_page
+
+    def counting(image, fmt, options=None):
+        located.append(fmt)
+        return real(image, fmt, options)
+
+    with mock.patch.object(optar.identify, "locate_page", counting):
+        ident = identify_scan(turned(upright(paper, case), turns))
+    return ident, tuple(located)
 
 
 def test_grid_is_located_on_the_upright_image():
     img = upright("a4")
-    ident = identified("a4", 3)
+    ident, _ = identified("a4", 3)
     assert ident.grid.cleaned.shape == img.shape
     # The top-left cross is where fake_scan put it: margin 50, scale 2.
     fmt = ident.fmt
@@ -97,7 +120,7 @@ def test_grid_is_located_on_the_upright_image():
 # degradation by default; every rotation, paper and DEGRADED case in the slow run.
 @pytest.mark.parametrize("paper,turns", [("a4", 2)])
 def test_identifies_combined_degradation(paper, turns):
-    check_identity(identified(paper, turns, "combined"), paper, turns)
+    check_identity(identified(paper, turns, "combined")[0], paper, turns)
 
 
 @pytest.mark.slow
@@ -105,7 +128,7 @@ def test_identifies_combined_degradation(paper, turns):
 @pytest.mark.parametrize("paper", ["a4", "letter"])
 @pytest.mark.parametrize("turns", [0, 1, 2, 3])
 def test_identifies_every_degradation(case, paper, turns):
-    check_identity(identified(paper, turns, case), paper, turns)
+    check_identity(identified(paper, turns, case)[0], paper, turns)
 
 
 @pytest.mark.parametrize("paper", ["a4", "letter"])
@@ -195,6 +218,7 @@ def test_tag_that_does_not_fit_is_not_identified():
         identify_scan(fake_scan(page, scale=1, margin=40))
 
 
+@pytest.mark.slow
 def test_tag_printed_for_another_page_count_is_not_identified():
     # The tag of the two-page document, printed on a one-page printout.
     fmt, data, _ = document("letter")
@@ -206,26 +230,41 @@ def test_tag_printed_for_another_page_count_is_not_identified():
         assert (ident is not None) == accepted
 
 
-@pytest.mark.parametrize("page,total", [(1, 99999), (10000, 10000)])
-def test_page_count_the_encoder_could_not_write_is_not_identified(page, total):
+def labelled_blank(page, total):
+    """A scan of a blank A4 page whose label says page/total, whatever the encoder allows."""
     fmt = PageFormat.for_paper(PAPERS["a4"])
+    return fake_scan(blank_page(fmt, label_text(fmt, page, total, "x")), scale=1, margin=40)
+
+
+# Each full refusal locates the page four times (two papers, two orientations),
+# so the second forged label runs in full only in the slow run.
+@pytest.mark.parametrize("page,total", [
+    (1, 99999), pytest.param(10000, 10000, marks=pytest.mark.slow),
+])
+def test_page_count_the_encoder_could_not_write_is_not_identified(page, total):
     assert total > MAX_PAGES
-    pixels = blank_page(fmt, label_text(fmt, page, total, "x"))
-    img = fake_scan(pixels, scale=1, margin=40)
-    grid = locate_page(img, fmt)
-    assert read_label(grid).text.endswith(f" {page}/{total} x")  # read correctly, then refused
     with pytest.raises(IdentifyError) as e:
-        identify_scan(img)
+        identify_scan(labelled_blank(page, total))
     assert e.value.reason == "label unreadable"
 
 
-def test_largest_page_count_the_encoder_writes_is_identified():
-    fmt = PageFormat.for_paper(PAPERS["a4"])
-    pixels = blank_page(fmt, label_text(fmt, MAX_PAGES, MAX_PAGES, "x"))
-    ident = optar.identify._identify_upright(
-        fake_scan(pixels, scale=1, margin=40), 0, PAPERS["a4"], None
-    )
-    assert (ident.page, ident.total, ident.name) == (MAX_PAGES, MAX_PAGES, "x")
+@pytest.mark.parametrize("count,accepted", [(MAX_PAGES, True), (MAX_PAGES + 1, False)])
+def test_page_count_limit_is_the_encoders(count, accepted):
+    readings = []
+
+    def reading(grid):
+        readings.append(read_label(grid))
+        return readings[-1]
+
+    with mock.patch.object(optar.identify, "read_label", reading):
+        ident = optar.identify._identify_upright(
+            labelled_blank(count, count), 0, PAPERS["a4"], None
+        )
+    # Both labels read clearly and correctly; only the count decides.
+    assert readings[0].reliable and readings[0].text.endswith(f" {count}/{count} x")
+    assert (ident is not None) == accepted
+    if accepted:
+        assert (ident.page, ident.total, ident.name) == (count, count, "x")
 
 
 def blacken_label(pixels, fmt):
@@ -246,6 +285,7 @@ def test_black_label_band_is_unreadable_but_decodes_unlabelled():
     assert np.packbits(result.bits).tobytes() == data[: fmt.net_bits // 8]
 
 
+@pytest.mark.slow
 def test_decode_unlabelled_landscape_and_detail():
     fmt, data, _ = document("letter")
     img = turned(upright("letter"), 1)
