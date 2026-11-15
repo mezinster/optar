@@ -18,7 +18,9 @@ TEXT_WIDTH = 13
 # Smallest margin, on every side, that a printer can be trusted not to clip.
 MIN_MARGIN_PT = 12.0
 
-_FORMAT_RE = re.compile(r"[0-9]+(?:-[0-9]+){7}")
+# A format string: eight dash-separated non-negative decimal integers.
+FORMAT_PATTERN = r"[0-9]+(?:-[0-9]+){7}"
+_FORMAT_RE = re.compile(FORMAT_PATTERN)
 
 
 @dataclass(frozen=True)
