@@ -1,0 +1,77 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset: linux-x86_64
+            ext: ''
+          - os: macos-latest
+            asset: macos-arm64
+            ext: ''
+          - os: windows-latest
+            asset: windows-x86_64
+            ext: '.exe'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.15"
+      - run: pip install -e '.[dev]'
+      - name: Check tag matches package version
+        run: |
+          version="v$(python -c "import optar; print(optar.__version__)")"
+          if [ "$GITHUB_REF_NAME" != "$version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package version $version" >&2
+            exit 1
+          fi
+      - name: Build one-file executable
+        run: pyinstaller --onefile --name optar --collect-data optar packaging/entry.py
+      - name: Smoke test
+        env:
+          EXT: ${{ matrix.ext }}
+        run: python packaging/smoke.py "dist/optar${EXT}"
+      - name: Rename
+        env:
+          EXT: ${{ matrix.ext }}
+          ASSET: ${{ matrix.asset }}
+        run: mv "dist/optar${EXT}" "dist/optar-${GITHUB_REF_NAME}-${ASSET}${EXT}"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: optar-${{ matrix.asset }}
+          path: dist/optar-*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          path: release-files
+          merge-multiple: true
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --generate-notes \
+            --notes "On Linux and macOS, run chmod +x on the downloaded file before first use. The executables are unsigned, so macOS and Windows may warn on first run." \
+            release-files/*
