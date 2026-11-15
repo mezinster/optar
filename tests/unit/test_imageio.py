@@ -106,6 +106,8 @@ def test_large_scan_reads_without_decompression_bomb_warning(tmp_path):
     assert Image.MAX_IMAGE_PIXELS == limit  # global Pillow state restored
 
 
+# Pillow itself warns for images above the cap, before read_scan refuses them.
+@pytest.mark.filterwarnings("ignore::PIL.Image.DecompressionBombWarning")
 def test_scan_above_pixel_limit_is_refused(tmp_path, monkeypatch):
     Image.fromarray(gradient()).save(tmp_path / "g.png")
     monkeypatch.setattr(optar.imageio, "MAX_SCAN_PIXELS", 1000)
@@ -216,7 +218,7 @@ def test_non_png_load_holds_the_lock_so_other_reads_wait(tmp_path, monkeypatch):
 
     def blocked(im):
         if im.format == "TIFF":
-            seen.append(Image.MAX_IMAGE_PIXELS)  # lifted while a TIFF loads
+            seen.append(Image.MAX_IMAGE_PIXELS)  # raised to the cap while a TIFF loads
             entered.set()
             assert release.wait(30)
         return real(im)
@@ -240,6 +242,82 @@ def test_non_png_load_holds_the_lock_so_other_reads_wait(tmp_path, monkeypatch):
         if png.ident is not None:
             png.join(30)
     assert not tiff.is_alive() and not png.is_alive()
-    assert seen == [None] and finished.is_set()
+    assert seen == [optar.imageio.MAX_SCAN_PIXELS] and finished.is_set()
     assert np.array_equal(results["g.tif"], results["g.png"])
     assert Image.MAX_IMAGE_PIXELS == normal
+
+
+def test_pillow_limit_is_never_none_during_non_png_read(tmp_path, monkeypatch):
+    Image.fromarray(gradient()).save(tmp_path / "g.tif")
+    normal = Image.MAX_IMAGE_PIXELS
+    seen = []
+    real = optar.imageio._to_gray8
+
+    def spy(im):
+        seen.append(Image.MAX_IMAGE_PIXELS)
+        return real(im)
+
+    monkeypatch.setattr(optar.imageio, "_to_gray8", spy)
+    read_scan(tmp_path / "g.tif")
+    assert seen == [optar.imageio.MAX_SCAN_PIXELS]
+    assert Image.MAX_IMAGE_PIXELS == normal
+
+
+@pytest.mark.parametrize("ext", ["ico", "gif"])
+def test_formats_a_scan_cannot_be_are_refused(tmp_path, ext):
+    path = tmp_path / f"x.{ext}"
+    Image.fromarray(gradient()).save(path)
+    limit = Image.MAX_IMAGE_PIXELS
+    with pytest.raises(OptarError, match="cannot read image"):
+        read_scan(path)
+    assert Image.MAX_IMAGE_PIXELS == limit
+
+
+def test_size_change_while_loading_is_refused(tmp_path, monkeypatch):
+    Image.fromarray(gradient()).save(tmp_path / "g.tif")
+    real_load = Image.Image.load
+
+    def growing_load(self):
+        result = real_load(self)
+        self._size = (self.width + 1, self.height)
+        return result
+
+    monkeypatch.setattr(Image.Image, "load", growing_load)
+    limit = Image.MAX_IMAGE_PIXELS
+    with pytest.raises(OptarError, match="size changed while loading"):
+        read_scan(tmp_path / "g.tif")
+    assert Image.MAX_IMAGE_PIXELS == limit
+
+
+def test_size_above_cap_after_loading_is_refused(tmp_path, monkeypatch):
+    Image.fromarray(gradient()).save(tmp_path / "g.tif")  # 1,024 pixels
+    real_load = Image.Image.load
+    cap = 2000
+
+    def growing_load(self):
+        result = real_load(self)
+        self._size = (self.width * 3, self.height)  # 27,648 pixels
+        return result
+
+    monkeypatch.setattr(optar.imageio, "MAX_SCAN_PIXELS", cap)
+    monkeypatch.setattr(Image.Image, "load", growing_load)
+    with pytest.raises(OptarError, match="27,648 pixels.*2,000"):
+        read_scan(tmp_path / "g.tif")
+
+
+@pytest.mark.parametrize("fmt", ["BMP", "PPM", "TIFF", "JPEG"])
+def test_other_scan_formats_read(tmp_path, fmt):
+    path = tmp_path / "g.img"
+    Image.fromarray(gradient()).save(path, format=fmt)
+    out = read_scan(path)
+    expected = read_scan_png_reference(tmp_path)
+    assert out.shape == expected.shape
+    if fmt == "JPEG":
+        assert np.abs(out.astype(int) - expected.astype(int)).max() <= 12
+    else:
+        assert np.array_equal(out, expected)
+
+
+def read_scan_png_reference(tmp_path):
+    Image.fromarray(gradient()).save(tmp_path / "ref.png")
+    return read_scan(tmp_path / "ref.png")

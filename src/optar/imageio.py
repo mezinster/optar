@@ -16,6 +16,9 @@ DEFAULT_FILE_GAMMA = 0.454545
 MAX_SCAN_PIXELS = 600_000_000
 # Image.MAX_IMAGE_PIXELS is process-wide; it is lifted only while Image.open runs.
 _OPEN_LOCK = threading.Lock()
+# Formats read_scan opens (PPM covers PGM and PBM). JPEG is lossy, a poor choice
+# for scans, but users will try it.
+SCAN_FORMATS = ("PNG", "TIFF", "BMP", "PPM", "JPEG")
 _GRAY_WEIGHTS = (0.212671, 0.715160, 0.072169)
 
 
@@ -65,13 +68,16 @@ def _to_gray8(im: Image.Image) -> tuple[np.ndarray, bool]:
 def read_scan(path) -> np.ndarray:
     """Load a scan as 8-bit gray in linear light, like read_png in unoptar.c."""
     # Pillow's size check runs inside Image.open for PNG, but other plugins
-    # (TIFF, GIF, ICNS, ICO, WebP) repeat it while loading. So PNG releases the
-    # lock right after open; every other format keeps the limit lifted and the
-    # lock held until its pixels are loaded and converted.
+    # (TIFF, ...) repeat it while loading. So PNG releases the lock right after
+    # open; every other format keeps the limit set to the cap and the lock held
+    # until its pixels are loaded and converted.
     held = True
     _OPEN_LOCK.acquire()
     pillow_limit = Image.MAX_IMAGE_PIXELS
-    Image.MAX_IMAGE_PIXELS = None  # read_scan checks the size itself, below
+    # Never None: our own check refuses above the cap from the header size, and
+    # Pillow's check (warning above the cap, error above twice it) stays as a
+    # backstop for images that grow while loading.
+    Image.MAX_IMAGE_PIXELS = MAX_SCAN_PIXELS
 
     def release() -> None:
         nonlocal held
@@ -81,7 +87,7 @@ def read_scan(path) -> np.ndarray:
             _OPEN_LOCK.release()
 
     try:
-        with Image.open(path) as im:
+        with Image.open(path, formats=SCAN_FORMATS) as im:
             if im.format == "PNG":
                 release()
             pixels = im.width * im.height
@@ -90,7 +96,15 @@ def read_scan(path) -> np.ndarray:
                     f"cannot read image {path}: {pixels:,} pixels is more than "
                     f"the {MAX_SCAN_PIXELS:,} a scan may have"
                 )
+            checked_size = im.size
             im.load()
+            if im.width * im.height > MAX_SCAN_PIXELS:
+                raise OptarError(
+                    f"cannot read image {path}: {im.width * im.height:,} pixels is more "
+                    f"than the {MAX_SCAN_PIXELS:,} a scan may have"
+                )
+            if im.size != checked_size:
+                raise OptarError(f"cannot read image {path}: image size changed while loading")
             file_gamma = im.info.get("gamma") or DEFAULT_FILE_GAMMA
             data, is_colour = _to_gray8(im)
     except (OSError, ValueError, SyntaxError, Image.DecompressionBombError) as e:
