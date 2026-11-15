@@ -43,8 +43,9 @@ def _unoptar(c_build, overrides):
 
 def _run_unoptar(build, fmt, workdir, base="scan") -> bytes:
     r = subprocess.run(
-        [build.unoptar, fmt.to_string(), base], cwd=workdir, check=True, capture_output=True
+        [build.unoptar, fmt.to_string(), base], cwd=workdir, check=False, capture_output=True
     )
+    assert r.returncode == 0, f"unoptar failed ({r.returncode}): {r.stderr[-2000:].decode()}"
     return r.stdout
 
 
@@ -66,7 +67,8 @@ def test_python_decodes_c_pages(c_build, tmp_path, overrides, fmt, size):
     build = c_build(overrides)
     data = seeded_bytes(22, _size(fmt, size))
     (tmp_path / "in.bin").write_bytes(data)
-    subprocess.run([build.optar, "in.bin"], cwd=tmp_path, check=True, capture_output=True)
+    r = subprocess.run([build.optar, "in.bin"], cwd=tmp_path, check=False, capture_output=True)
+    assert r.returncode == 0, f"optar failed ({r.returncode}): {r.stderr[-2000:].decode()}"
     files = sorted(tmp_path.glob("optar_out_*.pgm"))
     assert len(files) == 2
 
@@ -76,6 +78,7 @@ def test_python_decodes_c_pages(c_build, tmp_path, overrides, fmt, size):
                 yield fake_scan(np.asarray(im, np.uint8), scale=1)
 
     res = decode(scans(), fmt)
+    assert len(res.data) == 2 * fmt.net_bits // 8
     assert res.data[: len(data)] == data and res.uncorrectable == 0
 
 

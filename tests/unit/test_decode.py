@@ -4,9 +4,9 @@
 import numpy as np
 import pytest
 
-from optar import PAPERS, PageFormat, PageStats, decode, decode_page, encode
+from optar import PAPERS, PageFormat, PageStats, decode, decode_page, encode, read_scan
 from optar.errors import DecodeError
-from tests.helpers import DEGRADED, fake_scan, seeded_bytes
+from tests.helpers import DEGRADED, fake_scan, save_scan, seeded_bytes
 
 A4 = PageFormat.for_paper(PAPERS["a4"])
 DEGRADED_DATA = seeded_bytes(11, 150000)
@@ -50,8 +50,13 @@ def test_round_trip_hamming_two_pages(order):
 
 
 @pytest.mark.parametrize("name", list(DEGRADED))
-def test_degraded_round_trip(degraded_page, name):
-    r = decode_page(fake_scan(degraded_page, seed=1, fmt=A4, **DEGRADED[name]), A4)
+def test_degraded_round_trip(tmp_path, degraded_page, name):
+    # Degraded scans go through a PNG and read_scan, as real scans do. Other
+    # tests here pass clean fake_scan arrays (only 0 and 255, which gamma
+    # linearisation leaves unchanged) straight to the decoder.
+    path = tmp_path / "scan_0001.png"
+    save_scan(path, fake_scan(degraded_page, seed=1, fmt=A4, **DEGRADED[name]))
+    r = decode_page(read_scan(path), A4)
     assert r.stats.uncorrectable == 0 and r.stats.max_corrected <= 2
     assert np.packbits(r.bits)[: len(DEGRADED_DATA)].tobytes() == DEGRADED_DATA
 
