@@ -18,7 +18,7 @@ def infile(tmp_path):
     return p
 
 
-HINT = "Check that --paper matches the printout."
+HINT = "Check that --paper matches the printout and that the page is scanned upright."
 
 
 @pytest.fixture(scope="module")
@@ -80,6 +80,17 @@ def test_blank_scan_exits_2_without_traceback(tmp_path, capsys):
     err = capsys.readouterr().err
     assert err.startswith("optar: ") and "Traceback" not in err
     assert HINT in err
+
+
+def test_decode_error_names_the_failing_page(tmp_path, capsys):
+    fmt = PageFormat.for_paper(PAPERS["a4"])
+    base = scans(tmp_path, seeded_bytes(1, 2 * fmt.net_bits // 8 + 5), skip=(2,))
+    save_scan(tmp_path / "scan_0002.png", np.full((2400, 1700), 255, np.uint8))
+    assert main(["decode", base, "-o", str(tmp_path / "o")]) == 2
+    assert capsys.readouterr().err.splitlines()[-1] == (
+        f"optar: scan_0002.png: cannot find upper left corner. {HINT}"
+    )
+    assert not (tmp_path / "o").exists()
 
 
 def test_numbering_gap_warns_and_exits_1(tmp_path, capsys):

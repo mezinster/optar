@@ -24,7 +24,7 @@ from optar.format import PAPERS, PageFormat, Paper
 from optar.imageio import read_scan, write_pgm, write_png
 from optar.pdf import write_pdf
 
-PAPER_HINT = "Check that --paper matches the printout."
+PAPER_HINT = "Check that --paper matches the printout and that the page is scanned upright."
 ACTUAL_SIZE = 'Print at actual size (100%), not "fit to page".'
 
 
@@ -163,7 +163,10 @@ def _decode(args: argparse.Namespace) -> int:
                 )
                 gap = True
             break
-        result = decode_page(read_scan(path), fmt, debug=args.debug_images)
+        try:
+            result = decode_page(read_scan(path), fmt, debug=args.debug_images)
+        except DecodeError as e:
+            raise DecodeError(f"{name}_{number:04d}.png: {e}") from e
         stats = result.stats
         corrected = sum(stats.error_histogram[1:])
         _eprint(
@@ -200,7 +203,7 @@ def main(argv: list[str] | None = None) -> int:
     except OptarError as e:
         message = str(e)
         if isinstance(e, DecodeError):
-            message = f"{message} {PAPER_HINT}"
+            message = f"{message.rstrip('.')}. {PAPER_HINT}"
         _eprint(f"optar: {message}")
         return 2
     except OSError as e:
