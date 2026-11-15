@@ -1,6 +1,8 @@
 # (c) GPL 2007 Karel 'Clock' Kulhavy, Twibright Labs; Python port 2026
 """Reading and writing page and scan images."""
 
+import threading
+
 import numpy as np
 from PIL import Image
 
@@ -12,6 +14,8 @@ DEFAULT_FILE_GAMMA = 0.454545
 # megapixels. Pillow's own decompression-bomb limit (about 179 megapixels,
 # warning above 89) would refuse or warn about ordinary 1200 dpi scans.
 MAX_SCAN_PIXELS = 600_000_000
+# Image.MAX_IMAGE_PIXELS is process-wide; it is lifted only while Image.open runs.
+_OPEN_LOCK = threading.Lock()
 _GRAY_WEIGHTS = (0.212671, 0.715160, 0.072169)
 
 
@@ -60,10 +64,15 @@ def _to_gray8(im: Image.Image) -> tuple[np.ndarray, bool]:
 
 def read_scan(path) -> np.ndarray:
     """Load a scan as 8-bit gray in linear light, like read_png in unoptar.c."""
-    pillow_limit = Image.MAX_IMAGE_PIXELS
-    Image.MAX_IMAGE_PIXELS = None  # read_scan checks the size itself, below
     try:
-        with Image.open(path) as im:
+        with _OPEN_LOCK:  # Pillow checks the limit inside Image.open only
+            pillow_limit = Image.MAX_IMAGE_PIXELS
+            Image.MAX_IMAGE_PIXELS = None  # read_scan checks the size itself, below
+            try:
+                im = Image.open(path)
+            finally:
+                Image.MAX_IMAGE_PIXELS = pillow_limit
+        with im:
             pixels = im.width * im.height
             if pixels > MAX_SCAN_PIXELS:
                 raise OptarError(
@@ -75,8 +84,6 @@ def read_scan(path) -> np.ndarray:
             data, is_colour = _to_gray8(im)
     except (OSError, ValueError, SyntaxError, Image.DecompressionBombError) as e:
         raise OptarError(f"cannot read image {path}: {e}") from e
-    finally:
-        Image.MAX_IMAGE_PIXELS = pillow_limit
     table = _gamma_table(float(file_gamma))
     lin = table[data]
     if not is_colour:

@@ -4,12 +4,8 @@
 from __future__ import annotations
 
 import argparse
-import contextlib
-import errno
 import os
-import stat
 import sys
-import tempfile
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -20,6 +16,7 @@ from optar import __version__
 from optar.decoder import BitPacker, decode_pages
 from optar.encoder import check_encodable, encode
 from optar.errors import DecodeError, FormatError, OptarError
+from optar.fileio import io_error, replacing
 from optar.format import PAPERS, PageFormat, Paper
 from optar.imageio import read_scan, write_pgm, write_png
 from optar.pdf import write_pdf
@@ -71,61 +68,6 @@ def _eprint(message: str) -> None:
     print(message, file=sys.stderr)
 
 
-def _io_error(verb: str, path: str, e: OSError) -> OptarError:
-    return OptarError(f"cannot {verb} {path}: {e.strerror or e}")
-
-
-def _new_file_mode() -> int:
-    umask = os.umask(0)
-    os.umask(umask)
-    return 0o666 & ~umask
-
-
-@contextlib.contextmanager
-def _replacing(path: str) -> Iterator[str]:
-    """Yield a temporary path next to `path`; move it onto `path` only on success.
-
-    An existing file at `path` is left untouched unless the block completes,
-    and on any failure only the temporary file is removed. A read-only
-    existing file is refused, as opening it for writing would be.
-
-    An existing target that is neither a regular file nor a directory (a
-    device such as /dev/null, a pipe, a socket) is written directly: no
-    temporary file, and nothing is removed if writing fails.
-    """
-    target = Path(path)
-    try:
-        st = os.stat(target)
-    except OSError:
-        st = None
-    if st is not None and not (stat.S_ISREG(st.st_mode) or stat.S_ISDIR(st.st_mode)):
-        try:
-            yield path
-        except OSError as e:
-            raise _io_error("write", path, e) from e
-        return
-    try:
-        if target.exists() and not os.access(target, os.W_OK):
-            raise PermissionError(errno.EACCES, os.strerror(errno.EACCES), path)
-        mode = stat.S_IMODE(target.stat().st_mode) if target.exists() else _new_file_mode()
-        with tempfile.NamedTemporaryFile(
-            dir=target.parent, prefix=target.name + ".", suffix=".tmp", delete=False
-        ) as tmp:
-            temp = tmp.name
-    except OSError as e:
-        raise _io_error("write", path, e) from e
-    try:
-        yield temp
-        os.chmod(temp, mode)
-        os.replace(temp, path)
-    except BaseException as e:
-        with contextlib.suppress(OSError):
-            os.unlink(temp)
-        if isinstance(e, OSError):
-            raise _io_error("write", path, e) from e
-        raise
-
-
 def _resolve_format(args: argparse.Namespace) -> tuple[Paper, PageFormat]:
     paper = PAPERS[args.paper]
     fmt = PageFormat.parse(args.format) if args.format else PageFormat.for_paper(paper)
@@ -140,7 +82,7 @@ def _encode(args: argparse.Namespace) -> int:
         with open(args.input, "rb") as f:
             data = f.read()
     except OSError as e:
-        raise _io_error("read", args.input, e) from e
+        raise io_error("read", args.input, e) from e
 
     check_encodable(len(data), fmt)  # before any file is created
     base = args.output or "optar_out"
@@ -148,14 +90,14 @@ def _encode(args: argparse.Namespace) -> int:
     written: list[str] = []
     if args.to == "pdf":
         path = f"{base}.pdf"
-        with _replacing(path) as temp:
+        with replacing(path) as temp:
             count = write_pdf(temp, (page.pixels for page in encode(data, fmt, label)), paper)
         written.append(f"{path} ({count} page{'s' if count != 1 else ''})")
     else:
         writer = write_png if args.to == "png" else write_pgm
         for page in encode(data, fmt, label):
             path = f"{base}_{page.number:04d}.{args.to}"
-            with _replacing(path) as temp:
+            with replacing(path) as temp:
                 writer(temp, page.pixels)
             written.append(path)
     for item in written:
@@ -216,7 +158,7 @@ def _decode(args: argparse.Namespace) -> int:
 
     data = b"".join(chunks)
     if args.output:
-        with _replacing(args.output) as temp, open(temp, "wb") as f:
+        with replacing(args.output) as temp, open(temp, "wb") as f:
             f.write(data)
     else:
         sys.stdout.buffer.write(data)

@@ -113,3 +113,66 @@ def test_scan_above_pixel_limit_is_refused(tmp_path, monkeypatch):
     with pytest.raises(OptarError, match="1,024 pixels.*1,000"):
         read_scan(tmp_path / "g.png")
     assert Image.MAX_IMAGE_PIXELS == limit
+
+
+def test_read_scan_is_safe_from_many_threads(tmp_path):
+    import threading
+
+    arr = np.full((300, 200), 255, np.uint8)
+    paths = []
+    for i in range(8):
+        p = tmp_path / f"s{i}.png"
+        Image.fromarray(arr).save(p)
+        paths.append(p)
+    before = Image.MAX_IMAGE_PIXELS
+    seen, errors = [], []
+
+    def worker(p):
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("error")  # any DecompressionBombWarning is fatal
+                for _ in range(20):
+                    read_scan(p)
+                    seen.append(Image.MAX_IMAGE_PIXELS)
+        except Exception as e:  # noqa: BLE001
+            errors.append(e)
+
+    ts = [threading.Thread(target=worker, args=(p,)) for p in paths]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join()
+    assert not errors
+    assert len(seen) == 8 * 20
+    assert Image.MAX_IMAGE_PIXELS == before
+
+
+def test_pillow_limit_is_normal_while_pixels_load(tmp_path, monkeypatch):
+    import threading
+
+    Image.fromarray(gradient()).save(tmp_path / "g.png")
+    normal = Image.MAX_IMAGE_PIXELS
+    assert normal is not None
+    inside, other_thread = [], []
+    entered, release = threading.Event(), threading.Event()
+    real = optar.imageio._to_gray8
+
+    def blocked(im):
+        inside.append(Image.MAX_IMAGE_PIXELS)
+        entered.set()
+        assert release.wait(30)
+        return real(im)
+
+    monkeypatch.setattr(optar.imageio, "_to_gray8", blocked)
+    t = threading.Thread(target=read_scan, args=(tmp_path / "g.png",))
+    t.start()
+    try:
+        assert entered.wait(30)  # reader is now inside pixel loading
+        probe = threading.Thread(target=lambda: other_thread.append(Image.MAX_IMAGE_PIXELS))
+        probe.start()
+        probe.join()
+    finally:
+        release.set()
+        t.join()
+    assert inside == [normal] and other_thread == [normal]
+    assert Image.MAX_IMAGE_PIXELS == normal
