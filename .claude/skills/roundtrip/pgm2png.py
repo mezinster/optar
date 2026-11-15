@@ -31,11 +31,11 @@ def read_pgm(path):
         pos = end
     pos += 1  # the single whitespace byte that ends the header
     if fields[0] != b"P5" or int(fields[3]) != 255:
-        raise SystemExit("%s: expected a binary PGM with maxval 255" % path)
+        raise SystemExit(f"{path}: expected a binary PGM with maxval 255")
     width, height = int(fields[1]), int(fields[2])
     pixels = data[pos:pos + width * height]
     if len(pixels) != width * height:
-        raise SystemExit("%s: truncated pixel data" % path)
+        raise SystemExit(f"{path}: truncated pixel data")
     return width, height, pixels
 
 

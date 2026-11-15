@@ -1,0 +1,37 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "optar"
+dynamic = ["version"]
+description = "Store files on paper: Python port of optar/unoptar"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "GPL-2.0-only"
+dependencies = ["numpy", "Pillow"]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff", "pyinstaller"]
+
+[tool.hatch.version]
+path = "src/optar/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/optar"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-m 'not slow'"
+markers = [
+    "oracle: needs a C compiler (builds the original C tools)",
+    "gs: needs Ghostscript",
+    "slow: long-running test, deselected by default",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
