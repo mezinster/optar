@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import BinaryIO
 
@@ -81,14 +81,30 @@ def _page_words(buf: np.ndarray, page_index: int, fmt: PageFormat, nwords: int) 
     return (bits.reshape(nwords, sb).astype(np.uint32) * weights).sum(axis=1, dtype=np.uint32)
 
 
-def encode(data: bytes | BinaryIO, fmt: PageFormat, label: str = "") -> Iterator[Page]:
-    """Yield the pages that carry data. A stream is read from its current position."""
+def encode(
+    data: bytes | BinaryIO,
+    fmt: PageFormat,
+    label: str | Callable[[int, int], str] = "",
+) -> Iterator[Page]:
+    """Yield the pages that carry data. A stream is read from its current position.
+
+    `label` is the free text printed on every page, or a function called as
+    label(page, total) for each page in turn (page from 1; total as printed,
+    0 for an empty file, whose one page is labelled 1/0) that returns it.
+    """
     if not isinstance(data, bytes | bytearray | memoryview):
         data = data.read()
     nbytes = len(data)
     total = check_encodable(nbytes, fmt)
+
+    def page_label(page: int) -> str:
+        text = label(page, total) if callable(label) else label
+        if not isinstance(text, str):
+            raise TypeError(f"label must be a str, got {type(text).__name__}")
+        return label_text(fmt, page, total, text)
+
     if total == 0:
-        yield Page(1, 0, blank_page(fmt, label_text(fmt, 1, 0, label)))
+        yield Page(1, 0, blank_page(fmt, page_label(1)))
         return
 
     buf = np.frombuffer(data, dtype=np.uint8)
@@ -105,6 +121,6 @@ def encode(data: bytes | BinaryIO, fmt: PageFormat, label: str = "") -> Iterator
         codewords = encode_symbols(words, fmt)
         bits = (codewords[None, :] >> shifts[:, None]) & 1
         pos = np.arange(fmt.fec_largebits)[:, None] * syms + np.arange(nwords)[None, :]
-        pixels = blank_page(fmt, label_text(fmt, i + 1, total, label))
+        pixels = blank_page(fmt, page_label(i + 1))
         pixels[py[pos], px[pos]] = np.where(bits == 1, 0, 255).astype(np.uint8)
         yield Page(i + 1, total, pixels)

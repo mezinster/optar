@@ -95,7 +95,9 @@ def test_ghostscript_render_decodes(ghostscript, tmp_path, paper_name, capsys):
 
     paper = PAPERS[paper_name]
     fmt = PageFormat.for_paper(paper)
-    expected = [p.pixels for p in encode(data, fmt, tagged_label(make_tag(data), LABEL))]
+    tag = make_tag(data)
+    label = lambda page, total: tagged_label(tag, LABEL, page, total)  # noqa: E731
+    expected = [p.pixels for p in encode(data, fmt, label)]
     renders = sorted(tmp_path.glob("r_*.png"))
     assert len(renders) == len(expected) == 2
     width, height = RENDER_SIZES[paper_name]

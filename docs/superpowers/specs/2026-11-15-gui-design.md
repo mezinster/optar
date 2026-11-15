@@ -141,15 +141,17 @@ The reader must match what is printed, which is not the full text the encoder bu
 
 ### The document tag
 
-**Form.** `[SIZE:FINGERPRINT]`, where SIZE is the file's length in bytes in decimal and FINGERPRINT is the first 8 hexadecimal digits of the SHA-256 of its contents. Example label: `[2481152:3f9a2c1b] holiday-photos.tar`.
+**Form.** `[SIZE:FINGERPRINT:CC]`, where SIZE is the file's length in bytes in decimal, FINGERPRINT is the first 8 hexadecimal digits of the SHA-256 of its contents, and CC is a per-page check: the first 2 lower-case hexadecimal digits of the SHA-256 of the ASCII text `SIZE:FINGERPRINT:PAGE/TOTAL`. Example label: `[2481152:3f9a2c1b:7e] holiday-photos.tar`. The two-field form `[SIZE:FINGERPRINT]` is not a tag (it was never released); text of that form is just a name.
 
+- The check covers the size, the fingerprint, the page number and the total pages, and is computed for each page, so it differs from page to page of one printout.
+- **Why it is there.** The label is read back by character matching, and no confidence measure fully separates a correct reading from a misread one. The dangerous misread turns one digit into another, because the result is still well-formed: a page number misread this way would put the page in the wrong slot of the right document, and only the final fingerprint would notice, with nothing pointing at the bad page. With the check, a misread label is caught when the scan is identified: a label whose check does not match its own size, fingerprint, page and total is treated exactly like an unreadable label. An accidental misread passes the check about 1 time in 256.
 - The tag comes **before** the name, so that when the label is too long for the page it is the name that is cut, never the tag.
-- It costs at most 22 of the roughly 70 characters available to the name on A4.
-- It uses only digits, the letters a to f, brackets and a colon, all of which are in the label font.
+- It costs at most 25 of the 66 to 72 characters available to the name on A4 (3 more than without the check). The tag is never cut for any page number up to 9999 on A4 or Letter; in the worst case (page 9999/9999 of a file with a 10-digit size) 41 characters remain for the name on A4 and 44 on Letter.
+- It uses only digits, the letters a to f, brackets and colons, all of which are in the label font.
 
-**Writing it.** A library function makes the tag from the file's contents. The window's "Put on paper" tab always adds it. `optar encode` adds it by default and gains `--no-tag` to leave it out. The encoder itself is unchanged, since the label is free text; pages produced with the same label are still byte-identical to the C encoder's.
+**Writing it.** A library function makes the tag from the file's contents. The window's "Put on paper" tab always adds it. `optar encode` adds it by default and gains `--no-tag` to leave it out. Because each page's check differs, the encoder accepts the label either as text or as a function of the page number and total that returns each page's text; pages produced with the same label text are still byte-identical to the C encoder's.
 
-**Using it.** When a scan's label carries a valid tag:
+**Using it.** When a scan's label carries a valid tag (well-formed, fitting the page count and with the right check for the page number and total read):
 
 - The document's identity is the format string, the total pages and the tag. The name is shown but not used for matching.
 - A tag is valid only if its size fits the page count: more than `(total - 1)` pages' worth of bytes and at most `total` pages' worth. Otherwise the scan is treated as not identified.
@@ -232,7 +234,7 @@ These are useful without the window and are tested on their own.
 2. **Scan identification.** Given a scan, return its paper preset, the rotation needed, and the parsed label, or a reason it could not be identified.
 3. **Decode detail.** On request, `decode_page` also returns the channel positions of every bit that error correction changed, the indices of unrecoverable blocks, and the page grid needed to map a page position to a scan pixel. The default result and its cost are unchanged.
 4. **Thread safety of scan loading.** `read_scan` currently changes a Pillow setting for the whole process while it runs. It must be safe to call from several threads at once.
-5. **Document tag.** Make a tag from file contents; parse a label's free text into tag and name; check a tag against a page count; verify recovered data against a tag.
+5. **Document tag.** Make a tag from file contents; parse a label's free text into tag, check and name; check a tag against a page count and its check against the page number and total; verify recovered data against a tag.
 6. **`optar encode` adds the tag** by default, with `--no-tag` to omit it. Its tests, the README and the release smoke script are updated to match.
 7. **Shared safe-write helper.** The temporary-file-and-replace logic moves from `cli.py` to the library so the window uses the same code. The command line's behaviour does not change.
 
@@ -294,6 +296,7 @@ These are useful without the window and are tested on their own.
 - The application is a separate package (`optar_gui`) in the same repository and a separate download.
 - The label-reading and identification code goes in the library, not the application.
 - The tag is `[SIZE:FINGERPRINT]` with 8 hexadecimal digits of SHA-256, placed before the name.
+- After review, the tag gained a per-page check code, `[SIZE:FINGERPRINT:CC]`, so that a misread label is caught when the scan is identified.
 - `optar encode` adds the tag by default (`--no-tag` omits it); `optar decode` is not changed in this project.
 - Untagged printouts still work, with a standing caution and zero padding.
 - Version 0.2.0.

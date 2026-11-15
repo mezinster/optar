@@ -18,7 +18,7 @@ from optar.identify import (
     identify_scan,
 )
 from optar.label import MIN_LABEL_CONFIDENCE, MIN_LABEL_MARGIN, parse_label, read_label
-from optar.tag import make_tag, tagged_label
+from optar.tag import Tag, make_tag, tagged_label
 from tests.helpers import DEGRADED, fake_scan, seeded_bytes
 
 
@@ -27,8 +27,8 @@ def document(paper):
     """A two-page tagged document: (fmt, data, pages)."""
     fmt = PageFormat.for_paper(PAPERS[paper])
     data = seeded_bytes(4, fmt.net_bits // 8 + 700)
-    label = tagged_label(make_tag(data), "doc.tar")
-    return fmt, data, tuple(encode(data, fmt, label))
+    tag = make_tag(data)
+    return fmt, data, tuple(encode(data, fmt, lambda p, t: tagged_label(tag, "doc.tar", p, t)))
 
 
 def scan_of(paper, page_no=2, name="doc.tar", **kw):
@@ -215,7 +215,8 @@ def test_rejects_bad_images():
 
 def test_tag_that_does_not_fit_is_not_identified():
     fmt = PageFormat.for_paper(PAPERS["a4"])
-    page = next(encode(b"abc", fmt, "[999999999:3f9a2c1b] x")).pixels
+    label = tagged_label(Tag(999999999, "3f9a2c1b"), "x", 1, 1)
+    page = next(encode(b"abc", fmt, label)).pixels
     with pytest.raises(IdentifyError, match="label unreadable"):
         identify_scan(fake_scan(page, scale=1, margin=40))
 
@@ -223,8 +224,8 @@ def test_tag_that_does_not_fit_is_not_identified():
 def test_tag_printed_for_another_page_count_is_not_identified():
     # The tag of the two-page document, printed on a one-page printout.
     fmt, data, _ = document("letter")
-    for label, accepted in ((tagged_label(make_tag(data), "doc.tar"), False),
-                            (tagged_label(make_tag(b"abc"), "doc.tar"), True)):
+    for label, accepted in ((tagged_label(make_tag(data), "doc.tar", 1, 1), False),
+                            (tagged_label(make_tag(b"abc"), "doc.tar", 1, 1), True)):
         page = next(encode(b"abc", fmt, label)).pixels
         img = fake_scan(page, scale=1, margin=40)
         ident = optar.identify._identify_upright(img, 0, PAPERS["letter"], None)
@@ -255,6 +256,82 @@ def test_label_naming_another_format_is_unreadable():
     with pytest.raises(IdentifyError) as e:
         identify_scan(other_format_scan())
     assert e.value.reason == "label unreadable"
+
+
+# A tag whose size fits 8 A4 pages (7 * 199773 < size <= 8 * 199773), and the
+# same tag with the size or the fingerprint changed in one digit.
+EIGHT = Tag(1500000, "3f9a2c1b")
+
+
+def check_label(text):
+    """A blank A4 page labelled `text`: (whether the label read reliably and
+    exactly as printed, the candidate for A4 upright or None)."""
+    fmt = PageFormat.for_paper(PAPERS["a4"])
+    full = label_text(fmt, 8, 8, text)
+    img = fake_scan(blank_page(fmt, full), scale=1, margin=40)
+    readings = []
+
+    def reading(grid):
+        readings.append(read_label(grid))
+        return readings[-1]
+
+    with mock.patch.object(optar.identify, "read_label", reading):
+        ident = optar.identify._identify_upright(img, 0, PAPERS["a4"], None)
+    return readings[0].reliable and readings[0].text == full, ident
+
+
+def test_label_with_the_right_check_is_identified():
+    clear, ident = check_label(tagged_label(EIGHT, "x", 8, 8))
+    assert clear and ident is not None
+    assert (ident.page, ident.total, ident.tag, ident.name) == (8, 8, EIGHT, "x")
+
+
+def forged(size, fingerprint, check):
+    return f"[{size}:{fingerprint}:{check}] x"
+
+
+# Each label below reads clearly and says page 8 of 8 with a tag that fits 8
+# pages; only the check can tell that the label is not what was printed.
+@pytest.mark.parametrize("text", [
+    tagged_label(EIGHT, "x", 3, 8),                          # the check of page 3
+    tagged_label(EIGHT, "x", 8, 9),                          # the check for 9 pages
+    forged(1510000, EIGHT.fingerprint, EIGHT.check(8, 8)),   # size one digit off
+    forged(EIGHT.size, "3f9a2c1c", EIGHT.check(8, 8)),       # fingerprint one digit off
+], ids=["other-page", "other-total", "size", "fingerprint"])
+def test_label_with_a_wrong_check_is_not_identified(text):
+    from optar.tag import split_label
+
+    tag, check, _ = split_label(text)
+    assert tag is not None and tag.fits(8, PageFormat.for_paper(PAPERS["a4"]))
+    assert check != tag.check(8, 8)
+    clear, ident = check_label(text)
+    assert clear and ident is None
+
+
+def test_wrong_check_is_reported_as_unreadable_label():
+    fmt = PageFormat.for_paper(PAPERS["a4"])
+    img = fake_scan(blank_page(fmt, label_text(fmt, 8, 8, tagged_label(EIGHT, "x", 3, 8))),
+                    scale=1, margin=40)
+    with mock.patch.object(optar.identify, "_papers_by_shape", lambda c: [PAPERS["a4"]]):
+        with pytest.raises(IdentifyError) as e:
+            identify_scan(img)
+    assert e.value.reason == "label unreadable"
+
+
+def test_misread_page_or_total_rarely_passes_the_check():
+    # Every single-digit substitution of the page or the total in the labels
+    # p/9 (p = 1..9) of one document: 162 forged labels. A check of two hex
+    # digits lets an accidental misread through 1 time in 256, so about 0.6
+    # are expected to pass; measured with this tag: 0.
+    tag = EIGHT
+    passed = []
+    for page in range(1, 10):
+        for digit in range(10):
+            if digit != page and tag.check(digit, 9) == tag.check(page, 9):
+                passed.append((page, 9, digit, 9))
+            if digit != 9 and tag.check(page, digit) == tag.check(page, 9):
+                passed.append((page, 9, page, digit))
+    assert len(passed) <= 3, passed
 
 
 def labelled_blank(page, total):

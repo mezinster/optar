@@ -4,9 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import functools
 import os
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import numpy as np
@@ -58,7 +59,7 @@ def _build_parser() -> argparse.ArgumentParser:
     enc.add_argument(
         "--no-tag",
         action="store_true",
-        help="do not add the size-and-fingerprint tag to the page labels",
+        help="do not add the size, fingerprint and check tag to the page labels",
     )
     common(enc)
 
@@ -93,7 +94,10 @@ def _encode(args: argparse.Namespace) -> int:
     check_encodable(len(data), fmt)  # before any file is created
     base = args.output or "optar_out"
     name = args.label if args.label is not None else Path(args.output or "").name
-    label = name if args.no_tag else tagged_label(make_tag(data), name)
+    # Each page's tag carries its own check: label(page, total).
+    label: str | Callable[[int, int], str] = (
+        name if args.no_tag else functools.partial(tagged_label, make_tag(data), name)
+    )
     written: list[str] = []
     if args.to == "pdf":
         path = f"{base}.pdf"

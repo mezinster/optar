@@ -303,13 +303,15 @@ def test_failed_decode_write_keeps_existing_output(a4_scan, tmp_path, monkeypatc
 
 
 def _spy_labels(monkeypatch):
+    """The labels optar.cli passes to encode, each as the list of page labels it gives."""
     import optar.cli
 
     labels = []
 
     def spy(data, fmt, label=""):
-        labels.append(label)
-        return encode(data, fmt, label)
+        pages = list(encode(data, fmt, label))
+        labels.append([label(p.number, p.total) if callable(label) else label for p in pages])
+        return iter(pages)
 
     monkeypatch.setattr(optar.cli, "encode", spy)
     return labels
@@ -324,8 +326,8 @@ def test_default_label_is_tagged_output_file_name(tmp_path, infile, monkeypatch)
     (tmp_path / "sub").mkdir()
     assert main(_encode_args(infile, tmp_path / "sub" / "name", "--to", "pgm")) == 0
     assert main(_encode_args(infile, tmp_path / "x", "--to", "pgm", "--label", "my name")) == 0
-    assert labels[-2:] == [tagged_label(tag, "name"), tagged_label(tag, "my name")]
-    assert labels[-1] == f"[{tag.size}:{tag.fingerprint}] my name"
+    assert labels[-2:] == [[tagged_label(tag, "name", 1, 1)], [tagged_label(tag, "my name", 1, 1)]]
+    assert labels[-1] == [f"[{tag.size}:{tag.fingerprint}:{tag.check(1, 1)}] my name"]
 
 
 def test_no_tag_keeps_plain_label(tmp_path, infile, monkeypatch):
@@ -335,18 +337,38 @@ def test_no_tag_keeps_plain_label(tmp_path, infile, monkeypatch):
     args = _encode_args(infile, tmp_path / "x", "--to", "pgm", "--label", "mine", "--no-tag")
     assert main(args) == 0
     assert main(_encode_args(infile, tmp_path / "y", "--to", "pgm", "--no-tag")) == 0
-    assert labels == ["name", "mine", "y"]
+    assert labels == [["name"], ["mine"], ["y"]]
 
 
-def test_encode_adds_tag_by_default(tmp_path, infile):
+def test_no_tag_passes_the_plain_string(tmp_path, infile, monkeypatch):
+    import optar.cli
+
+    passed = []
+
+    def spy(data, fmt, label=""):
+        passed.append(label)
+        return encode(data, fmt, label)
+
+    monkeypatch.setattr(optar.cli, "encode", spy)
+    assert main(_encode_args(infile, tmp_path / "x", "--to", "pgm", "--no-tag")) == 0
+    assert passed == ["x"]
+
+
+def test_encode_adds_tag_by_default(tmp_path):
     from optar.imageio import pgm_bytes
     from optar.tag import make_tag, tagged_label
 
-    data = infile.read_bytes()
-    assert main(_encode_args(infile, tmp_path / "out", "--to", "pgm")) == 0
+    data = seeded_bytes(5, 250_000)
+    src = tmp_path / "big.bin"
+    src.write_bytes(data)
+    assert main(_encode_args(src, tmp_path / "out", "--to", "pgm")) == 0
     fmt = PageFormat.for_paper(PAPERS["a4"])
-    want = next(encode(data, fmt, tagged_label(make_tag(data), "out"))).pixels
-    assert (tmp_path / "out_0001.pgm").read_bytes() == pgm_bytes(want)
+    tag = make_tag(data)
+    want = list(encode(data, fmt, lambda p, t: tagged_label(tag, "out", p, t)))
+    assert len(want) == 2 and tag.check(1, 2) != tag.check(2, 2)
+    for page in want:
+        got = (tmp_path / f"out_{page.number:04d}.pgm").read_bytes()
+        assert got == pgm_bytes(page.pixels)
 
 
 def test_no_tag_output_is_plain_label_output(tmp_path, infile):
@@ -359,11 +381,13 @@ def test_no_tag_output_is_plain_label_output(tmp_path, infile):
 
 
 def test_empty_input_gets_empty_tag(tmp_path, monkeypatch):
+    from optar.tag import Tag
+
     labels = _spy_labels(monkeypatch)
     empty = tmp_path / "empty.bin"
     empty.write_bytes(b"")
     assert main(_encode_args(empty, tmp_path / "e", "--to", "pgm")) == 0
-    assert labels == ["[0:e3b0c442] e"]
+    assert labels == [[f"[0:e3b0c442:{Tag(0, 'e3b0c442').check(1, 0)}] e"]]
     assert sorted(p.name for p in tmp_path.glob("e_*.pgm")) == ["e_0001.pgm"]
 
 
@@ -376,12 +400,17 @@ def test_written_tag_parses_back(tmp_path, monkeypatch):
     src.write_bytes(data)
     assert main(_encode_args(src, tmp_path / "big", "--to", "pgm")) == 0
     fmt = PageFormat.for_paper(PAPERS["a4"])
-    total = len(list(encode(data, fmt)))
+    total = len(labels[-1])
     assert total == 2
-    tag, name = split_label(labels[-1])
-    assert tag is not None and name == "big"
-    assert tag.matches(data)
-    assert tag.fits(total, fmt)
+    tags = set()
+    for page, label in enumerate(labels[-1], start=1):
+        tag, check, name = split_label(label)
+        assert tag is not None and name == "big"
+        assert tag.matches(data) and tag.fits(total, fmt)
+        assert check == tag.check(page, total)
+        tags.add(tag)
+    assert len(tags) == 1
+    assert labels[-1][0] != labels[-1][1]  # the checks differ between the pages
 
 
 def test_every_option_has_help():

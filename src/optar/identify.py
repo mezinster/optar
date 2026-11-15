@@ -108,8 +108,12 @@ def _identify_upright(
     # The page count is untrusted: the encoder never writes more than MAX_PAGES.
     if info.total > MAX_PAGES or not 1 <= info.page <= min(max(info.total, 1), MAX_PAGES):
         return None
-    tag, name = split_label(info.text)
-    if tag is not None and not tag.fits(info.total, fmt):
+    tag, check, name = split_label(info.text)
+    # The check covers the page number and count as read: a misread digit
+    # that still leaves a well-formed label is caught here.
+    if tag is not None and not (
+        tag.fits(info.total, fmt) and tag.check(info.page, info.total) == check
+    ):
         return None
     return ScanIdentity(
         paper, fmt, rotation, info.page, info.total, tag, name,
@@ -124,7 +128,8 @@ def identify_scan(image: np.ndarray, options: DecodeOptions | None = None) -> Sc
     page outline, else IdentifyError("label unreadable") when no rotation and
     paper give a label that reads reliably, parses, carries the paper's own
     format string, a page number within the total, a total the encoder could
-    have written (at most MAX_PAGES) and a tag (if any) that fits the total.
+    have written (at most MAX_PAGES) and a tag (if any) that fits the total
+    and whose check is right for the page number and total read.
     """
     image = _check(image)
     rotations = candidate_rotations(image)
