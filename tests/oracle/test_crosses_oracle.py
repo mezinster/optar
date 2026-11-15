@@ -6,8 +6,6 @@ process_file dumps crosses[][] and cutlevels[][] right after sync_crosses()
 and exits. The repo's C sources are never touched.
 """
 
-import os
-import shlex
 import subprocess
 
 import numpy as np
@@ -48,20 +46,7 @@ def dumping_unoptar(c_build):
     build = c_build()
     if build.unoptar is None:
         pytest.skip("libpng headers not available")
-    src = build.dir / "unoptar.c"
-    text = src.read_text()
-    assert text.count(_HOOK) == 1
-    patched = build.dir / "unoptar_dump.c"
-    patched.write_text(text.replace(_HOOK, _DUMP))
-    cc = cbuild.compiler()
-    flags = cbuild._png_flags()
-    ld = shlex.split(os.environ.get("OPTAR_TEST_LDFLAGS", ""))
-    subprocess.run(
-        [cc, *cbuild.CFLAGS, *flags, "-o", "unoptar_dump", "unoptar_dump.c",
-         "common.o", "golay_codes.o", "parity.o", *ld, "-lm", "-lpng", "-lz"],
-        cwd=build.dir, check=True, capture_output=True,
-    )  # fmt: skip
-    return build.dir / "unoptar_dump"
+    return cbuild.build_patched_unoptar(build, "unoptar_dump", [(_HOOK, _DUMP)])
 
 
 @pytest.mark.parametrize(

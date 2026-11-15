@@ -20,7 +20,10 @@ C_SOURCES = [
     "common.c", "golay.c", "optar.c", "parity.c", "unoptar.c",
     "optar.h", "font.h", "parity.h",
 ]  # fmt: skip
-CFLAGS = ["-O3", "-Wall", "-DNODEBUG"]
+# -ffp-contract=off: no FMA contraction, so C float results match numpy on any CPU.
+CFLAGS = ["-O3", "-Wall", "-DNODEBUG", "-ffp-contract=off"]
+UNOPTAR_OBJECTS = ["common.o", "golay_codes.o", "parity.o"]
+UNOPTAR_LIBS = ["-lm", "-lpng", "-lz"]
 
 
 @dataclass
@@ -75,6 +78,37 @@ def _override(header: Path, overrides: dict[str, int]) -> None:
     header.write_text(text)
 
 
+def _link_unoptar(cc: str, cwd: Path, src: str, name: str) -> Path:
+    """Compile an unoptar source and link it like the normal unoptar."""
+    obj = src.replace(".c", ".o")
+    _run([cc, "-c", *CFLAGS, *_png_flags(), "-o", obj, src], cwd)
+    extra_ld = shlex.split(os.environ.get("OPTAR_TEST_LDFLAGS", ""))
+    _run([cc, "-o", name, obj, *UNOPTAR_OBJECTS, *extra_ld, *UNOPTAR_LIBS], cwd)
+    return cwd / name
+
+
+def build_patched_unoptar(build: CBuild, name: str, replacements: list[tuple[str, str]]) -> Path:
+    """Build a copy of the build's unoptar.c with exact-string replacements applied.
+
+    Each `old` must occur exactly once. Writes <name>.c in the build directory
+    and returns the linked executable. Raises RuntimeError when the build has
+    no unoptar (libpng unavailable); callers skip on build.unoptar is None.
+    """
+    if build.unoptar is None:
+        raise RuntimeError("unoptar was not built (libpng headers not available)")
+    cc = compiler()
+    if cc is None:
+        raise RuntimeError("no C compiler found")
+    text = (build.dir / "unoptar.c").read_text()
+    for old, new in replacements:
+        n = text.count(old)
+        if n != 1:
+            raise ValueError(f"replacement target occurs {n} times, expected 1: {old!r}")
+        text = text.replace(old, new)
+    (build.dir / f"{name}.c").write_text(text)
+    return _link_unoptar(cc, build.dir, f"{name}.c", name)
+
+
 def build_c_tools(dest: Path, format_overrides: dict[str, int] | None = None) -> CBuild:
     """Copy the C sources into dest, apply overrides, and build the tools there."""
     cc = compiler()
@@ -106,13 +140,7 @@ def build_c_tools(dest: Path, format_overrides: dict[str, int] | None = None) ->
 
     unoptar = None
     if has_png:
-        unoptar_o = compile_("unoptar.c", png_flags)
-        _run(
-            [cc, "-o", "unoptar", unoptar_o, common, codes, parity,
-             *extra_ld, "-lm", "-lpng", "-lz"],
-            dest,
-        )  # fmt: skip
-        unoptar = dest / "unoptar"
+        unoptar = _link_unoptar(cc, dest, "unoptar.c", "unoptar")
     return CBuild(dest, dest / "optar", unoptar, dest / "golay_codes.c")
 
 
