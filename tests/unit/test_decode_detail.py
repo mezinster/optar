@@ -5,9 +5,10 @@ import numpy as np
 import pytest
 
 from optar import PageFormat, decode_page, encode
-from optar.decoder import PageGrid, decode_located, locate_page, page_to_scan
+from optar.decoder import PageGrid, _symbols_to_bits, decode_located, locate_page, page_to_scan
 from optar.decoder.sample import _bit_coord
 from optar.errors import DecodeError
+from optar.fec import encode_symbols
 from optar.layout import channel_xy
 from tests.helpers import fake_scan, seeded_bytes
 
@@ -34,7 +35,12 @@ def flipped_scan(page, positions, fmt=F):
 
 def test_detail_reports_exactly_the_flipped_bits(page):
     rng = np.random.default_rng(5)
-    pos = np.sort(rng.choice(F.used_bits, 150, replace=False))
+    # The first and last symbols at their first and last bits, plus random ones.
+    last_bit = (F.fec_largebits - 1) * F.fec_syms
+    edges = np.array([0, last_bit, F.fec_syms - 1, F.fec_syms - 1 + last_bit])
+    inner = rng.choice(np.arange(1, F.fec_syms - 1), 150, replace=False)
+    inner = inner + rng.integers(0, F.fec_largebits, 150) * F.fec_syms
+    pos = np.sort(np.concatenate([edges, inner]))
     r = decode_page(flipped_scan(page, pos), F, detail=True)
     assert r.stats.uncorrectable == 0
     assert np.array_equal(r.corrected_bits, pos) and r.corrected_bits.dtype == np.int64
@@ -77,6 +83,35 @@ def test_hamming_single_flips_are_reported(hamming_page):
     r = decode_page(flipped_scan(hamming_page, pos, H), H, detail=True)
     assert r.stats.uncorrectable == 0 and r.stats.error_histogram[1] == 100
     assert np.array_equal(r.corrected_bits, pos)
+
+
+@pytest.mark.parametrize("order", [2, 3, 4, 5])
+def test_hamming_detail_at_symbol_level(order):
+    fmt = PageFormat(65, 93, fec_order=order)
+    syms, large = fmt.fec_syms, fmt.fec_largebits
+    rng = np.random.default_rng(order)
+    words = rng.integers(0, 1 << fmt.fec_smallbits, syms).astype(np.uint32)
+    codewords = encode_symbols(words, fmt)
+    shifts = np.arange(large - 1, -1, -1, dtype=np.uint32)
+    channel = np.zeros(fmt.total_bits, np.uint8)
+    channel[: fmt.used_bits] = ((codewords[None, :] >> shifts[:, None]) & 1).ravel()
+    # One wrong bit in 300 symbols, every bit index (parity bit included) used.
+    bad = np.sort(rng.choice(syms, 300, replace=False))
+    bits = np.arange(bad.size) % large
+    pos = np.sort(bad + bits * syms)
+    channel[pos] ^= 1
+    out, errors, corrected = _symbols_to_bits(channel, fmt, detail=True)
+    assert np.array_equal(corrected, pos) and corrected.dtype == np.int64
+    assert np.count_nonzero(errors == 1) == 300 and np.count_nonzero(errors < 0) == 0
+    expected = ((words[:, None] >> np.arange(fmt.fec_smallbits - 1, -1, -1)) & 1).ravel()
+    assert np.array_equal(out, expected)
+
+
+def test_page_grid_compares_by_identity(page):
+    scan = fake_scan(page, scale=1, margin=40)
+    a, b = locate_page(scan, F), locate_page(scan, F)
+    assert a == a and a != b
+    assert hash(a) == hash(a) and len({a, b}) == 2
 
 
 def test_default_result_is_unchanged(page):

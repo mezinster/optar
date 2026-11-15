@@ -23,7 +23,7 @@ from optar.decoder.filters import blur, minmax
 from optar.decoder.geometry import Geometry, compute_geometry, find_corners
 from optar.decoder.levels import Levels, analyze_levels
 from optar.decoder.options import DecodeOptions
-from optar.decoder.sample import _bilinear, sample_bits
+from optar.decoder.sample import _cell, _cell_point, sample_bits
 from optar.errors import DecodeError
 from optar.fec import decode_symbols, encode_symbols
 from optar.format import PageFormat
@@ -58,7 +58,7 @@ class PageStats:
         return nonzero[-1] if nonzero else 0
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class PageGrid:
     """A located page: everything sampling and label reading need."""
 
@@ -213,23 +213,13 @@ def page_to_scan(grid: PageGrid, x, y) -> tuple[np.ndarray, np.ndarray]:
     x, y are as layout.channel_xy (relative to the top-left cross, without
     the border), scalars or arrays of any shape, and may be fractional or lie
     outside the cross grid: they are interpolated, or extrapolated from the
-    nearest cell, between the cross centres as the sampler does.
+    nearest cell, between the cross centres as the sampler does. They must
+    be finite.
     """
-    fmt = grid.fmt
-    c, p = fmt.chalf, fmt.cpitch
     x, y = np.broadcast_arrays(np.asarray(x), np.asarray(y))
     shape = x.shape
-    x, y = x.ravel(), y.ravel()
-    cx = np.minimum(np.where(x < c, 0, np.floor_divide(x - c, p)), fmt.xcrosses - 2)
-    cy = np.minimum(np.where(y < c, 0, np.floor_divide(y - c, p)), fmt.ycrosses - 2)
-    cx, cy = cx.astype(np.int64), cy.astype(np.int64)
-    xrem = ((x - (cx * p + c)) + 0.5) / p  # as sample._bit_coord
-    yrem = ((y - (cy * p + c)) + 0.5) / p
-    pos = grid.positions
-    corners = (pos[cx, cy], pos[cx + 1, cy], pos[cx, cy + 1], pos[cx + 1, cy + 1])
-    xd = _bilinear(*(q[:, 0] for q in corners), xrem, yrem)
-    yd = _bilinear(*(q[:, 1] for q in corners), xrem, yrem)
-    return (xd - 0.5).reshape(shape), (yd - 0.5).reshape(shape)
+    xd, yd = _cell_point(grid.positions, *_cell(x.ravel(), y.ravel(), grid.fmt))
+    return xd.reshape(shape), yd.reshape(shape)
 
 
 def decode_pages(
