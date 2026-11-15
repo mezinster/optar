@@ -7,6 +7,7 @@ are not part of it, and the unreadable scans.
 """
 
 import itertools
+import random
 import subprocess
 import sys
 
@@ -90,6 +91,11 @@ def test_same_path_added_twice_is_ignored(tmp_path, monkeypatch):
     assert doc.add_scan(str(tmp_path / "sub" / ".." / "a.png")) is None
     assert [s.id for s in doc.scans()] == [first]
     assert doc.scan(first).path == str(tmp_path / "a.png")
+    # The path is shown as given; only the comparison uses the resolved path.
+    second = doc.add_scan("./b.png")
+    assert doc.scan(second).path == "./b.png"
+    assert doc.add_scan(str(tmp_path / "b.png")) is None
+    doc.remove_scan(second)
     assert doc.scan(first).state == ScanState.WAITING
     assert picture(doc) == {"current": None, "slots": [], "others": [], "unreadable": []}
 
@@ -203,8 +209,12 @@ def test_tagged_and_untagged_never_mix():
 )
 def test_mixed_papers_are_separate_groups(second):
     doc, (a, b) = build(info(1), second)
-    assert picture(doc)["current"] == (a,)
-    assert picture(doc)["others"] == [(b,)]
+    assert picture(doc) == {
+        "current": (a,),
+        "slots": [(1, a, ()), (2, None, ()), (3, None, ())],
+        "others": [(b,)],
+        "unreadable": [],
+    }
     assert (doc.others()[0].format, doc.others()[0].total) == (second.format, second.total)
 
 
@@ -250,16 +260,30 @@ def test_duplicate_ranking(first, second, winner):
     doc, ids = build(info(1), info(1))
     doc.set_outcome(ids[0], first)
     doc.set_outcome(ids[1], second)
-    assert doc.slots()[0] == PageSlot(1, ids[winner], (ids[1 - winner],))
+    assert picture(doc) == {
+        "current": tuple(ids),
+        "slots": [(1, ids[winner], (ids[1 - winner],)), (2, None, ()), (3, None, ())],
+        "others": [],
+        "unreadable": [],
+    }
 
 
 def test_duplicate_without_outcome_ranks_last():
     doc, (pending, done) = build(info(1), info(1))
-    assert doc.slots()[0] == PageSlot(1, pending, (done,))  # neither has one: earliest
+    # Neither has an outcome: the earliest added is in use.
+    assert picture(doc) == {
+        "current": (pending, done),
+        "slots": [(1, pending, (done,)), (2, None, ()), (3, None, ())],
+        "others": [],
+        "unreadable": [],
+    }
     doc.set_outcome(done, out(lost=7))
-    assert doc.slots()[0] == PageSlot(1, done, (pending,))
-    assert picture(doc)["others"] == []
-    assert picture(doc)["unreadable"] == []
+    assert picture(doc) == {
+        "current": (pending, done),
+        "slots": [(1, done, (pending,)), (2, None, ()), (3, None, ())],
+        "others": [],
+        "unreadable": [],
+    }
 
 
 def test_use_scan_of_a_scan_outside_the_document_raises():
@@ -600,6 +624,293 @@ def test_final_state_does_not_depend_on_the_order_results_arrive():
         "others": [(2,), (5,)],
         "unreadable": [6],
     }
+
+
+# --- Keys and titles ------------------------------------------------------------
+
+
+def test_group_key_is_its_earliest_scan_and_an_old_key_still_works():
+    doc, (a, early, x) = build(info(1), None, info(1, name="n", tag=None))
+    old_key = doc.others()[0].key
+    assert old_key == x
+    doc.set_identified(early, info(2, name="n", tag=None))
+    assert doc.others()[0].key == early
+    doc.switch_to(old_key)  # the group that now contains scan x
+    assert picture(doc) == {
+        "current": (early, x),
+        "slots": [(1, x, ()), (2, early, ()), (3, None, ())],
+        "others": [(a,)],
+        "unreadable": [],
+    }
+    assert doc.current.key == early
+    for bad_key in (99, a + 100, None):
+        with pytest.raises(KeyError):
+            doc.switch_to(bad_key)
+
+
+def test_switch_to_a_scan_in_no_group_raises():
+    doc, (a, bad) = build(info(1), None)
+    doc.set_unreadable(bad, "label unreadable")
+    with pytest.raises(KeyError):
+        doc.switch_to(bad)
+
+
+def test_tagged_group_title_is_the_longest_name():
+    doc, (a, b) = build(info(1, name="holiday-photos.t"), info(2, name="holiday-photos.tar"))
+    assert doc.current.title == "holiday-photos.tar"
+
+
+# --- User choices are never lost to background results ----------------------------
+
+
+@pytest.mark.parametrize("order", [(3, 4), (4, 3)])
+def test_regression_switch_choice_does_not_drift_with_result_order(order):
+    # The user picks the "ac" printout; "a" and "ab" (added earlier) arrive later
+    # in either order. "a" briefly groups with "ac" in one order; it must not
+    # carry the user's choice away.
+    doc = Document()
+    ids = [add(doc, n) for n in range(1, 6)]
+    doc.set_identified(ids[0], info(1))
+    doc.set_identified(ids[4], info(3, name="ac", tag=None))
+    doc.switch_to(doc.others()[0].key)
+    late = {3: info(1, name="a", tag=None), 4: info(2, name="ab", tag=None)}
+    for n in order:
+        doc.set_identified(ids[n - 1], late[n])
+    assert picture(doc) == {
+        "current": (5,),
+        "slots": [(1, None, ()), (2, None, ()), (3, 5, ())],
+        "others": [(1,), (3, 4)],
+        "unreadable": [],
+    }
+
+
+@pytest.mark.parametrize("unreadable_first", [True, False])
+def test_regression_switch_choice_not_reset_by_an_unreadable_scan(unreadable_first):
+    doc, (a, b, c) = build(info(1), info(1, tag=OTHER_TAG), None)
+    doc.switch_to(b)
+    steps = [lambda: doc.set_unreadable(b, "decoding failed"),
+             lambda: doc.set_identified(c, info(2, tag=OTHER_TAG))]
+    for step in steps if unreadable_first else reversed(steps):
+        step()
+    # The choice is {b}; while b is not grouped the default rule shows the earliest
+    # printout, in both orders.
+    assert picture(doc) == {
+        "current": (a,),
+        "slots": [(1, a, ()), (2, None, ()), (3, None, ())],
+        "others": [(c,)],
+        "unreadable": [b],
+    }
+
+
+@pytest.mark.parametrize("identified_first", [True, False])
+def test_regression_assignment_survives_identified_then_unreadable(identified_first):
+    doc, (e, a, f, bad) = build(None, info(1), None, None)
+    doc.set_unreadable(bad, "label unreadable")
+    doc.assign_page(bad, 2)
+    doc.set_outcome(a, out())
+    steps = [lambda: doc.set_identified(e, info(1, tag=OTHER_TAG)),
+             lambda: doc.set_unreadable(e, "decoding failed")]
+    for step in steps if identified_first else reversed(steps):
+        step()
+    assert picture(doc) == {
+        "current": (a, bad),
+        "slots": [(1, a, ()), (2, bad, ()), (3, None, ())],
+        "others": [],
+        "unreadable": [e],
+    }
+
+
+@pytest.mark.parametrize("identified_first", [True, False])
+def test_regression_use_scan_survives_identified_then_unreadable(identified_first):
+    doc, (e, a, b) = build(None, info(1), info(1))
+    doc.set_outcome(a, out())
+    doc.set_outcome(b, out(3))
+    doc.use_scan(b)
+    steps = [lambda: doc.set_identified(e, info(1, tag=OTHER_TAG)),
+             lambda: doc.set_unreadable(e, "decoding failed")]
+    for step in steps if identified_first else reversed(steps):
+        step()
+    assert picture(doc) == {
+        "current": (a, b),
+        "slots": [(1, b, (a,)), (2, None, ()), (3, None, ())],
+        "others": [],
+        "unreadable": [e],
+    }
+
+
+def test_choice_and_assignments_are_inactive_not_lost_while_their_scans_are_away():
+    doc, (a, b, bad) = build(info(1), info(1, tag=OTHER_TAG), None)
+    doc.set_unreadable(bad, "label unreadable")
+    doc.switch_to(b)
+    doc.assign_page(bad, 2)
+    away = {
+        "current": (a,),
+        "slots": [(1, a, ()), (2, None, ()), (3, None, ())],
+        "others": [],
+        "unreadable": [b, bad],
+    }
+    doc.set_identified(b, info(7, tag=OTHER_TAG))  # out of range: b is not grouped
+    assert picture(doc) == away
+    doc.set_identified(b, info(1, tag=OTHER_TAG))
+    assert picture(doc) == {
+        "current": (b, bad),
+        "slots": [(1, b, ()), (2, bad, ()), (3, None, ())],
+        "others": [(a,)],
+        "unreadable": [],
+    }
+
+
+def test_assigned_scan_that_becomes_unreadable_stays_in_its_slot():
+    doc, (a, foreign) = build(info(1), info(1, tag=OTHER_TAG))
+    doc.assign_page(foreign, 3)
+    doc.set_unreadable(foreign, "decoding failed")
+    assert picture(doc) == {
+        "current": (a, foreign),
+        "slots": [(1, a, ()), (2, None, ()), (3, foreign, ())],
+        "others": [],
+        "unreadable": [],
+    }
+    assert doc.scan(foreign).state == ScanState.UNREADABLE
+
+
+def test_working_in_the_default_document_keeps_it():
+    # Assigning a page makes the document the user's choice, so an earlier-added scan
+    # that later turns out to be another printout does not take over.
+    doc, (early, a, bad) = build(None, info(1), None)
+    doc.set_unreadable(bad, "label unreadable")
+    doc.assign_page(bad, 2)
+    doc.set_identified(early, info(1, tag=OTHER_TAG))
+    assert picture(doc) == {
+        "current": (a, bad),
+        "slots": [(1, a, ()), (2, bad, ()), (3, None, ())],
+        "others": [(early,)],
+        "unreadable": [],
+    }
+
+
+def test_switching_back_after_leaving_drops_what_was_done_there():
+    doc, (a, b, bad) = build(info(1), info(1, tag=OTHER_TAG), None)
+    doc.set_unreadable(bad, "label unreadable")
+    doc.assign_page(bad, 3)
+    doc.switch_to(b)
+    doc.switch_to(a)
+    assert picture(doc) == {
+        "current": (a,),
+        "slots": [(1, a, ()), (2, None, ()), (3, None, ())],
+        "others": [(b,)],
+        "unreadable": [bad],
+    }
+
+
+# --- Property: the order of background results does not matter --------------------
+
+POOL = [
+    info(1, name="", tag=None),
+    info(1, name="a", tag=None),
+    info(2, name="ab", tag=None),
+    info(3, name="ac", tag=None),
+    info(2, name="ab  ", tag=None),
+    info(1, name="ab", tag=None),
+    info(1),
+    info(2),
+    info(2, name="other"),
+    info(1, tag=OTHER_TAG),
+    info(5),  # page out of range
+    info(1, total=0, name="a", tag=None),
+    info(2, fmt=LETTER, name="ab", tag=None),
+    info(1, fmt=LETTER),
+]
+
+
+def _random_scenario(rng):
+    """Scans with their final background events, and the number of user operations.
+
+    Each background event is put in a batch: batch j happens before user operation j,
+    the last batch after all of them. Only the order within a batch varies.
+    """
+    n = rng.randint(3, 7)
+    n_ops = rng.randint(1, 4)
+    events = []
+    for scan in range(n):
+        mine = []
+        if rng.random() < 0.3:
+            mine.append(("working", None))
+        if rng.random() < 0.85:
+            mine.append(("identified", rng.choice(POOL)))
+        if rng.random() < 0.5:
+            mine.append(("outcome", out(rng.randint(0, 2), rng.randint(0, 3))))
+        if rng.random() < 0.35:
+            mine.append(("unreadable", "decoding failed"))
+        events += [(rng.randint(0, n_ops), scan, kind, value) for kind, value in mine]
+    return n, n_ops, events
+
+
+def _random_operation(rng, doc, ids):
+    """A user operation, mostly valid in the state it is chosen in."""
+    current = doc.current
+    others = [g.key for g in doc.others()]
+    pages = max(current.total, 1) if current else 1
+    kind = rng.choice(["switch", "switch", "hand", "assign", "assign", "use", "remove"])
+    if kind == "switch":
+        return ("switch_to", rng.choice(others) if others and rng.random() < 0.9 else 999)
+    if kind == "hand":
+        return ("start_by_hand", rng.choice([A, LETTER]), rng.randint(0, 3))
+    if kind == "assign":
+        page = rng.randint(1, pages) if rng.random() < 0.9 else pages + 1
+        return ("assign_page", rng.choice(ids), page)
+    if kind == "use" and current and current.scan_ids:
+        return ("use_scan", rng.choice(current.scan_ids))
+    return ("use_scan" if kind == "use" else "remove_scan", rng.choice(ids))
+
+
+def _apply(doc, ids, event):
+    _, scan, kind, value = event
+    method = {
+        "working": lambda i: doc.set_working(i),
+        "identified": lambda i: doc.set_identified(i, value),
+        "outcome": lambda i: doc.set_outcome(i, value),
+        "unreadable": lambda i: doc.set_unreadable(i, value),
+    }[kind]
+    try:
+        method(ids[scan])
+    except KeyError:
+        pass  # the user removed this scan
+
+
+def _run(n, n_ops, events, shuffle, ops, op_rng):
+    """Plays the scenario; chooses the operations (into ops) when op_rng is given."""
+    doc = Document()
+    ids = [add(doc, k) for k in range(n)]
+    results = []
+    for batch in range(n_ops + 1):
+        mine = [e for e in events if e[0] == batch]
+        shuffle(mine)
+        for event in mine:
+            _apply(doc, ids, event)
+        if batch == n_ops:
+            break
+        if op_rng is not None:
+            ops.append(_random_operation(op_rng, doc, ids))
+        name, *args = ops[batch]
+        try:
+            getattr(doc, name)(*args)
+            results.append(None)
+        except (KeyError, ValueError) as error:
+            results.append(type(error))
+    return (doc.current, doc.slots(), doc.others(), doc.unreadable(), doc.scans(), results)
+
+
+def test_property_background_order_never_changes_the_result():
+    scenarios = 1000
+    for seed in range(scenarios):
+        rng = random.Random(seed)
+        n, n_ops, events = _random_scenario(rng)
+        ops: list = []
+        expected = _run(n, n_ops, events, lambda _: None, ops, random.Random(seed + 10**6))
+        for rep in range(5):
+            order = random.Random(seed * 31 + rep)
+            got = _run(n, n_ops, events, order.shuffle, ops, None)
+            assert got == expected, (seed, rep, ops)
 
 
 # --- Values and imports -------------------------------------------------------
