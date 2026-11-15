@@ -114,3 +114,20 @@ def build_c_tools(dest: Path, format_overrides: dict[str, int] | None = None) ->
         )  # fmt: skip
         unoptar = dest / "unoptar"
     return CBuild(dest, dest / "optar", unoptar, dest / "golay_codes.c")
+
+
+def build_seq2xy_dump(build: CBuild) -> Path:
+    """Compile tests/oracle/seq2xy_dump.c against the build's common.o; return the binary."""
+    cc = compiler()
+    if cc is None:
+        raise RuntimeError("no C compiler found")
+    shutil.copy(REPO_ROOT / "tests" / "oracle" / "seq2xy_dump.c", build.dir)
+    extra_c = shlex.split(os.environ.get("OPTAR_TEST_CFLAGS", ""))
+    extra_ld = shlex.split(os.environ.get("OPTAR_TEST_LDFLAGS", ""))
+    _run([cc, "-c", *CFLAGS, *extra_c, "-o", "seq2xy_dump.o", "seq2xy_dump.c"], build.dir)
+    _run(
+        [cc, "-o", "seq2xy_dump", "seq2xy_dump.o", "common.o", "golay_codes.o", "parity.o",
+         "-lm", *extra_ld],
+        build.dir,
+    )  # fmt: skip
+    return build.dir / "seq2xy_dump"
