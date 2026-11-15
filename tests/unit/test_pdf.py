@@ -3,6 +3,7 @@ import numpy as np
 import pytest
 
 from optar.encoder import encode
+from optar.errors import FormatError, OptarError
 from optar.format import PAPERS, PageFormat
 from optar.pdf import write_pdf
 from tests.helpers import parse_pdf, seeded_bytes
@@ -41,3 +42,37 @@ def test_xref_offsets_point_at_objects(tmp_path):
     for n, line in enumerate(lines[3:2 + count], start=1):
         off = int(line[:10])
         assert raw[off:].startswith(b"%d 0 obj" % n)
+
+
+def test_write_pdf_rejects_image_that_would_be_clipped(tmp_path):
+    a4 = PAPERS["a4"]
+    fmt = PageFormat.parse("0-65-95-24-3-1-2-24")
+    page = np.full((fmt.height, fmt.width), 255, np.uint8)
+    with pytest.raises(FormatError, match="margin"):
+        write_pdf(tmp_path / "o.pdf", iter([page]), a4)
+    assert not (tmp_path / "o.pdf").exists()
+
+
+def test_write_pdf_rejects_zero_pages(tmp_path):
+    with pytest.raises(OptarError, match="no pages"):
+        write_pdf(tmp_path / "o.pdf", iter([]), PAPERS["a4"])
+    assert not (tmp_path / "o.pdf").exists()
+
+
+@pytest.mark.parametrize(
+    "page,error",
+    [
+        (np.full((100, 100), 255, np.int64), TypeError),
+        ([[255, 255], [255, 255]], TypeError),
+        (np.full((10, 10, 3), 255, np.uint8), ValueError),
+        (np.zeros((0, 10), np.uint8), ValueError),
+    ],
+)
+def test_write_pdf_rejects_bad_pages(tmp_path, page, error):
+    good = np.full((100, 100), 255, np.uint8)
+    with pytest.raises(error):
+        write_pdf(tmp_path / "first.pdf", iter([page]), PAPERS["a4"])
+    assert not (tmp_path / "first.pdf").exists()
+    with pytest.raises(error):
+        write_pdf(tmp_path / "second.pdf", iter([good, page]), PAPERS["a4"])
+    assert not (tmp_path / "second.pdf").exists()

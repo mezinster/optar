@@ -2,7 +2,7 @@
 import pytest
 
 from optar.errors import FormatError
-from optar.format import PAPERS, PageFormat, get_paper
+from optar.format import MIN_MARGIN_PT, PAPERS, PageFormat, get_paper
 
 A4 = "0-65-93-24-3-1-2-24"
 
@@ -62,3 +62,27 @@ def test_paper_placement_and_fit():
     assert not PageFormat(80, 93).fits(a4)
     with pytest.raises(FormatError):
         get_paper("legal")
+
+
+CLIPPED = "0-65-95-24-3-1-2-24"  # 0.05 pt top margin on A4
+
+
+def test_fits_requires_minimum_margins():
+    a4 = PAPERS["a4"]
+    assert not PageFormat.parse(CLIPPED).fits(a4)
+    for name, paper in PAPERS.items():
+        fmt = PageFormat.for_paper(paper)
+        margins = paper.margins_for(fmt.width, fmt.height)
+        assert min(margins) >= MIN_MARGIN_PT, name
+        assert paper.fits_image(fmt.width, fmt.height)
+
+
+def test_margins_for_a4_preset():
+    a4 = PAPERS["a4"]
+    fmt = PageFormat.for_paper(a4)
+    left, bottom, right, top = a4.margins_for(fmt.width, fmt.height)
+    assert (left, bottom) == (19.22, 17.44)
+    assert right == pytest.approx(595.28 - 19.22 - 556.56)
+    assert top == pytest.approx(841.89 - 17.44 - 807.12)
+    clipped = PageFormat.parse(CLIPPED)
+    assert a4.margins_for(clipped.width, clipped.height)[3] == pytest.approx(0.05, abs=1e-6)

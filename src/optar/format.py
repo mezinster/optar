@@ -13,7 +13,10 @@ from dataclasses import dataclass
 from optar.errors import FormatError
 
 PIXELS_PER_INCH = 200
+POINTS_PER_INCH = 72
 TEXT_WIDTH = 13
+# Smallest margin, on every side, that a printer can be trusted not to clip.
+MIN_MARGIN_PT = 12.0
 
 _FORMAT_RE = re.compile(r"[0-9]+(?:-[0-9]+){7}")
 
@@ -27,6 +30,21 @@ class Paper:
     offset_y_pt: float  # from the bottom edge
     xcrosses: int
     ycrosses: int
+
+    def margins_for(self, width_px: int, height_px: int) -> tuple[float, float, float, float]:
+        """Margins (left, bottom, right, top) in points around an image of the
+        given pixel size placed at this paper's offsets at PIXELS_PER_INCH."""
+        scale = POINTS_PER_INCH / PIXELS_PER_INCH
+        return (
+            self.offset_x_pt,
+            self.offset_y_pt,
+            self.width_pt - self.offset_x_pt - width_px * scale,
+            self.height_pt - self.offset_y_pt - height_px * scale,
+        )
+
+    def fits_image(self, width_px: int, height_px: int) -> bool:
+        """True if every margin around the placed image is at least MIN_MARGIN_PT."""
+        return min(self.margins_for(width_px, height_px)) >= MIN_MARGIN_PT
 
 
 PAPERS: dict[str, Paper] = {
@@ -184,8 +202,5 @@ class PageFormat:
         return cls(xcrosses=paper.xcrosses, ycrosses=paper.ycrosses)
 
     def fits(self, paper: Paper) -> bool:
-        scale = 72 / PIXELS_PER_INCH
-        return (
-            paper.offset_x_pt + self.width * scale <= paper.width_pt
-            and paper.offset_y_pt + self.height * scale <= paper.height_pt
-        )
+        """True if the page image leaves at least MIN_MARGIN_PT on every side of paper."""
+        return paper.fits_image(self.width, self.height)
