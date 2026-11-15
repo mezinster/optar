@@ -1,7 +1,7 @@
 Twibright Optar
 ===============
 
-[![Build Status](https://travis-ci.org/colindean/optar.png?branch=master)](https://travis-ci.org/colindean/optar)
+[![CI](https://github.com/mezinster/optar/actions/workflows/ci.yml/badge.svg)](https://github.com/mezinster/optar/actions/workflows/ci.yml)
 
 _**Special note:** The repository of optar at http://github.com/colindean/optar 
 exists because I (@colindean) had difficulties finding the source and it seemed
@@ -10,6 +10,93 @@ welcomed as pull requests._
 
 This is a program to store data on paper using a 600 dpi black and white laser
 printer and a 600+ dpi scanner.
+
+Python version
+--------------
+
+A Python port, `optar`, encodes a file into page images and decodes scans
+back, in one command-line program. It needs no C compiler, no libpng and no
+ImageMagick.
+
+### Installation
+
+Once a release is published, download the executable for your OS from the
+GitHub Releases page of `mezinster/optar`: `optar-<tag>-linux-x86_64`,
+`optar-<tag>-macos-arm64` or `optar-<tag>-windows-x86_64.exe`.
+
+Or install from source (Python 3.10 or newer; installs numpy and Pillow):
+
+    pip install .
+
+### Usage
+
+    optar encode INPUT [-o BASE] [--paper a4|letter] [--to pdf|png|pgm] [--label TEXT] [--format STRING]
+    optar decode BASE [-o OUTPUT] [--paper a4|letter] [--format STRING] [--debug-images]
+    optar --version
+
+`encode` writes `BASE.pdf` by default (`BASE` defaults to `optar_out`), or
+the pages `BASE_0001.png` (or `.pgm`), `BASE_0002.png`, ... with `--to`.
+
+`decode` reads `BASE_0001.png`, `BASE_0002.png`, ... and writes the data to
+`-o OUTPUT`, or to stdout.
+
+`--paper` defaults to A4 and must be the same for encode and decode.
+
+Exit status: 0 on success; 1 if the data was decoded but is uncorrectable or
+the page numbering has a gap; 2 for a usage or input error.
+
+### Printing and scanning
+
+Print the PDF at actual size (100%), not "fit to page", on a 600 dpi laser
+printer. Each data pixel is 3 x 3 printer dots.
+
+Scan at 600 dpi (or 1200 dpi) in grayscale, lossless (PNG, not JPEG), with the
+page upright (portrait, label at the bottom). Landscape scans are not
+supported; this is inherited from the C decoder.
+
+The decoded output is zero-padded to a whole page and the original length is
+not stored (format version 0, unchanged). **Pack your data with tar if it is
+sensitive to this.**
+
+### Capacity and error correction
+
+One A4 page holds 1,598,184 bits (199,773 bytes) with the default code; one
+Letter page holds 1,540,728 bits (192,591 bytes).
+
+The default is the Golay 24/12 code. Hamming codes of order 2 to 5 are also
+supported, selected through `--format` (the sixth field of the format string).
+
+### Compatibility with the C version
+
+The Python encoder's pages are byte-identical to the C `optar` output for A4,
+Letter and all five error-correction modes (tested against C). The Python
+decoder's cross positions and sampled bits are bit-identical to the C
+`unoptar` on the synthetic test images.
+
+No automated test yet decodes a real print-and-scan. Real scans, together with
+their original file, can be added under `tests/scans/` (see
+`tests/scans/README.md`).
+
+### Development
+
+    python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'
+    .venv/bin/pytest -q
+    .venv/bin/ruff check .
+
+`pytest -q` needs no C compiler. `.venv/bin/pytest -q -m "oracle or gs or slow"`
+also needs a C compiler, libpng headers and Ghostscript, and compares against
+the C tools.
+
+Build the one-file executable and smoke-test it:
+
+    .venv/bin/pyinstaller --onefile --name optar --collect-data optar packaging/entry.py
+    python packaging/smoke.py dist/optar
+
+C reference implementation
+--------------------------
+
+The original C programs follow. They are also the test oracle for the Python
+version.
 
 Building
 --------
