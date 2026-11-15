@@ -21,7 +21,7 @@ dev = ["pytest", "ruff", "pyinstaller"]
 path = "src/optar/__init__.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/optar"]
+packages = ["src/optar", "src/optar_gui"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
