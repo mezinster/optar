@@ -1,6 +1,9 @@
 # (c) GPL 2007 Karel 'Clock' Kulhavy, Twibright Labs; Python port 2026
+import os
+
 import numpy as np
 import pytest
+from PIL import Image
 
 from optar.cli import main
 from optar.encoder import encode
@@ -13,6 +16,17 @@ def infile(tmp_path):
     p = tmp_path / "in.bin"
     p.write_bytes(seeded_bytes(4, 3000))
     return p
+
+
+HINT = "Check that --paper matches the printout."
+
+
+@pytest.fixture(scope="module")
+def a4_scan(tmp_path_factory):
+    """One encoded A4 page scan shared by the decode tests: (base, data)."""
+    d = tmp_path_factory.mktemp("a4scan")
+    data = seeded_bytes(4, 3000)
+    return scans(d, data), data
 
 
 def scans(tmp_path, data, paper="a4", base="scan", skip=()):
@@ -53,10 +67,11 @@ def test_letter_round_trip_through_cli(tmp_path):
     assert (tmp_path / "o").read_bytes()[:3000] == data
 
 
-def test_wrong_paper_exits_1_with_hint(tmp_path, capsys):
-    base = scans(tmp_path, seeded_bytes(6, 3000), paper="a4")
-    assert main(["decode", base, "--paper", "letter", "-o", str(tmp_path / "o")]) in (1, 2)
-    assert "--paper" in capsys.readouterr().err
+def test_wrong_paper_exits_1_with_hint(a4_scan, tmp_path, capsys):
+    base, _ = a4_scan
+    assert main(["decode", base, "--paper", "letter", "-o", str(tmp_path / "o")]) == 1
+    err = capsys.readouterr().err
+    assert err.rstrip().endswith(HINT) and "Traceback" not in err
 
 
 def test_blank_scan_exits_2_without_traceback(tmp_path, capsys):
@@ -64,6 +79,7 @@ def test_blank_scan_exits_2_without_traceback(tmp_path, capsys):
     assert main(["decode", str(tmp_path / "s"), "-o", str(tmp_path / "o")]) == 2
     err = capsys.readouterr().err
     assert err.startswith("optar: ") and "Traceback" not in err
+    assert HINT in err
 
 
 def test_numbering_gap_warns_and_exits_1(tmp_path, capsys):
@@ -102,3 +118,43 @@ def test_version(capsys):
     with pytest.raises(SystemExit):
         main(["--version"])
     assert optar.__version__ in capsys.readouterr().out
+
+
+def test_decode_output_is_byte_exact_with_zero_padding(a4_scan, tmp_path):
+    base, data = a4_scan
+    fmt = PageFormat.for_paper(PAPERS["a4"])
+    assert main(["decode", base, "-o", str(tmp_path / "o")]) == 0
+    out = (tmp_path / "o").read_bytes()
+    assert len(out) == fmt.net_bits // 8
+    assert out == data + bytes(len(out) - len(data))
+
+
+def test_debug_images_only_with_flag(a4_scan, tmp_path):
+    base, _ = a4_scan
+    debug = base + "_0001_debug.png"
+    assert main(["decode", base, "-o", str(tmp_path / "o")]) == 0
+    assert not os.path.exists(debug)
+    assert main(["decode", base, "--debug-images", "-o", str(tmp_path / "o")]) == 0
+    with Image.open(debug) as im, Image.open(base + "_0001.png") as scan:
+        assert im.mode == "L" and im.size == scan.size
+
+
+def test_no_pages_names_first_file(tmp_path, capsys):
+    assert main(["decode", str(tmp_path / "nothing")]) == 2
+    err = capsys.readouterr().err
+    assert "cannot open" in err and "nothing_0001.png" in err
+
+
+def test_encode_unwritable_output_names_file(tmp_path, infile, capsys):
+    for extra in ([], ["--to", "png"]):
+        out = str(tmp_path / "nodir" / "x")
+        assert main(["encode", str(infile), "-o", out, *extra]) == 2
+        err = capsys.readouterr().err
+        assert err.startswith("optar: ") and "nodir" in err and "Traceback" not in err
+
+
+def test_decode_unwritable_output_names_file(a4_scan, tmp_path, capsys):
+    base, _ = a4_scan
+    assert main(["decode", base, "-o", str(tmp_path / "nodir" / "out.bin")]) == 2
+    err = capsys.readouterr().err
+    assert err.splitlines()[-1].startswith("optar: ") and "nodir" in err and "Traceback" not in err

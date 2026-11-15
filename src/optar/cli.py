@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import os
 import sys
 
@@ -56,6 +57,10 @@ def _eprint(message: str) -> None:
     print(message, file=sys.stderr)
 
 
+def _io_error(verb: str, path: str, e: OSError) -> OptarError:
+    return OptarError(f"cannot {verb} {path}: {e.strerror or e}")
+
+
 def _resolve_format(args: argparse.Namespace) -> tuple[Paper, PageFormat]:
     paper = PAPERS[args.paper]
     fmt = PageFormat.parse(args.format) if args.format else PageFormat.for_paper(paper)
@@ -70,7 +75,7 @@ def _encode(args: argparse.Namespace) -> int:
         with open(args.input, "rb") as f:
             data = f.read()
     except OSError as e:
-        raise OptarError(f"cannot read {args.input}: {e.strerror or e}") from e
+        raise _io_error("read", args.input, e) from e
 
     base = args.output or "optar_out"
     label = args.label if args.label is not None else (args.output or "")
@@ -78,13 +83,23 @@ def _encode(args: argparse.Namespace) -> int:
     if args.to == "pdf":
         path = f"{base}.pdf"
         pages = (page.pixels for page in encode(data, fmt, label))
-        count = write_pdf(path, pages, paper)
+        try:
+            count = write_pdf(path, pages, paper)
+        except BaseException as e:
+            with contextlib.suppress(OSError):
+                os.unlink(path)
+            if isinstance(e, OSError):
+                raise _io_error("write", path, e) from e
+            raise
         written.append(f"{path} ({count} page{'s' if count != 1 else ''})")
     else:
         writer = write_png if args.to == "png" else write_pgm
         for page in encode(data, fmt, label):
             path = f"{base}_{page.number:04d}.{args.to}"
-            writer(path, page.pixels)
+            try:
+                writer(path, page.pixels)
+            except OSError as e:
+                raise _io_error("write", path, e) from e
             written.append(path)
     for item in written:
         _eprint(f"wrote {item}")
@@ -137,7 +152,7 @@ def _decode(args: argparse.Namespace) -> int:
             with open(args.output, "wb") as f:
                 f.write(data)
         except OSError as e:
-            raise OptarError(f"cannot write {args.output}: {e.strerror or e}") from e
+            raise _io_error("write", args.output, e) from e
     else:
         sys.stdout.buffer.write(data)
         sys.stdout.buffer.flush()
@@ -158,5 +173,6 @@ def main(argv: list[str] | None = None) -> int:
         _eprint(f"optar: {message}")
         return 2
     except OSError as e:
-        _eprint(f"optar: {e.strerror or e}")
+        where = f"{e.filename}: " if e.filename else ""
+        _eprint(f"optar: {where}{e.strerror or e}")
         return 2

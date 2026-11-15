@@ -70,8 +70,7 @@ def _check_image(image: np.ndarray, fmt: PageFormat) -> np.ndarray:
     h, w = image.shape
     if w < fmt.width or h < fmt.height:
         raise DecodeError(
-            f"scan of {w} x {h} pixels is smaller than the page format's "
-            f"{fmt.width} x {fmt.height}"
+            f"scan of {w} x {h} pixels is smaller than the page format's {fmt.width} x {fmt.height}"
         )
     return image
 
