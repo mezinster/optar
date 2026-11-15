@@ -110,7 +110,14 @@ Health. ``pages()`` gives each slot a health from its scan in use: no scan is
 identified scan with no outcome yet is still working); an unreadable scan (one
 assigned by hand stays in its slot) is ``UNREADABLE``; otherwise the outcome
 decides: any lost block is ``DAMAGED``, else any repaired block is ``REPAIRED``,
-else ``GOOD``.
+else ``GOOD``. ``PageView.reason`` says why an unreadable page is unreadable.
+
+Page size. A document has one page size: the outcome length of the earliest-added
+of its group's own scans (not those assigned by hand) that has an outcome; if none
+has one yet, that of the earliest-added assigned scan in use that has one. A scan
+in use whose outcome has another length (another paper size) cannot be used for
+its page: the page is ``UNREADABLE`` with the reason ``"page size does not match
+this document"`` and gives zeros.
 
 The whole document. ``summary()`` is ``EMPTY`` with no document; ``WORKING``
 while any page is waiting or working; ``VERIFIED`` or ``MISMATCH`` when every page
@@ -123,9 +130,15 @@ Assembling. ``chunks()`` yields the recovered file page by page, ``1..max(total,
 1)`` in order, without building it in memory. A page whose scan in use has an
 outcome gives its data, damaged or not; any other page gives ``page_bytes`` zero
 bytes (one shared block), so later pages keep their offsets. With a tag the file
-is cut to the tag's size. Every page of a document has the same capacity; pages
-of different sizes are refused. ``assemble()`` joins the chunks, for small
-documents. The verdict is computed by hashing the chunks as they are produced.
+is cut to the tag's size. ``assemble()`` joins the chunks, for small documents.
+The verdict is computed by hashing the chunks as they are produced.
+``suggested_name`` is a plain file name made from the label (which is untrusted):
+no directories, no characters Windows refuses, no device names; otherwise
+``"recovered.bin"``.
+
+Cost. Background results only mark the layout stale; it is recomputed, in time
+linear in the number of scans and pages (times the number of untagged groups for
+untagged scans), when it is next read.
 """
 
 from __future__ import annotations
@@ -143,6 +156,7 @@ if TYPE_CHECKING:
 
 OUT_OF_RANGE = "page number out of range"
 COUNT_OUT_OF_RANGE = "page count out of range"
+SIZE_MISMATCH = "page size does not match this document"
 # The encoder's page limit (optar.encoder.MAX_PAGES), repeated here because
 # importing optar at run time loads numpy.
 MAX_TOTAL_PAGES = 9999
@@ -237,6 +251,7 @@ class PageView:
     repaired: int
     lost: int
     histogram: tuple[int, int, int, int] | None
+    reason: str = ""  # why an unreadable page is unreadable
 
 
 class DocState:
@@ -277,6 +292,20 @@ class _Group:
     total: int
     tag: Tag | None
     members: list[int] = field(default_factory=list)  # grouped scans, add order
+    # Untagged: the longest member name, trailing spaces stripped. Members are pairwise
+    # prefix-compatible, so all are prefixes of it, and a name is compatible with every
+    # member exactly when it is compatible with this one.
+    longest: str = ""
+
+
+@dataclass(frozen=True)
+class _Table:
+    """The pages of the current document as the health and the file see them."""
+
+    views: tuple[PageView, ...]
+    usable: tuple[PageOutcome | None, ...]  # per page: the data it contributes, if any
+    page_bytes: int | None
+    key: tuple  # identifies the bytes the pages produce, for the verdict cache
 
 
 @dataclass(frozen=True, eq=False)
@@ -314,6 +343,10 @@ class _Layout:
     preferred: dict[int, int] = field(default_factory=dict)  # active: scan -> serial
     others: list[tuple[_Group, list[int]]] = field(default_factory=list)  # group, shown
     groups: list[_Group] = field(default_factory=list)  # every group, current included
+    group_of: dict[int, _Group] = field(default_factory=dict)  # grouped scan -> its group
+    # Computed on first use from the above; the layout is replaced after every change.
+    slots: tuple[PageSlot, ...] | None = None
+    table: _Table | None = None
 
 
 def _pages(total: int) -> int:
@@ -321,8 +354,25 @@ def _pages(total: int) -> int:
 
 
 def _prefix_compatible(a: str, b: str) -> bool:
-    a, b = a.rstrip(" "), b.rstrip(" ")
+    """Whether one name is a prefix of the other; both already stripped."""
     return a.startswith(b) or b.startswith(a)
+
+
+_RESERVED_NAMES = frozenset(
+    ["CON", "PRN", "AUX", "NUL"]
+    + [f"COM{n}" for n in range(1, 10)]
+    + [f"LPT{n}" for n in range(1, 10)]
+)
+_BAD_NAME_CHARACTERS = frozenset('<>:"/\\|?*' + "".join(map(chr, range(32))) + chr(127))
+
+
+def _safe_file_name(name: str) -> str:
+    """A plain file name, valid on Windows too, made from untrusted label text."""
+    name = name.replace("\\", "/").rsplit("/", 1)[-1]
+    name = "".join(c for c in name if c not in _BAD_NAME_CHARACTERS).strip(" .")
+    if not name or name.split(".", 1)[0].upper() in _RESERVED_NAMES:
+        return RECOVERED_NAME
+    return name
 
 
 class Document:
@@ -338,23 +388,26 @@ class Document:
         self._serial = 0
         self._outcomes = 0  # outcomes recorded so far
         self._verdict: tuple[tuple, bool] | None = None  # (what was assembled, matches)
-        self._layout = _Layout()
+        self._reals: dict[str, int] = {}  # resolved path -> scan
+        self._lay = _Layout()
+        self._dirty = False  # the layout is recomputed when next read
 
     # --- Adding and reporting on scans ---------------------------------------
 
     def add_scan(self, path: str) -> int | None:
         real = os.path.realpath(path)
-        if any(s.real == real for s in self._scans.values()):
+        if real in self._reals:
             return None
         scan_id = self._next_id
         self._next_id += 1
         self._scans[scan_id] = _Scan(scan_id, path, real)
-        self._settle()
+        self._reals[real] = scan_id
+        self._changed()
         return scan_id
 
     def set_working(self, scan_id: int) -> None:
         self._get(scan_id).working = True
-        self._settle()
+        self._changed()
 
     def set_identified(self, scan_id: int, info: ScanInfo) -> None:
         """Records what the scan's label says.
@@ -365,18 +418,18 @@ class Document:
         change.
         """
         self._get(scan_id).info = info
-        self._settle()
+        self._changed()
 
     def set_outcome(self, scan_id: int, outcome: PageOutcome) -> None:
         s = self._get(scan_id)
         self._outcomes += 1
         s.outcome = outcome
         s.outcome_serial = self._outcomes
-        self._settle()
+        self._changed()
 
     def set_unreadable(self, scan_id: int, reason: str) -> None:
         self._get(scan_id).unreadable_reason = reason
-        self._settle()
+        self._changed()
 
     # --- User operations -------------------------------------------------------
 
@@ -392,7 +445,7 @@ class Document:
             self._choice = self._grown(self._choice)
         if self._choice is not None:
             self._choice = self._without(self._choice, scan_id)
-        del self._scans[scan_id]
+        del self._reals[self._scans.pop(scan_id).real]
         self._assigned.pop(scan_id, None)
         self._preferred.pop(scan_id, None)
         for marks in (self._assigned, self._preferred):
@@ -411,7 +464,7 @@ class Document:
             self._choice = None
             self._assigned.clear()
             self._preferred.clear()
-        self._settle()
+        self._changed()
 
     def assign_page(self, scan_id: int, page: int) -> None:
         self._get(scan_id)
@@ -421,7 +474,7 @@ class Document:
         self._pin()
         self._assigned[scan_id] = (self._layout.anchor, page)
         self._preferred.pop(scan_id, None)
-        self._settle()
+        self._changed()
 
     def use_scan(self, scan_id: int) -> None:
         self._get(scan_id)
@@ -435,7 +488,7 @@ class Document:
                 del self._preferred[other]
         self._serial += 1
         self._preferred[scan_id] = (self._layout.anchor, self._serial)
-        self._settle()
+        self._changed()
 
     def switch_to(self, key: object) -> None:
         lay = self._layout
@@ -448,14 +501,14 @@ class Document:
             raise KeyError(key)
         self._leave_document()
         self._choice = _Choice(frozenset(target.members), _identity(target))
-        self._settle()
+        self._changed()
 
     def start_by_hand(self, format: str, total: int) -> None:
         if not 0 <= total <= MAX_TOTAL_PAGES:
             raise ValueError(f"total must be between 0 and {MAX_TOTAL_PAGES}")
         self._leave_document()
         self._hand = _HandDocument(format, total)
-        self._settle()
+        self._changed()
 
     # --- Reading the state -----------------------------------------------------
 
@@ -473,8 +526,18 @@ class Document:
         ids = tuple(sorted(lay.shown + list(lay.assigned)))
         return self._group_view(lay.current, lay.shown, ids)
 
+    @property
+    def by_hand(self) -> bool:
+        """Whether the current document was started with ``start_by_hand``."""
+        return self._hand is not None
+
     def slots(self) -> tuple[PageSlot, ...]:
         lay = self._layout
+        if lay.slots is None:
+            lay.slots = self._make_slots(lay)
+        return lay.slots
+
+    def _make_slots(self, lay: _Layout) -> tuple[PageSlot, ...]:
         if lay.current is None:
             return ()
         by_page: dict[int, list[int]] = {}
@@ -484,19 +547,31 @@ class Document:
             by_page.setdefault(page, []).append(scan_id)
         slots = []
         for page in range(1, _pages(lay.current.total) + 1):
-            ranked = sorted(by_page.get(page, []), key=self._rank)
-            chosen = [s for s in ranked if s in lay.preferred]
-            if chosen:
-                pick = max(chosen, key=lay.preferred.__getitem__)
-                ranked.remove(pick)
-                ranked.insert(0, pick)
-            slots.append(PageSlot(page, ranked[0] if ranked else None, tuple(ranked[1:])))
+            ranked = by_page.get(page)
+            if not ranked:
+                slots.append(PageSlot(page, None, ()))
+                continue
+            if len(ranked) > 1:
+                ranked.sort(key=self._rank)
+                chosen = [s for s in ranked if s in lay.preferred]
+                if chosen:
+                    pick = max(chosen, key=lay.preferred.__getitem__)
+                    ranked.remove(pick)
+                    ranked.insert(0, pick)
+            slots.append(PageSlot(page, ranked[0], tuple(ranked[1:])))
         return tuple(slots)
 
     def pages(self) -> tuple[PageView, ...]:
-        return tuple(self._page_view(slot) for slot in self.slots())
+        return self._table().views
 
     def summary(self) -> Summary:
+        """The state of the whole document and its page counts.
+
+        For a complete tagged document this hashes the whole recovered file, once per
+        change (the verdict is cached). That takes seconds for a very large document,
+        so callers must not call it on the interface thread for large documents; a
+        later task moves it off that thread.
+        """
         cur = self._layout.current
         if cur is None:
             return Summary(DocState.EMPTY, 0, 0, 0, 0, 0, None)
@@ -523,24 +598,21 @@ class Document:
 
     @property
     def page_bytes(self) -> int | None:
-        """Bytes per page: the length of the first outcome among the pages in use."""
-        outcomes = self._outcomes_in_use()
-        return next((len(o.data) for o in outcomes if o is not None), None)
+        """The document's page size (see the module docstring), or None."""
+        return self._table().page_bytes
 
     def chunks(self) -> Iterator[bytes]:
         """The recovered file, page by page; cut to the tag's size with a tag.
 
         Checks before anything is produced: raises ``ValueError`` when no page has
-        been decoded or the pages have different sizes.
+        usable data.
         """
-        outcomes = self._outcomes_in_use()
-        sizes = {len(o.data) for o in outcomes if o is not None}
-        if not sizes:
+        table = self._table()
+        if not any(o is not None for o in table.usable):
             raise ValueError("no page has been decoded")
-        if len(sizes) > 1:
-            raise ValueError("pages have different sizes")
         tag = self._layout.current.tag
-        return self._chunks(outcomes, bytes(sizes.pop()), None if tag is None else tag.size)
+        blank = bytes(table.page_bytes)
+        return self._chunks(list(table.usable), blank, None if tag is None else tag.size)
 
     @staticmethod
     def _chunks(
@@ -563,13 +635,13 @@ class Document:
 
     @property
     def can_save(self) -> bool:
-        return any(o is not None for o in self._outcomes_in_use())
+        return any(o is not None for o in self._table().usable)
 
     @property
     def suggested_name(self) -> str:
+        """A plain file name made from the label, which is untrusted text."""
         cur = self.current
-        name = cur.title.strip() if cur is not None else ""
-        return name or RECOVERED_NAME
+        return _safe_file_name(cur.title if cur is not None else "")
 
     def others(self) -> tuple[GroupView, ...]:
         return tuple(self._group_view(g, shown, tuple(shown)) for g, shown in self._layout.others)
@@ -616,7 +688,7 @@ class Document:
             return False
         if isinstance(anchor, _HandDocument):
             return anchor is self._hand
-        return self._resolve(anchor, lay.groups) is lay.current
+        return self._resolve(anchor, lay.group_of, lay.groups) is lay.current
 
     def _leave_document(self) -> None:
         """Drops what the user did in the current document, and any choice."""
@@ -664,43 +736,77 @@ class Document:
             return ScanState.WORKING
         return ScanState.WAITING
 
-    def _page_view(self, slot: PageSlot) -> PageView:
-        def view(health: str, o: PageOutcome | None = None) -> PageView:
+    def _table(self) -> _Table:
+        lay = self._layout
+        if lay.table is None:
+            lay.table = self._make_table(lay)
+        return lay.table
+
+    def _make_table(self, lay: _Layout) -> _Table:
+        slots = self.slots()
+        size = self._page_size(lay, slots)
+        views = []
+        usable: list[PageOutcome | None] = []
+        key: list = [size]
+        for slot in slots:
+            view, o = self._page_view(slot, size)
+            views.append(view)
+            usable.append(o)
+            if o is not None:
+                key.append((slot.scan_id, self._scans[slot.scan_id].outcome_serial))
+            else:
+                key.append(None)
+        return _Table(tuple(views), tuple(usable), size, tuple(key))
+
+    def _page_size(self, lay: _Layout, slots: tuple[PageSlot, ...]) -> int | None:
+        """The outcome length of the earliest-added of the group's own scans that has
+        one; failing that, of the earliest-added assigned scan in use that has one."""
+        for scan_id in lay.shown:
+            o = self._scans[scan_id].outcome
+            if o is not None:
+                return len(o.data)
+        assigned = sorted(
+            slot.scan_id
+            for slot in slots
+            if slot.scan_id in lay.assigned and self._scans[slot.scan_id].outcome is not None
+        )
+        return len(self._scans[assigned[0]].outcome.data) if assigned else None
+
+    def _page_view(
+        self, slot: PageSlot, size: int | None
+    ) -> tuple[PageView, PageOutcome | None]:
+        """The page's view and the outcome it contributes to the file, if any."""
+
+        def view(health: str, o: PageOutcome | None = None, reason: str = "") -> PageView:
             if o is None:
-                return PageView(slot.number, health, slot.scan_id, slot.spare_ids, 0, 0, None)
+                return PageView(
+                    slot.number, health, slot.scan_id, slot.spare_ids, 0, 0, None, reason
+                )
             return PageView(
-                slot.number, health, slot.scan_id, slot.spare_ids, o.repaired, o.lost, o.histogram
+                slot.number, health, slot.scan_id, slot.spare_ids, repaired, o.lost, o.histogram
             )
 
         if slot.scan_id is None:
-            return view(Health.MISSING)
+            return view(Health.MISSING), None
         s = self._scans[slot.scan_id]
         state = self._state(s)
         if state == ScanState.WAITING:
-            return view(Health.WAITING)
+            return view(Health.WAITING), None
         if state == ScanState.UNREADABLE:
-            return view(Health.UNREADABLE)
+            return view(Health.UNREADABLE, reason=self._unreadable_reason(s) or ""), None
         if state != ScanState.DONE:
-            return view(Health.WORKING)
+            return view(Health.WORKING), None
         o = s.outcome
+        if len(o.data) != size:
+            return view(Health.UNREADABLE, reason=SIZE_MISMATCH), None
+        repaired = o.repaired
         if o.lost > 0:
-            return view(Health.DAMAGED, o)
-        return view(Health.REPAIRED if o.repaired > 0 else Health.GOOD, o)
-
-    def _outcomes_in_use(self) -> list[PageOutcome | None]:
-        """The outcome of each page's scan in use, in page order (None: no data)."""
-        return [
-            self._scans[slot.scan_id].outcome if slot.scan_id is not None else None
-            for slot in self.slots()
-        ]
+            return view(Health.DAMAGED, o), o
+        return view(Health.REPAIRED if repaired > 0 else Health.GOOD, o), o
 
     def _verified(self, tag: Tag) -> bool:
         """Whether the assembled file matches the tag; hashed once per distinct input."""
-        key = (tag,) + tuple(
-            (slot.scan_id, self._scans[slot.scan_id].outcome_serial)
-            for slot in self.slots()
-            if slot.scan_id is not None
-        )
+        key = (tag, self._table().key)
         if self._verdict is None or self._verdict[0] != key:
             digest = hashlib.sha256()
             produced = 0
@@ -723,9 +829,6 @@ class Document:
         key = scan_ids[0] if scan_ids else None
         return GroupView(key, title, g.total, g.format, g.tag, scan_ids)
 
-    def _grouped(self, s: _Scan) -> bool:
-        return s.info is not None and self._unreadable_reason(s) is None
-
     def _group(self) -> tuple[_Group | None, list[_Group]]:
         """Groups the scans; returns the hand-started group (if any) and all groups."""
         hand = None
@@ -735,24 +838,32 @@ class Document:
             untagged.append(hand)
         tagged: dict[tuple, _Group] = {}
         for s in self._scans.values():
-            if not self._grouped(s):
-                continue
             i = s.info
+            if i is None or s.unreadable_reason is not None:
+                continue
+            if i.total > MAX_TOTAL_PAGES or not 1 <= i.page <= _pages(i.total):
+                continue  # unreadable: see _unreadable_reason
             if i.tag is not None:
                 identity = (i.format, i.total, i.tag)
-                tagged.setdefault(identity, _Group(i.format, i.total, i.tag)).members.append(s.id)
+                g = tagged.get(identity)
+                if g is None:
+                    g = tagged[identity] = _Group(i.format, i.total, i.tag)
+                g.members.append(s.id)
                 continue
-            # Quadratic in the number of untagged scans; fine for a stack of pages.
+            # Linear in the number of untagged groups for each untagged scan.
+            name = i.name.rstrip(" ")
             for g in untagged:
                 if (
                     g.format == i.format
                     and g.total == i.total
-                    and all(_prefix_compatible(self._scans[m].info.name, i.name) for m in g.members)
+                    and _prefix_compatible(g.longest, name)
                 ):
                     g.members.append(s.id)
+                    if len(name) > len(g.longest):
+                        g.longest = name
                     break
             else:
-                untagged.append(_Group(i.format, i.total, None, [s.id]))
+                untagged.append(_Group(i.format, i.total, None, [s.id], name))
         groups = [g for g in untagged if g is not hand] + list(tagged.values())
         groups.sort(key=lambda g: g.members[0])
         if hand is not None:
@@ -760,10 +871,11 @@ class Document:
         return hand, groups
 
     @staticmethod
-    def _resolve(choice: _Choice, groups: list[_Group]) -> _Group | None:
+    def _resolve(
+        choice: _Choice, group_of: dict[int, _Group], groups: list[_Group]
+    ) -> _Group | None:
         """The group holding the earliest-added grouped scan of the choice; if none is
         grouped, the group with the choice's tagged identity; otherwise None."""
-        group_of = {m: g for g in groups for m in g.members}
         first = min((m for m in choice.members if m in group_of), default=None)
         if first is not None:
             return group_of[first]
@@ -771,23 +883,42 @@ class Document:
             return next((g for g in groups if _identity(g) == choice.identity), None)
         return None
 
+    @property
+    def _layout(self) -> _Layout:
+        """Everything shown, recomputed on first use after a change.
+
+        Recomputing is a pure function of the state, so doing it lazily gives the same
+        result as doing it after every change. Operations read the layout before they
+        change anything and mark it stale only when done.
+        """
+        if self._dirty:
+            self._settle()
+        return self._lay
+
+    def _changed(self) -> None:
+        self._dirty = True
+
     def _settle(self) -> None:
         hand, groups = self._group()
+        group_of = {m: g for g in groups for m in g.members}
         if hand is not None:
             current = hand
         else:
-            current = self._resolve(self._choice, groups) if self._choice else None
+            current = self._resolve(self._choice, group_of, groups) if self._choice else None
             if current is None and groups:
                 current = groups[0]
+        resolved: dict[int, bool] = {}  # id(anchor) -> active; many marks share one anchor
 
         def active(anchor: _Anchor) -> bool:
             if current is None:
                 return False
             if isinstance(anchor, _HandDocument):
                 return anchor is self._hand
-            return self._resolve(anchor, groups) is current
+            if id(anchor) not in resolved:
+                resolved[id(anchor)] = self._resolve(anchor, group_of, groups) is current
+            return resolved[id(anchor)]
 
-        lay = _Layout(current=current, groups=groups)
+        lay = _Layout(current=current, groups=groups, group_of=group_of)
         if hand is not None:
             lay.anchor = self._hand
         elif current is not None:
@@ -803,4 +934,5 @@ class Document:
             if shown:
                 lay.others.append((g, shown))
         lay.others.sort(key=lambda item: item[1][0])
-        self._layout = lay
+        self._lay = lay
+        self._dirty = False

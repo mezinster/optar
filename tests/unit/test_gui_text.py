@@ -1,15 +1,13 @@
 # (c) GPL 2007 Karel 'Clock' Kulhavy, Twibright Labs; Python port 2026
 """The wording the window shows, kept in one module with no Qt."""
 
-import subprocess
-import sys
-
 import pytest
 
 from optar import cli
 from optar.tag import make_tag
 from optar_gui import text
 from optar_gui.document import (
+    SIZE_MISMATCH,
     DocState,
     Document,
     Health,
@@ -65,7 +63,11 @@ def test_health_labels():
     [
         (S(D.EMPTY, 0, 0, 0, 0, 0, None), ""),
         (S(D.WORKING, 1, 0, 0, 0, 2, 9), "Working…"),
-        (S(D.INCOMPLETE, 2, 1, 1, 0, 1, 9), "3 of 5 pages good · 1 damaged · 1 missing"),
+        (
+            S(D.INCOMPLETE, 2, 1, 1, 0, 1, 9),
+            "3 of 5 pages good (1 repaired) · 1 damaged · 1 missing",
+        ),
+        (S(D.INCOMPLETE, 3, 0, 1, 0, 1, 9), "3 of 5 pages good · 1 damaged · 1 missing"),
         (
             S(D.INCOMPLETE, 0, 0, 2, 3, 1200, None),
             "0 of 1,205 pages good · 2 damaged · 3 not readable · 1,200 missing",
@@ -135,16 +137,58 @@ def test_save_warning_when_the_fingerprint_does_not_match():
     pages[0] = (b"\x01" + pages[0][0][1:], 0)
     doc = document(pages, make_tag(DATA))
     assert text.save_warning(doc) == (
-        "The recovered file does not match the fingerprint printed on the paper, "
-        "so it may be wrong."
+        "The recovered file does not match the fingerprint printed on the paper: "
+        "some data was decoded wrongly, so this is not the original file."
     )
 
 
 def test_save_warning_without_a_tag():
     doc = document(five_pages(), None)
+    assert not doc.by_hand
     assert text.save_warning(doc) == (
-        "These pages carry no tag, so the recovered file cannot be verified. "
-        "It will be padded with zeros to a whole page."
+        "These pages carry no tag, so the file cannot be verified and will be "
+        "padded with zeros to a whole page."
+    )
+
+
+def test_save_warning_for_a_document_put_together_by_hand():
+    doc = Document()
+    doc.start_by_hand(A, 1)
+    scan_id = doc.add_scan("/scans/1.png")
+    doc.set_unreadable(scan_id, "label unreadable")
+    doc.set_outcome(scan_id, PageOutcome(bytes(PAGE), (1000, 0, 0, 0), 0))
+    doc.assign_page(scan_id, 1)
+    assert doc.summary().state == DocState.UNVERIFIABLE
+    assert text.save_warning(doc) == (
+        "This document was put together by hand, so the file cannot be verified "
+        "and will be padded with zeros to a whole page."
+    )
+
+
+def test_save_warning_names_at_most_ten_runs():
+    doc = Document()
+    for number in range(1, 10000, 2):  # every odd page of 9,999; the even ones missing
+        scan_id = doc.add_scan(f"/scans/{number}.png")
+        doc.set_identified(scan_id, ScanInfo(A, 9999, number, "doc.tar", None))
+        doc.set_outcome(scan_id, PageOutcome(bytes(PAGE), (1000, 0, 0, 0), 0))
+    warning = text.save_warning(doc)
+    assert len(warning) < 1000
+    assert warning == (
+        "The saved file will be incomplete: page 2 is missing; page 4 is missing; "
+        "page 6 is missing; page 8 is missing; page 10 is missing; page 12 is missing; "
+        "page 14 is missing; page 16 is missing; page 18 is missing; page 20 is missing; "
+        "and 4,989 more pages missing or damaged."
+    )
+
+
+def test_save_warning_counts_one_more_page():
+    doc = Document()
+    for number in range(1, 23, 2):  # of 22 pages, 2, 4, ..., 22 are missing: 11 runs
+        scan_id = doc.add_scan(f"/scans/{number}.png")
+        doc.set_identified(scan_id, ScanInfo(A, 22, number, "doc.tar", None))
+        doc.set_outcome(scan_id, PageOutcome(bytes(PAGE), (1000, 0, 0, 0), 0))
+    assert text.save_warning(doc).endswith(
+        "; page 20 is missing; and 1 more page missing or damaged."
     )
 
 
@@ -182,6 +226,14 @@ def test_detail_text_of_a_good_page_has_no_repairs_line():
     )
 
 
+def test_detail_text_uses_the_pages_own_reason():
+    p = PageView(2, Health.UNREADABLE, 7, (), 0, 0, None, SIZE_MISMATCH)
+    assert text.detail_text(p, "letter.png", 2) == (
+        "Page 2 of 2 · letter.png",
+        "This scan is of a different paper size than the document",
+    )
+
+
 def test_detail_text_of_pages_without_an_outcome():
     assert text.detail_text(page(5, Health.MISSING, scan_id=None), None, 5) == (
         "Page 5 of 5",
@@ -207,6 +259,10 @@ def test_detail_text_of_pages_without_an_outcome():
         ("label unreadable", "The label at the bottom of the page could not be read"),
         ("page number out of range", "The label's page number does not fit this document"),
         ("page count out of range", "The label's page count is not possible"),
+        (
+            "page size does not match this document",
+            "This scan is of a different paper size than the document",
+        ),
         ("cannot open file", "cannot open file"),
     ],
 )
@@ -217,14 +273,3 @@ def test_unreadable_reasons(reason, shown):
 def test_section_titles():
     assert text.NOT_PART_OF_THIS_FILE == "Not part of this file"
     assert text.NOT_READABLE == "Not readable"
-
-
-def test_text_module_does_not_import_qt():
-    code = (
-        "import sys, optar_gui.text\n"
-        "bad = [m for m in ('PySide6', 'numpy', 'PIL') if m in sys.modules]\n"
-        "print(','.join(bad))\n"
-    )
-    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
-    assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == ""

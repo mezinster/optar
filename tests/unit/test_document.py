@@ -10,6 +10,7 @@ import itertools
 import random
 import subprocess
 import sys
+import time
 import tracemalloc
 
 import pytest
@@ -17,6 +18,7 @@ import pytest
 from optar.tag import Tag, make_tag
 from optar_gui.document import (
     MAX_TOTAL_PAGES,
+    SIZE_MISMATCH,
     DocState,
     Document,
     GroupView,
@@ -1306,7 +1308,9 @@ def test_assigned_unreadable_scan_shows_unreadable_and_contributes_zeros():
     bad = add(doc, "bad")
     doc.assign_page(bad, 2)
     doc.set_unreadable(bad, "decoding failed")
-    assert doc.pages()[1] == PageView(2, Health.UNREADABLE, bad, (), 0, 0, None)
+    assert doc.pages()[1] == PageView(
+        2, Health.UNREADABLE, bad, (), 0, 0, None, "decoding failed"
+    )
     assert doc.summary() == Summary(DocState.INCOMPLETE, 1, 0, 0, 1, 0, 2000)
     assert doc.assemble() == pages[0] + bytes(PAGE)
 
@@ -1321,12 +1325,103 @@ def test_assemble_with_nothing_decoded_raises():
         doc.assemble()
 
 
-def test_assemble_refuses_pages_of_different_sizes():
+def test_page_of_another_size_is_unreadable_not_an_error():
     doc, (p1, p2) = build(info(1, total=2, tag=None), info(2, total=2, tag=None))
     doc.set_outcome(p1, page_out(b"a" * PAGE))
     doc.set_outcome(p2, page_out(b"b" * (PAGE + 1)))
-    with pytest.raises(ValueError, match="pages have different sizes"):
-        doc.assemble()
+    assert doc.page_bytes == PAGE
+    assert doc.pages()[1] == PageView(2, Health.UNREADABLE, p2, (), 0, 0, None, SIZE_MISMATCH)
+    assert doc.summary() == Summary(DocState.INCOMPLETE, 1, 0, 0, 1, 0, None)
+    assert doc.assemble() == b"a" * PAGE + bytes(PAGE)
+
+
+def test_regression_scan_of_another_paper_size_used_for_a_page():
+    data = bytes(range(1, 251)) * 8  # 2000 bytes: two pages
+    pages = split(data)
+    doc, (p1, p2) = decoded(make_tag(data), pages)
+    passes = count_passes(doc)
+    assert doc.summary().state == DocState.VERIFIED
+    letter = add(doc, "letter")
+    doc.set_identified(letter, info(2, total=2, fmt=LETTER, tag=make_tag(data)))
+    doc.set_outcome(letter, page_out(b"L" * (PAGE + 37)))
+    doc.assign_page(letter, 2)
+    doc.use_scan(letter)
+    assert doc.pages()[1] == PageView(
+        2, Health.UNREADABLE, letter, (p2,), 0, 0, None, SIZE_MISMATCH
+    )
+    assert doc.summary() == Summary(DocState.INCOMPLETE, 1, 0, 0, 1, 0, 2000)
+    assert doc.assemble() == pages[0] + bytes(PAGE)
+    assert doc.can_save
+    # Choosing the proper scan again restores the verdict; the bytes are the same as
+    # before, so the cached verdict holds and nothing is hashed again.
+    doc.use_scan(p2)
+    assert doc.summary().state == DocState.VERIFIED
+    assert len(passes) == 2  # the first verdict and the assemble() above
+    doc.remove_scan(letter)
+    assert doc.summary().state == DocState.VERIFIED
+    assert doc.assemble() == data
+
+
+def test_regression_assigned_scan_with_an_unreadable_label_and_another_size():
+    data = bytes(range(1, 251)) * 8
+    pages = split(data)
+    doc, (p1, _) = decoded(make_tag(data), [pages[0], None])
+    odd = add(doc, "odd")
+    doc.set_unreadable(odd, "label unreadable")
+    doc.set_outcome(odd, page_out(b"o" * (PAGE + 3)))
+    doc.assign_page(odd, 2)
+    assert doc.pages()[1].health == Health.UNREADABLE
+    assert doc.pages()[1].reason == SIZE_MISMATCH
+    assert doc.summary().state == DocState.INCOMPLETE
+    assert doc.assemble() == pages[0] + bytes(PAGE)
+    proper = add(doc, "proper")
+    doc.set_identified(proper, info(2, total=2, tag=make_tag(data)))
+    doc.set_outcome(proper, page_out(pages[1]))
+    doc.use_scan(proper)
+    assert doc.summary().state == DocState.VERIFIED
+
+
+def test_page_size_comes_from_the_documents_own_scans_first():
+    # Only a hand-assigned scan has an outcome: it sets the page size. Once one of the
+    # group's own scans has an outcome, that one does.
+    doc, (p1, p2) = build(info(1, total=2, tag=None), None)
+    doc.set_unreadable(p2, "label unreadable")
+    doc.set_outcome(p2, page_out(b"b" * (PAGE + 3)))
+    doc.assign_page(p2, 2)
+    assert doc.page_bytes == PAGE + 3
+    assert doc.can_save
+    assert doc.pages()[1].health == Health.GOOD
+    doc.set_outcome(p1, page_out(b"a" * PAGE))
+    assert doc.page_bytes == PAGE
+    assert doc.pages()[1].reason == SIZE_MISMATCH
+    assert doc.assemble() == b"a" * PAGE + bytes(PAGE)
+
+
+def test_verdict_follows_a_change_of_page_size():
+    # The earliest-added scan of the group gets an outcome of another length later: it
+    # sets the page size, so a page that verified becomes unusable; no stale verdict.
+    data = bytes(range(1, 251)) * 8
+    pages = split(data)
+    doc = Document()
+    early = add(doc, "early")
+    doc.set_identified(early, info(1, total=2, tag=make_tag(data)))
+    p1 = add(doc, "p1")
+    p2 = add(doc, "p2")
+    doc.set_identified(p1, info(1, total=2, tag=make_tag(data)))
+    doc.set_identified(p2, info(2, total=2, tag=make_tag(data)))
+    doc.set_outcome(p1, page_out(pages[0]))
+    doc.set_outcome(p2, page_out(pages[1]))
+    doc.use_scan(p1)
+    assert doc.summary().state == DocState.VERIFIED
+    doc.set_outcome(early, page_out(b"e" * (PAGE + 1)))
+    assert doc.page_bytes == PAGE + 1
+    assert [p.reason for p in doc.pages()] == [SIZE_MISMATCH, SIZE_MISMATCH]
+    assert doc.summary().state == DocState.INCOMPLETE
+    assert not doc.can_save
+    with pytest.raises(ValueError, match="no page has been decoded"):
+        doc.chunks()
+    doc.remove_scan(early)
+    assert doc.summary().state == DocState.VERIFIED
 
 
 def test_empty_file_assembles_to_nothing():
@@ -1449,10 +1544,9 @@ def test_chunks_check_before_producing_anything():
     doc, _ = build(info(1), info(2))
     with pytest.raises(ValueError, match="no page has been decoded"):
         doc.chunks()
-    doc, (p1, p2) = build(info(1, total=2, tag=None), info(2, total=2, tag=None))
-    doc.set_outcome(p1, page_out(b"a" * PAGE))
-    doc.set_outcome(p2, page_out(b"b" * (PAGE + 1)))
-    with pytest.raises(ValueError, match="pages have different sizes"):
+    doc, (p1,) = build(info(1, total=2, tag=None))
+    doc.set_working(p1)
+    with pytest.raises(ValueError, match="no page has been decoded"):
         doc.chunks()
 
 
@@ -1485,6 +1579,45 @@ def test_suggested_name():
     assert doc.suggested_name == "recovered.bin"
     doc, _ = build(info(1, name="photos.tar  ", tag=None))
     assert doc.suggested_name == "photos.tar"
+
+
+@pytest.mark.parametrize(
+    "name, suggested",
+    [
+        ("holiday-photos.tar", "holiday-photos.tar"),
+        ("my file (2).zip", "my file (2).zip"),
+        ("../../.bashrc", "bashrc"),
+        ("/home/u/.profile", "profile"),
+        ("C:\\Users\\x\\evil.exe", "evil.exe"),
+        ("dir/", "recovered.bin"),
+        ('a<b>c:d"e|f?g*h.txt', "abcdefgh.txt"),
+        ("tab\there\x7f.txt", "tabhere.txt"),
+        ("  .hidden. ", "hidden"),
+        (".", "recovered.bin"),
+        ("..", "recovered.bin"),
+        ("...", "recovered.bin"),
+        ("CON", "recovered.bin"),
+        ("con.txt", "recovered.bin"),
+        ("Lpt9.tar.gz", "recovered.bin"),
+        ("com1", "recovered.bin"),
+        ("nul", "recovered.bin"),
+        ("aux.", "recovered.bin"),
+        ("COM10", "COM10"),
+        ("console.txt", "console.txt"),
+    ],
+)
+def test_suggested_name_is_a_plain_file_name(name, suggested):
+    doc, _ = build(info(1, name=name))
+    assert doc.suggested_name == suggested
+
+
+def test_by_hand():
+    doc, (a,) = build(info(1, tag=None))
+    assert not doc.by_hand
+    doc.start_by_hand(A, 2)
+    assert doc.by_hand
+    doc.switch_to(a)
+    assert not doc.by_hand
 
 
 def test_can_save_once_any_page_is_decoded():
@@ -1524,3 +1657,38 @@ def test_document_imports_without_qt_or_numpy(module):
     result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == ""
+
+
+# --- Cost -----------------------------------------------------------------------
+
+
+def _big(n, tag):
+    doc = Document()
+    for page in range(1, n + 1):
+        scan_id = doc.add_scan(f"/scans/{page}.png")
+        doc.set_identified(scan_id, info(page, total=n, tag=tag))
+        doc.set_outcome(scan_id, page_out(b"x" * PAGE))
+    doc.pages()
+    doc.summary()
+    return doc
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("n, limit", [(2000, 10.0), (MAX_TOTAL_PAGES, 120.0)])
+def test_building_a_large_printout_is_fast(n, limit):
+    start = time.perf_counter()
+    _big(n, Tag(n * PAGE - 5, "aaaaaaaa"))
+    assert time.perf_counter() - start < limit
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("tag", [TAG, None])
+def test_one_event_on_a_large_printout_is_fast(tag):
+    doc = _big(2000, tag)
+    extra = doc.add_scan("/scans/extra.png")
+    doc.slots()
+    start = time.perf_counter()
+    for _ in range(20):
+        doc.set_identified(extra, info(1, total=2000, tag=tag))
+        doc.slots()
+    assert (time.perf_counter() - start) / 20 < 0.005
