@@ -26,6 +26,10 @@ UNOPTAR_OBJECTS = ["common.o", "golay_codes.o", "parity.o"]
 UNOPTAR_LIBS = ["-lm", "-lpng", "-lz"]
 
 
+class CBuildError(RuntimeError):
+    """A C build step failed; the message carries the command and compiler output."""
+
+
 @dataclass
 class CBuild:
     dir: Path
@@ -40,7 +44,16 @@ def compiler() -> str | None:
 
 
 def _run(cmd: list[str], cwd: Path, **kw) -> subprocess.CompletedProcess:
-    return subprocess.run(cmd, cwd=cwd, check=True, text=True, **kw)
+    """Run a build command; raise CBuildError with its output if it fails."""
+    kw.setdefault("stdout", subprocess.PIPE)
+    try:
+        r = subprocess.run(cmd, cwd=cwd, text=True, stderr=subprocess.PIPE, **kw)
+    except OSError as e:
+        raise CBuildError(f"{shlex.join(cmd)}: {e}") from e
+    if r.returncode != 0:
+        output = "\n".join(part.strip() for part in (r.stdout, r.stderr) if part and part.strip())
+        raise CBuildError(f"{shlex.join(cmd)} exited with {r.returncode}: {output}")
+    return r
 
 
 def _tool_flags(cmd: list[str]) -> list[str]:
@@ -110,10 +123,15 @@ def build_patched_unoptar(build: CBuild, name: str, replacements: list[tuple[str
 
 
 def build_c_tools(dest: Path, format_overrides: dict[str, int] | None = None) -> CBuild:
-    """Copy the C sources into dest, apply overrides, and build the tools there."""
+    """Copy the C sources into dest, apply overrides, and build the tools there.
+
+    Raises CBuildError if optar cannot be built. If unoptar cannot be built
+    (no png.h, or linking against libpng fails), CBuild.unoptar is None.
+    """
     cc = compiler()
     if cc is None:
-        raise RuntimeError("no C compiler found")
+        raise CBuildError("no C compiler found")
+    dest = Path(dest).resolve()
     dest.mkdir(parents=True, exist_ok=True)
     for name in C_SOURCES:
         shutil.copy(REPO_ROOT / name, dest / name)
@@ -134,13 +152,16 @@ def build_c_tools(dest: Path, format_overrides: dict[str, int] | None = None) ->
     common, golay_o, optar_o, parity = plain
     _run([cc, "-o", "golay", golay_o, parity, "-lm", *extra_ld], dest)
     with open(dest / "golay_codes.c", "w") as f:
-        _run(["./golay"], dest, stdout=f)
+        _run([str(dest / "golay")], dest, stdout=f)
     codes = compile_("golay_codes.c", extra_c)
     _run([cc, "-o", "optar", optar_o, common, codes, parity, "-lm", *extra_ld], dest)
 
     unoptar = None
     if has_png:
-        unoptar = _link_unoptar(cc, dest, "unoptar.c", "unoptar")
+        try:
+            unoptar = _link_unoptar(cc, dest, "unoptar.c", "unoptar")
+        except CBuildError:
+            unoptar = None
     return CBuild(dest, dest / "optar", unoptar, dest / "golay_codes.c")
 
 

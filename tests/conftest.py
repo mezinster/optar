@@ -23,12 +23,20 @@ def c_build(tmp_path_factory):
     if cbuild.compiler() is None:
         pytest.skip("no C compiler available")
     cache: dict[tuple, cbuild.CBuild] = {}
+    failures: dict[tuple, str] = {}
 
     def factory(format_overrides: dict[str, int] | None = None) -> cbuild.CBuild:
         key = tuple(sorted((format_overrides or {}).items()))
+        if key in failures:
+            pytest.skip(failures[key])
         if key not in cache:
             dest = tmp_path_factory.mktemp("cbuild")
-            cache[key] = cbuild.build_c_tools(dest, format_overrides)
+            try:
+                cache[key] = cbuild.build_c_tools(dest, format_overrides)
+            except cbuild.CBuildError as e:
+                shutil.rmtree(dest, ignore_errors=True)
+                failures[key] = f"cannot build the C tools: {e}"
+                pytest.skip(failures[key])
         return cache[key]
 
     yield factory
