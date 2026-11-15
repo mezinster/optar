@@ -1,0 +1,71 @@
+# (c) GPL 2007 Karel 'Clock' Kulhavy, Twibright Labs; Python port 2026
+"""The document tag printed in the free-text part of every page label.
+
+The tag records the true size and a fingerprint of the file, so that pages of
+different printouts cannot be mixed, the recovered file can be cut to its true
+size and the result can be verified. Its syntax is strict because the label is
+read back from scans by character matching.
+"""
+import hashlib
+import re
+from dataclasses import dataclass
+
+from .format import PageFormat
+
+FINGERPRINT_DIGITS = 8
+
+_FINGERPRINT = re.compile(rf"[0-9a-f]{{{FINGERPRINT_DIGITS}}}")
+# ASCII digits only, no leading zeros except "0" itself; then end or one space.
+_TAG = re.compile(
+    rf"\[(0|[1-9][0-9]*):([0-9a-f]{{{FINGERPRINT_DIGITS}}})\](?: |\Z)", re.ASCII)
+
+
+@dataclass(frozen=True)
+class Tag:
+    size: int
+    fingerprint: str
+
+    def __post_init__(self):
+        if self.size < 0:
+            raise ValueError(f"size must not be negative: {self.size}")
+        if not _FINGERPRINT.fullmatch(self.fingerprint):
+            raise ValueError(
+                f"fingerprint must be {FINGERPRINT_DIGITS} lower-case hex digits: "
+                f"{self.fingerprint!r}")
+
+    @property
+    def text(self) -> str:
+        return f"[{self.size}:{self.fingerprint}]"
+
+    def fits(self, total: int, fmt: PageFormat) -> bool:
+        """Whether a file of this size is printed on `total` pages of `fmt`.
+
+        An empty file is printed as one page labelled 1/0, so it fits only
+        total == 0, and total == 0 fits only an empty file.
+        """
+        if self.size == 0 or total == 0:
+            return self.size == 0 and total == 0
+        capacity = fmt.net_bits // 8
+        return (total - 1) * capacity < self.size <= total * capacity
+
+    def matches(self, data: bytes) -> bool:
+        return len(data) == self.size and _fingerprint(data) == self.fingerprint
+
+
+def _fingerprint(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()[:FINGERPRINT_DIGITS]
+
+
+def make_tag(data: bytes) -> Tag:
+    return Tag(len(data), _fingerprint(data))
+
+
+def tagged_label(tag: Tag, name: str) -> str:
+    return f"{tag.text} {name}" if name else tag.text
+
+
+def split_label(text: str) -> tuple[Tag | None, str]:
+    m = _TAG.match(text)
+    if m is None:
+        return None, text
+    return Tag(int(m.group(1)), m.group(2)), text[m.end():]
