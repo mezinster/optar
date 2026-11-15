@@ -9,6 +9,15 @@ from tests import cbuild
 
 
 @pytest.fixture(scope="session")
+def ghostscript():
+    """Path to the Ghostscript executable, or skip when it is not installed."""
+    gs = shutil.which("gs")
+    if gs is None:
+        pytest.skip("Ghostscript (gs) not available")
+    return gs
+
+
+@pytest.fixture(scope="session")
 def c_build(tmp_path_factory):
     """Factory: c_build(format_overrides=None) -> CBuild, cached per override set."""
     if cbuild.compiler() is None:
