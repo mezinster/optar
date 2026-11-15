@@ -7,7 +7,7 @@ import pytest
 
 import optar.identify
 from optar import PAPERS, PageFormat, encode
-from optar.decoder import DecodeOptions, PageResult, PageStats
+from optar.decoder import DecodeOptions, PageResult, PageStats, locate_page
 from optar.encoder import MAX_PAGES, blank_page
 from optar.errors import DecodeError, IdentifyError
 from optar.font import label_text
@@ -17,7 +17,7 @@ from optar.identify import (
     decode_unlabelled,
     identify_scan,
 )
-from optar.label import MIN_LABEL_CONFIDENCE, MIN_LABEL_MARGIN, read_label
+from optar.label import MIN_LABEL_CONFIDENCE, MIN_LABEL_MARGIN, parse_label, read_label
 from optar.tag import make_tag, tagged_label
 from tests.helpers import DEGRADED, fake_scan, seeded_bytes
 
@@ -141,7 +141,9 @@ def test_slightly_rotated_with_unequal_margins(paper):
 @pytest.mark.parametrize("paper", ["a4", "letter"])
 def test_outline_not_image_shape_decides_paper(paper):
     img = upright(paper)
-    # A flatbed scan with wide white margins: the image is much wider than the page.
+    # A wide white margin on one side: the image is still portrait, but its
+    # width-to-height ratio is no longer the page's, so only the outline found
+    # inside it can name the paper.
     wide = pad(img, right=600)
     assert optar.identify._papers_by_shape(optar.identify._outline(wide))[0] is PAPERS[paper]
     check_identity(identify_scan(wide), paper, 0)
@@ -218,7 +220,6 @@ def test_tag_that_does_not_fit_is_not_identified():
         identify_scan(fake_scan(page, scale=1, margin=40))
 
 
-@pytest.mark.slow
 def test_tag_printed_for_another_page_count_is_not_identified():
     # The tag of the two-page document, printed on a one-page printout.
     fmt, data, _ = document("letter")
@@ -228,6 +229,32 @@ def test_tag_printed_for_another_page_count_is_not_identified():
         img = fake_scan(page, scale=1, margin=40)
         ident = optar.identify._identify_upright(img, 0, PAPERS["letter"], None)
         assert (ident is not None) == accepted
+
+
+@cache
+def other_format_scan():
+    """A blank A4 page whose label carries Letter's format string."""
+    a4 = PageFormat.for_paper(PAPERS["a4"])
+    letter = PageFormat.for_paper(PAPERS["letter"])
+    return fake_scan(blank_page(a4, label_text(letter, 1, 1, "x")), scale=1, margin=40)
+
+
+def test_label_naming_another_format_is_not_identified():
+    a4 = PageFormat.for_paper(PAPERS["a4"])
+    img = other_format_scan()
+    # Under its own grid the label reads perfectly, so only the format string
+    # read from it can tell that it does not belong to this paper.
+    reading = read_label(locate_page(img, a4))
+    assert reading.reliable
+    assert parse_label(reading.text).format == PageFormat.for_paper(PAPERS["letter"]).to_string()
+    assert optar.identify._identify_upright(img, 0, PAPERS["a4"], None) is None
+
+
+@pytest.mark.slow
+def test_label_naming_another_format_is_unreadable():
+    with pytest.raises(IdentifyError) as e:
+        identify_scan(other_format_scan())
+    assert e.value.reason == "label unreadable"
 
 
 def labelled_blank(page, total):
@@ -294,6 +321,10 @@ def test_decode_unlabelled_landscape_and_detail():
     assert result.grid is not None and result.grid.cleaned.shape == upright("letter").shape
     tail = data[fmt.net_bits // 8 :]
     assert np.packbits(result.bits).tobytes()[: len(tail)] == tail
+
+
+def test_decode_unlabelled_raises_when_every_rotation_raises():
+    fmt = PageFormat.for_paper(PAPERS["letter"])
     with pytest.raises(DecodeError):
         decode_unlabelled(np.full((900, 700), 255, np.uint8), fmt)
 
@@ -335,5 +366,7 @@ def test_decode_unlabelled_reraises_the_last_error(monkeypatch):
     marked = np.zeros((4, 3), np.uint8)
     marked[0, 0] = 1
     monkeypatch.setattr(optar.identify, "locate_page", locate)
-    with pytest.raises(DecodeError, match="^last$"):
+    with pytest.raises(DecodeError, match="^last$") as e:
         decode_unlabelled(marked, PageFormat.for_paper(PAPERS["a4"]))
+    # A fresh error: nothing chains back to the caught one and its traceback.
+    assert e.value.__cause__ is None and e.value.__context__ is None

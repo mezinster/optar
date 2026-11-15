@@ -168,24 +168,30 @@ def decode_unlabelled(
 
     Every candidate rotation is decoded; the one with the fewest
     unrecoverable symbols wins, then the fewest corrected bits, then the
-    lower rotation. Returns (rotation, result). Raises DecodeError (the last
-    rotation's) when no rotation decodes.
+    lower rotation. Returns (rotation, result). Raises DecodeError (with the
+    last rotation's message) when no rotation decodes.
+
+    The result is only the best of the rotations tried, not proof that the
+    rotation is right: if the upright rotation raised and another one
+    "decoded", its bytes are garbage. The caller must judge
+    result.stats.uncorrectable before trusting the data or the rotation.
     """
     image = _check(image)
     best: tuple[tuple[int, int, int], PageResult] | None = None
-    error: DecodeError | None = None
+    # Only the message: the exception itself holds the traceback, and with it
+    # the rotated image and locate_page's locals, across the next decode.
+    error_args: tuple = ()
     for rotation in candidate_rotations(image):
         try:
             result = decode_located(
                 locate_page(_turn(image, rotation), fmt, options), detail=detail
             )
         except DecodeError as e:
-            error = e
+            error_args = e.args
             continue
         key = (result.stats.uncorrectable, _corrected_bits(result), rotation)
         if best is None or key < best[0]:
             best = (key, result)
     if best is None:
-        assert error is not None
-        raise DecodeError(*error.args) from error
+        raise DecodeError(*error_args)
     return best[0][2], best[1]
