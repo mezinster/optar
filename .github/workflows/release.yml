@@ -4,6 +4,9 @@ on:
   push:
     tags: ['v*']
 
+permissions:
+  contents: read
+
 defaults:
   run:
     shell: bash
@@ -25,8 +28,8 @@ jobs:
             asset: windows-x86_64
             ext: '.exe'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
       - run: pip install -e '.[dev]'
@@ -48,7 +51,7 @@ jobs:
           EXT: ${{ matrix.ext }}
           ASSET: ${{ matrix.asset }}
         run: mv "dist/optar${EXT}" "dist/optar-${GITHUB_REF_NAME}-${ASSET}${EXT}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: optar-${{ matrix.asset }}
           path: dist/optar-*
@@ -60,12 +63,15 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           path: release-files
           merge-multiple: true
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --generate-notes release-files/*
+        run: |
+          gh release create "$GITHUB_REF_NAME" --generate-notes \
+            --notes "On Linux and macOS, run chmod +x on the downloaded file before first use. The executables are unsigned, so macOS and Windows may warn on first run." \
+            release-files/*
