@@ -1,11 +1,13 @@
 # (c) GPL 2007 Karel 'Clock' Kulhavy, Twibright Labs; Python port 2026
 import dataclasses
 from functools import cache
+from unittest import mock
 
 import numpy as np
 import pytest
 from PIL import Image, ImageFilter
 
+from optar import identify
 from optar.decoder import locate_page
 from optar.encoder import encode
 from optar.errors import DecodeError, FormatError
@@ -23,11 +25,13 @@ from optar.label import (
     printed_label,
     read_label,
 )
+from optar.tag import Tag, split_label, tagged_label
 from tests.helpers import DEGRADED, fake_scan, save_scan, seeded_bytes
 
 PRINTABLE = "".join(chr(c) for c in range(32, 127))
-# Every hexadecimal digit and the tag's punctuation, which the document tag relies on.
-TAG_LABEL = "[199999:3f9a2c1b] 0123456789abcdef:[] holiday-photos.tar"
+# A real tag, then every hexadecimal digit and the tag's punctuation, which
+# the document tag relies on.
+HEX_NAME = "0123456789abcdef:[] holiday-photos.tar"
 A4 = PageFormat.for_paper(PAPERS["a4"])
 LETTER = PageFormat.for_paper(PAPERS["letter"])
 FORMATS = {"a4": A4, "letter": LETTER}
@@ -37,15 +41,20 @@ SCALE, MARGIN = 3, 60  # of the scans built here without DEGRADED
 # ---- scans -----------------------------------------------------------------
 
 
+def tag_label(fmt: PageFormat) -> str:
+    """The free text of tag_page: its own three-field tag, then HEX_NAME."""
+    return tagged_label(Tag(fmt.net_bits // 8 + 500, "3f9a2c1b"), HEX_NAME, 2, 2)
+
+
 @cache
 def tag_page(fmt: PageFormat) -> np.ndarray:
-    """Page 2 of 2 of a file labelled TAG_LABEL."""
+    """Page 2 of 2 of a file labelled tag_label(fmt)."""
     data = seeded_bytes(3, fmt.net_bits // 8 + 500)
-    return list(encode(data, fmt, TAG_LABEL))[1].pixels
+    return list(encode(data, fmt, tag_label(fmt)))[1].pixels
 
 
 def expected(fmt: PageFormat) -> str:
-    return printed_label(fmt, label_text(fmt, 2, 2, TAG_LABEL))
+    return printed_label(fmt, label_text(fmt, 2, 2, tag_label(fmt)))
 
 
 def band_box(fmt: PageFormat) -> tuple[slice, slice]:
@@ -174,8 +183,8 @@ def test_printed_label_keeps_the_logo_slice_code_in_its_cell():
     "text,want",
     [
         (
-            "  0-65-93-24-3-1-2-24 4/5 [12:3f9a2c1b] a b.tar",
-            LabelInfo("0-65-93-24-3-1-2-24", 4, 5, "[12:3f9a2c1b] a b.tar"),
+            "  0-65-93-24-3-1-2-24 4/5 [12:3f9a2c1b:7e] a b.tar",
+            LabelInfo("0-65-93-24-3-1-2-24", 4, 5, "[12:3f9a2c1b:7e] a b.tar"),
         ),
         ("  0-65-93-24-3-1-2-24 1/0", LabelInfo("0-65-93-24-3-1-2-24", 1, 0, "")),
         ("0-67-87-24-3-1-2-24 10/12 x", LabelInfo("0-67-87-24-3-1-2-24", 10, 12, "x")),
@@ -260,7 +269,7 @@ def test_reads_tag_label(grid, paper, name):
     reading = read_label(grid(paper, name))
     assert reading.text == expected(fmt)
     assert reading.reliable
-    assert parse_label(reading.text) == LabelInfo(fmt.to_string(), 2, 2, TAG_LABEL)
+    assert parse_label(reading.text) == LabelInfo(fmt.to_string(), 2, 2, tag_label(fmt))
 
 
 def test_clean_scan_reads_perfectly(grid):
@@ -409,16 +418,29 @@ def test_heavy_noise_on_scan_sweep(paper, sigma, seed):
 # hex digit) in the part of the label that identifies a page, which would
 # still parse and match. Those are what a check code in the tag is for.
 
-# Labels rich in sparse glyphs, hex digits and the tag's punctuation.
+# Bytes per page on the roomier paper: a size of (total - 1) pages of it plus
+# a little fits `total` pages on both papers.
+ROOMIER_PAGE = max(A4.net_bits, LETTER.net_bits) // 8
+
+
+def family(page: int, total: int, extra: int, fingerprint: str, name: str):
+    """(page, total, free text) of a page whose real tag, for a file of
+    `extra` bytes more than total - 1 pages, is followed by name."""
+    tag = Tag((total - 1) * ROOMIER_PAGE + extra, fingerprint)
+    return page, total, tagged_label(tag, name, page, total)
+
+
+# Labels rich in sparse glyphs, hex digits and the tag's punctuation; their
+# tags fit their page counts on both papers.
 FAMILY_LABELS = [
-    (3, 8, "[3880860:9b0d6853] 0 6 8 9 3 5 1 7 b d.tar"),
-    (13, 18, "[58:6083b9d1] 0689:3517bd 6 8"),
-    (1, 1, "[5:0b3d8e9f] notes."),
-    (2, 3, "[61:9b8d0e3f] a-b-"),
-    (4, 5, "[3:8e9f0b3d] it`"),
-    (2, 3, "[61:9b8d0e3f] it`s a`b"),
-    (1, 2, "[7:3d0b9e8f] x.y,z'w"),
-    (4, 5, "[3:8e9f0b3d] a-b_c:d;e"),
+    family(3, 8, 860, "9b0d6853", "0 6 8 9 3 5 1 7 b d.tar"),
+    family(13, 18, 58, "6083b9d1", "0689:3517bd 6 8"),
+    family(1, 1, 5, "0b3d8e9f", "notes."),
+    family(2, 3, 61, "9b8d0e3f", "a-b-"),
+    family(4, 5, 3, "8e9f0b3d", "it`"),
+    family(2, 3, 61, "9b8d0e3f", "it`s a`b"),
+    family(1, 2, 7, "3d0b9e8f", "x.y,z'w"),
+    family(4, 5, 3, "8e9f0b3d", "a-b_c:d;e"),
 ]
 HEX = set("0123456789abcdef")
 SPECK_SEEDS = 6  # seed 5 gave a wrong reading the old gate accepted
@@ -507,27 +529,61 @@ def well_formed_substitutions(text: str, want: str) -> list[tuple[int, str, str]
             if i < end and a != b and a in HEX and b in HEX]
 
 
-def measure(perturb_for, seeds) -> tuple[int, list[tuple[str, str, LabelReading]]]:
+@dataclasses.dataclass
+class Measured:
+    count: int = 0
+    reliable_wrong: list = dataclasses.field(default_factory=list)  # (text, want, reading)
+    # Plausible but not reliable, and wrong: what a tagged page's
+    # identification sees beyond the reliable gate, with the check's verdict.
+    plausible_wrong: int = 0
+    passed_check: list = dataclasses.field(default_factory=list)  # (text, want, identity)
+
+
+def identified(grid, reading, paper: str):
+    """What identify makes of this reading on this grid (None: refused)."""
+    with mock.patch.object(identify, "locate_page", lambda image, fmt, options=None: grid), \
+            mock.patch.object(identify, "read_label", lambda g: reading):
+        return identify._identify_upright(grid.cleaned, 0, PAPERS[paper], None)
+
+
+def measure(perturb_for, seeds) -> Measured:
     """Readings of FAMILY_LABELS on both papers, each perturbed by
-    perturb_for(fmt, text): how many, and the wrong ones that were accepted."""
-    count, accepted_wrong = 0, []
+    perturb_for(fmt, text), and the wrong ones that a gate let through."""
+    m = Measured()
     for paper, fmt in enumerate((A4, LETTER)):
         for label, (page, total, name) in enumerate(FAMILY_LABELS):
             g, want = located(fmt, page, total, name)
             perturb = perturb_for(fmt, want)
             for seed in seeds:
-                reading = read_label(perturbed_band(g, perturb, (seed, label, paper)))
-                count += 1
-                if reading.reliable and reading.text != want:
-                    accepted_wrong.append((reading.text, want, reading))
-    return count, accepted_wrong
+                grid = perturbed_band(g, perturb, (seed, label, paper))
+                reading = read_label(grid)
+                m.count += 1
+                if reading.text == want or not reading.plausible:
+                    continue
+                if reading.reliable:
+                    m.reliable_wrong.append((reading.text, want, reading))
+                    continue
+                m.plausible_wrong += 1
+                ident = identified(grid, reading, ("a4", "letter")[paper])
+                if ident is not None:
+                    m.passed_check.append((reading.text, want, ident))
+    return m
 
 
 def assert_rate(perturb_for, bound: float) -> None:
-    count, wrong = measure(perturb_for, RATE_SEEDS)
-    for text, want, _ in wrong:
+    """The reliable gate lets through at most `bound` of wrong readings and
+    never a well-formed substitution; a plausible tagged reading that passes
+    the check names the true page, total and tag."""
+    m = measure(perturb_for, RATE_SEEDS)
+    for text, want, _ in m.reliable_wrong:
         assert not well_formed_substitutions(text, want), f"{text!r} accepted for {want!r}"
-    assert len(wrong) / count <= bound, [(t, r.confidence, r.margin) for t, _, r in wrong]
+    for text, want, ident in m.passed_check:
+        assert not well_formed_substitutions(text, want), f"{text!r} identified for {want!r}"
+        info = parse_label(want)
+        tag, _, _ = split_label(info.text)
+        assert (ident.page, ident.total, ident.tag) == (info.page, info.total, tag), text
+    assert len(m.reliable_wrong) / m.count <= bound, [
+        (t, r.confidence, r.margin) for t, _, r in m.reliable_wrong]
 
 
 def thin(image: np.ndarray, seed: int) -> np.ndarray:
@@ -536,14 +592,15 @@ def thin(image: np.ndarray, seed: int) -> np.ndarray:
     return blur_and_noise(image, 1.0, 8, seed)
 
 
-# (a) Thinned strokes make a sparse glyph vanish. When it was the last
-# character its cell lies after the text and nothing used to score it; the
-# surviving glyphs come out thin, which the ink loss measures.
-THIN_LABELS = ["[61:9b8d0e3f] it`s a`b", "[61:9b8d0e3f] it`"]
+# (a) Thinned strokes made a sparse glyph vanish under a cut halfway up the
+# band; when it was the last character its cell lies after the text, and the
+# surviving glyphs came out thin, which the ink loss measures. A lower cut now
+# reads these bands exactly (1600 of 1600 over seeds 0-99).
+THIN_LABELS = [FAMILY_LABELS[5][2], family(2, 3, 3, "8e9f0b3d", "it`")[2]]  # page 2 of 3
 
 
 @pytest.mark.parametrize("name", THIN_LABELS)
-@pytest.mark.parametrize("seed", [1, 2])
+@pytest.mark.parametrize("seed", [1])  # seeds 2-8 in test_thinned_scan_sweep
 def test_thinned_scan_is_rejected_or_exact(name, seed):
     # The whole scan thinned, then located.
     pixels, want = labelled_page(A4, 2, 3, name)
@@ -558,7 +615,7 @@ def test_thinned_scan_sweep(paper, name):
     fmt = FORMATS[paper]
     pixels, want = labelled_page(fmt, 2, 3, name)
     clean = fake_scan(pixels, scale=SCALE, margin=MARGIN)
-    for seed in range(3, 9):
+    for seed in range(2, 9):
         assert_never_wrong_and_reliable(read_or_none(thin(clean, seed), fmt), want)
 
 
@@ -578,7 +635,7 @@ def test_thinned_band_is_rejected_or_exact():
 # sparse glyph's place in a blank cell read as that glyph ("`", "'") with a
 # clear margin; such a glyph must now beat the blank by its clear lead. A
 # speck the size and place of a whole "." or "`" is that glyph to any reader
-# of the cell and is accepted (test_speck_in_a_blank_cell_rate).
+# of the cell and is accepted (test_speck_rate, blank cells).
 def speck(fmt: PageFormat, want: str, blank_cells_only: bool):
     """Perturbation: a white square of 2-4 page pixels, page-pixel aligned, at
     a random place over the printed text (or in a random blank cell after the
@@ -613,16 +670,19 @@ def test_speck_is_rejected_or_exact(paper):
 
 # The rest are filters, not guarantees. Each test reads FAMILY_LABELS on both
 # papers at RATE_SEEDS seeds (480 readings) and bounds the share of wrong
-# readings accepted. The rates in the comments were measured with this code
-# over seeds 0-99 (1600 readings; "before" is the confidence and margin gate
-# alone). None of the wrong readings accepted was a well-formed substitution.
+# readings the reliable gate accepts; wrong readings that are only plausible
+# go through identification as a tagged page would. Measured with this code
+# over seeds 0-99 (1600 readings), as "reliable wrong; plausible-only wrong,
+# of which identified": none was a well-formed substitution, and every one
+# identified had the true page, total and tag, its name differing in
+# punctuation (a stray "`", "'" or "." in or after the name, a lost ".").
 RATE_SEEDS = range(30)
 
 
 @pytest.mark.slow
 @pytest.mark.parametrize("blank_cells_only,bound", [
-    (False, 0.005),  # before 7/1600, now 2/1600 (0.13%): a whole "." in a blank cell
-    (True, 0.03),  # before 57/1600, now 21/1600 (1.3%): a whole "." or "`"
+    (False, 0.005),  # 1; 3, 0: a whole "." in a blank cell
+    (True, 0.03),  # 21 (1.3%); 36, 11: a whole "." or "`"
 ])
 def test_speck_rate(blank_cells_only, bound):
     def perturb_for(fmt, want):
@@ -635,20 +695,20 @@ def test_speck_rate(blank_cells_only, bound):
 # as "," or blank, a blank as ".".
 @pytest.mark.slow
 @pytest.mark.parametrize("sigma,bound", [
-    (60, 0.005),  # before 5/1600, now 2/1600 (0.13%)
-    (70, 0.01),  # before 17/1600, now 6/1600 (0.38%)
-    (80, 0.005),  # before 31/1600, now 2/1600 (0.13%); most readings are rejected
+    (60, 0.005),  # 0; 3, 3
+    (70, 0.01),  # 4 (0.25%); 15, 12
+    (80, 0.01),  # 5 (0.31%); 23, 18; 614 of 1155 exact readings plausible
 ])
 def test_blotchy_noise_rate(sigma, bound):
     assert_rate(lambda fmt, want: blotchy(sigma), bound)
 
 
-# (c) A brightness gradient across the band plus noise. The global threshold
-# thins the strokes on the dark side, so nearly every reading is now rejected.
+# (c) A brightness gradient across the band plus noise. The band is cut where
+# its cells best match glyphs, so most exact readings are kept.
 @pytest.mark.slow
 @pytest.mark.parametrize("amplitude,sigma,bound", [
-    (120, 30, 0.005),  # before 3/1600, now 0/1600
-    (100, 40, 0.005),  # before 0/1600, now 0/1600
+    (120, 30, 0.005),  # 0; 3, 1; 1284 of 1586 exact readings reliable (0 cut halfway)
+    (100, 40, 0.005),  # 0; 0, 0; 44 of 1599 reliable, 1547 plausible
 ])
 def test_gradient_rate(amplitude, sigma, bound):
     assert_rate(lambda fmt, want: gradient(amplitude, sigma), bound)
@@ -657,8 +717,8 @@ def test_gradient_rate(amplitude, sigma, bound):
 # (d) The band sampled half a page pixel off in x, between two columns.
 @pytest.mark.slow
 @pytest.mark.parametrize("dx,bound", [
-    (1.5, 0.005),  # before 1/1600, now 0/1600
-    (-1.5, 0.005),  # before 1/1600, now 0/1600
+    (1.5, 0.005),  # 0; 2, 0
+    (-1.5, 0.005),  # 0; 0, 0
 ])
 def test_half_pixel_offset_rate(dx, bound):
     assert_rate(lambda fmt, want: offset_x(dx), bound)

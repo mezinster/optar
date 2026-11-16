@@ -82,6 +82,38 @@ def tagged_label(tag: Tag, name: str, page: int, total: int) -> str:
     return f"{text} {name}" if name else text
 
 
+# What a tag damaged by a misread can look like: an opening bracket (or a
+# glyph it is misread as), then a run of the tag's glyphs and those its colons
+# and digits are misread as, ending at a space or a closing bracket (or its
+# misreads). A leading space is skipped: the "[" may itself have been lost.
+# Only the run up to the first space or bracket is weighed.
+_TAG_SHAPE = re.compile(r" ?([\[({|])?([0-9A-Za-z:;.,'`!]+)([\])}|])?", re.ASCII)
+_HEX = frozenset("0123456789abcdef")
+# A tag has at least 11 hexadecimal digits (one of the size, eight of the
+# fingerprint, two of the check), so a tag with two of them misread still has
+# 9. A name's first bracketed word seldom has as many: "[draft]" has 3,
+# "[2024]" 4, "[2024.08.31]" 8.
+_MIN_TAG_HEX = 9
+# The unreleased two-field form [SIZE:FINGERPRINT] is a name, not a damaged
+# tag: no misread of one cell makes it out of a three-field tag.
+_TWO_FIELDS = re.compile(r"\[(0|[1-9][0-9]*):[0-9a-f]{8}\](?: |\Z)", re.ASCII)
+
+
+def looks_like_tag(text: str) -> bool:
+    """Whether free text begins with something a misread could have made of a tag.
+
+    True when the text begins with a bracket-like glyph (or its first word
+    ends in one) and its first word holds at least _MIN_TAG_HEX lower-case
+    hexadecimal digits, unless it begins with the two-field form, which is a
+    name. A real tag looks like one too: callers ask only about text in which
+    split_label found no tag.
+    """
+    m = _TAG_SHAPE.match(text)
+    if m is None or not (m[1] or m[3]) or _TWO_FIELDS.match(text):
+        return False
+    return sum(c in _HEX for c in m[2]) >= _MIN_TAG_HEX
+
+
 def split_label(text: str) -> tuple[Tag | None, str, str]:
     """(tag, check, name) from a label's free text, or (None, "", text) without a tag.
 

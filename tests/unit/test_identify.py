@@ -1,4 +1,5 @@
 # (c) GPL 2007 Karel 'Clock' Kulhavy, Twibright Labs; Python port 2026
+import re
 from functools import cache
 from unittest import mock
 
@@ -17,9 +18,18 @@ from optar.identify import (
     decode_unlabelled,
     identify_scan,
 )
-from optar.label import MIN_LABEL_CONFIDENCE, MIN_LABEL_MARGIN, parse_label, read_label
-from optar.tag import Tag, make_tag, tagged_label
-from tests.helpers import DEGRADED, fake_scan, seeded_bytes
+from optar.imageio import read_scan
+from optar.label import (
+    MIN_LABEL_CONFIDENCE,
+    MIN_LABEL_MARGIN,
+    LabelReading,
+    parse_label,
+    printed_label,
+    read_label,
+)
+from optar.tag import Tag, looks_like_tag, make_tag, split_label, tagged_label
+from tests.helpers import DEGRADED, fake_scan, save_scan, seeded_bytes
+from tests.unit import test_label as label_tests
 
 
 @cache
@@ -214,11 +224,8 @@ def test_rejects_bad_images():
 
 
 def test_tag_that_does_not_fit_is_not_identified():
-    fmt = PageFormat.for_paper(PAPERS["a4"])
-    label = tagged_label(Tag(999999999, "3f9a2c1b"), "x", 1, 1)
-    page = next(encode(b"abc", fmt, label)).pixels
-    with pytest.raises(IdentifyError, match="label unreadable"):
-        identify_scan(fake_scan(page, scale=1, margin=40))
+    assert candidate(tagged_label(Tag(999999999, "3f9a2c1b"), "x", 8, 8)) is None
+    assert candidate(tagged_label(Tag(1399271, "3f9a2c1b"), "x", 8, 8)) is not None
 
 
 def test_tag_printed_for_another_page_count_is_not_identified():
@@ -341,10 +348,10 @@ def labelled_blank(page, total):
 
 
 # Each full refusal locates the page four times (two papers, two orientations),
-# so the second forged label runs in full only in the slow run.
-@pytest.mark.parametrize("page,total", [
-    (1, 99999), pytest.param(10000, 10000, marks=pytest.mark.slow),
-])
+# so these run only in the slow run; test_page_count_limit_is_the_encoders
+# checks the limit by default.
+@pytest.mark.slow
+@pytest.mark.parametrize("page,total", [(1, 99999), (10000, 10000)])
 def test_page_count_the_encoder_could_not_write_is_not_identified(page, total):
     assert total > MAX_PAGES
     with pytest.raises(IdentifyError) as e:
@@ -369,6 +376,244 @@ def test_page_count_limit_is_the_encoders(count, accepted):
     assert (ident is not None) == accepted
     if accepted:
         assert (ident.page, ident.total, ident.name) == (count, count, "x")
+
+
+# ---- moderately blurred scans, through the real path ---------------------------
+#
+# Saved as PNG and loaded with read_scan, which converts to linear light: that
+# darkens blurred white strokes, which a threshold halfway up the band then
+# thinned. The pages decode with no uncorrectable symbol, so their labels must
+# identify them.
+BLURRED = {
+    "s2-b1.0-n15": dict(scale=2, blur=1.0, noise=15),
+    "s2-b1.0-n0": dict(scale=2, blur=1.0),
+    "s3-b1.5-n20": dict(scale=3, blur=1.5, noise=20),
+}
+
+
+def via_png(tmp_path, scan):
+    path = tmp_path / "scan.png"
+    save_scan(path, scan)
+    return read_scan(path)
+
+
+@pytest.mark.parametrize("seed", [1, 2])
+@pytest.mark.parametrize("case", list(BLURRED))
+def test_blurred_tagged_scan_is_identified(tmp_path, case, seed):
+    fmt, data, pages = document("a4")
+    img = via_png(tmp_path, fake_scan(pages[1].pixels, margin=60, seed=seed, **BLURRED[case]))
+    ident = identify_scan(img)
+    check_identity(ident, "a4", 0)
+    want = printed_label(fmt, label_text(fmt, 2, 2, tagged_label(make_tag(data), "doc.tar", 2, 2)))
+    assert read_label(ident.grid).text == want
+
+
+@cache
+def untagged_page():
+    fmt = PageFormat.for_paper(PAPERS["a4"])
+    return next(encode(b"abc", fmt, "holiday photos.tar")).pixels
+
+
+# Untagged labels need a reliable reading, which blur can deny: only the
+# invariant is asserted. Measured: all six are identified correctly (cut
+# halfway up the band, all six were refused). One runs by default.
+@pytest.mark.parametrize("case,seed", [
+    pytest.param(c, s, marks=() if (c, s) == ("s2-b1.0-n0", 1) else pytest.mark.slow)
+    for c in BLURRED for s in (1, 2)
+])
+def test_blurred_untagged_scan_is_identified_or_refused(tmp_path, case, seed):
+    img = via_png(tmp_path, fake_scan(untagged_page(), margin=60, seed=seed, **BLURRED[case]))
+    try:
+        ident = identify_scan(img)
+    except IdentifyError as e:
+        assert e.reason == "label unreadable"
+        return
+    assert (ident.paper, ident.rotation, ident.page, ident.total) == (PAPERS["a4"], 0, 1, 1)
+    assert (ident.tag, ident.name) == (None, "holiday photos.tar")
+
+
+# ---- no misread is accepted as another page or document ---------------------
+#
+# The five families of misreads of tests/unit/test_label.py, applied to the
+# label band of a located scan. Whatever a family does, the candidate is
+# refused or names the true page, total and tag; the name may differ, but
+# only in punctuation (a "." gained or lost, ":" read as ";").
+UNTAGGED = (8, 9, "holiday 2024-08-31 8.tar")
+IDENTITY_LABELS = [*label_tests.FAMILY_LABELS, UNTAGGED]
+def thinned(band, rng):
+    return label_tests.thin(band, int(rng.integers(1 << 31)))
+
+
+FAMILIES = {
+    "thinned": lambda fmt, want: thinned,
+    "blotchy": lambda fmt, want: label_tests.blotchy(70),
+    "ramp": lambda fmt, want: label_tests.gradient(120, 30),
+    "offset": lambda fmt, want: label_tests.offset_x(1.5),
+    "speck": lambda fmt, want: label_tests.speck(fmt, want, True),
+}
+
+
+def truth(label):
+    page, total, text = IDENTITY_LABELS[label]
+    tag, _, name = split_label(text)
+    return page, total, tag, name
+
+
+def perturbed_candidate(paper, label, family, seed):
+    """_identify_upright of a located scan of IDENTITY_LABELS[label] whose band
+    `family` perturbed: the candidate for the true paper and rotation."""
+    fmt = PageFormat.for_paper(PAPERS[paper])
+    page, total, text = IDENTITY_LABELS[label]
+    grid, want = label_tests.located(fmt, page, total, text)
+    seed = (seed, label, int(paper == "letter"))
+    grid = label_tests.perturbed_band(grid, FAMILIES[family](fmt, want), seed)
+    with mock.patch.object(optar.identify, "locate_page", lambda image, f, o=None: grid):
+        return optar.identify._identify_upright(grid.cleaned, 0, PAPERS[paper], None)
+
+
+def same_but_punctuation(a, b):
+    return re.sub(r"[^0-9A-Za-z]", "", a) == re.sub(r"[^0-9A-Za-z]", "", b)
+
+
+def check_misreads(family, seeds):
+    """Every candidate is refused or right; returns (accepted, names misread)."""
+    accepted, misnamed = 0, []
+    for paper in ("a4", "letter"):
+        for label in range(len(IDENTITY_LABELS)):
+            page, total, tag, name = truth(label)
+            for seed in seeds:
+                ident = perturbed_candidate(paper, label, family, seed)
+                if ident is None:
+                    continue
+                accepted += 1
+                assert (ident.page, ident.total, ident.tag) == (page, total, tag), (
+                    paper, label, seed, ident.name)
+                if ident.name != name:
+                    misnamed.append((name, ident.name))
+    for want, got in misnamed:
+        assert same_but_punctuation(want, got), (want, got)
+    return accepted, misnamed
+
+
+@pytest.mark.parametrize("family", list(FAMILIES))
+def test_misread_is_refused_or_right(family):
+    check_misreads(family, range(2))
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("family", list(FAMILIES))
+def test_misread_is_refused_or_right_sweep(family):
+    check_misreads(family, range(2, 40))
+
+
+def check_whole(img, label, paper):
+    """identify_scan of a whole scan: refused, or the truth on the true paper."""
+    try:
+        ident = identify_scan(img)
+    except IdentifyError as e:
+        assert e.reason == "label unreadable"
+        return None
+    page, total, tag, name = truth(label)
+    assert ident.paper is PAPERS[paper] and ident.rotation == 0
+    assert (ident.page, ident.total, ident.tag) == (page, total, tag)
+    assert same_but_punctuation(ident.name, name)
+    return ident
+
+
+def labelled_scan(paper, label, **kw):
+    fmt = PageFormat.for_paper(PAPERS[paper])
+    page, total, text = IDENTITY_LABELS[label]
+    pixels, _ = label_tests.labelled_page(fmt, page, total, text)
+    return fake_scan(pixels, margin=60, **kw)
+
+
+# The whole scan perturbed and identified from scratch, every candidate paper
+# and rotation tried: the blurred scans through the real path, and the band
+# families on the scan itself.
+@pytest.mark.slow
+@pytest.mark.parametrize("paper", ["a4", "letter"])
+@pytest.mark.parametrize("case", list(BLURRED))
+def test_blurred_scan_is_refused_or_right(tmp_path, paper, case):
+    for label in (0, 1, 4, 8):
+        for seed in (3, 4):
+            img = via_png(tmp_path, labelled_scan(paper, label, seed=seed, **BLURRED[case]))
+            check_whole(img, label, paper)
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("paper", ["a4", "letter"])
+@pytest.mark.parametrize("family", list(FAMILIES))
+def test_misread_scan_is_refused_or_right(paper, family):
+    fmt = PageFormat.for_paper(PAPERS[paper])
+    for label in (0, 4, 8):
+        page, total, text = IDENTITY_LABELS[label]
+        _, want = label_tests.labelled_page(fmt, page, total, text)
+        img = labelled_scan(paper, label, scale=label_tests.SCALE)
+        rows, cols = label_tests.band_box(fmt)
+        rows, cols = slice(rows.start - 12, rows.stop + 12), slice(cols.start - 12, cols.stop + 12)
+        img[rows, cols] = FAMILIES[family](fmt, want)(img[rows, cols].copy(),
+                                                     np.random.default_rng(label))
+        check_whole(img, label, paper)
+
+
+# ---- damaged tags --------------------------------------------------------------
+
+def candidate(text):
+    """The A4 candidate for a label reading `text` as page 8 of 8, perfectly
+    and with every score at its best: only the text decides."""
+    fmt = PageFormat.for_paper(PAPERS["a4"])
+    reading = LabelReading(printed_label(fmt, label_text(fmt, 8, 8, text)), 1.0, 1.0)
+    assert reading.reliable
+    grid = mock.Mock(fmt=fmt)
+    with mock.patch.object(optar.identify, "locate_page", lambda image, f, o=None: grid), \
+            mock.patch.object(optar.identify, "read_label", lambda g: reading):
+        return optar.identify._identify_upright(None, 0, PAPERS["a4"], None)
+
+
+# A tag (of a file that fits 8 A4 pages) that a misread has broken must not
+# pass for a name: such a page would join no document, or the wrong one.
+@pytest.mark.parametrize("text", [
+    "[0399271:9b0d6853:7f] x",       # the first size digit read as 0
+    "[1399271;9b0d6853:7f] x",       # a colon read as ";"
+    "[1399271:9b0d6853.7f] x",       # a colon read as "."
+    "[1399271:9b0d6853:7f) x",       # the bracket read as ")"
+    "[1399271:9b0d6853:7f1 x",       # the bracket read as "1"
+    "(1399271:9b0d6853:7f] x",       # the opening bracket read as "("
+    "[1399271:9b0d68s3:7f] x",       # a hex digit read as a letter
+    "[1399271:9b0d6853:7f]`x",       # a stray mark after the tag
+    "[1399271:9b0d6853:7f].x",
+    "[0399271:9b0d6853:7f]",         # one of them with no name
+    "[3274105;6083b9d1:ae]",         # from review
+])
+def test_damaged_tag_is_unreadable(text):
+    assert split_label(text)[0] is None and looks_like_tag(text)
+    assert candidate(text) is None
+
+
+@pytest.mark.parametrize("text", [
+    "[draft] report.pdf", "[2024] taxes.zip", "[2024.08.31] photos", "[backup 2024-08-31]",
+    "[61:9b8d0e3f] x",  # the unreleased two-field form is a name
+])
+def test_bracketed_name_is_an_untagged_name(text):
+    assert not looks_like_tag(text)
+    ident = candidate(text)
+    assert (ident.page, ident.total, ident.tag, ident.name) == (8, 8, None, text)
+
+
+def test_bracketed_name_is_read_from_the_page():
+    clear, ident = check_label("[draft] report.pdf")
+    assert clear and (ident.tag, ident.name) == (None, "[draft] report.pdf")
+
+
+@pytest.mark.slow
+def test_damaged_tag_is_reported_as_unreadable_label():
+    fmt = PageFormat.for_paper(PAPERS["a4"])
+    img = fake_scan(blank_page(fmt, label_text(fmt, 8, 8, "[0399271:9b0d6853:7f] x")),
+                    scale=1, margin=40)
+    with mock.patch.object(optar.identify, "_papers_by_shape", lambda c: [PAPERS["a4"]]):
+        with pytest.raises(IdentifyError) as e:
+            identify_scan(img)
+    assert e.value.reason == "label unreadable"
 
 
 def blacken_label(pixels, fmt):

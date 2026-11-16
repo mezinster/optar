@@ -12,6 +12,7 @@ from optar.tag import (
     FINGERPRINT_DIGITS,
     MAX_SIZE_DIGITS,
     Tag,
+    looks_like_tag,
     make_tag,
     split_label,
     tagged_label,
@@ -207,3 +208,39 @@ def test_fits_negative_total_is_false():
 def test_matches_requires_right_length():
     d = b"abc"
     assert not Tag(len(d) + 1, make_tag(d).fingerprint).matches(d)
+
+
+# ---- what a damaged tag looks like -------------------------------------------
+
+
+@pytest.mark.parametrize("text", [
+    "[0481152:3f9a2c1b:7e] x",   # the first size digit read as 0
+    "[2481152;3f9a2c1b:7e] x",   # a colon read as ";"
+    "[2481152:3f9a2c1b.7e] x",   # or "."
+    "[2481152:3f9a2c1b:7e) x",   # the closing bracket read as ")"
+    "[2481152:3f9a2c1b:7e1 x",   # or as "1"
+    "(2481152:3f9a2c1b:7e] x",   # the opening bracket read as "("
+    " 2481152:3f9a2c1b:7e] x",   # or lost
+    "[2481152:3f9a2c1g:7e] x",   # a hex digit read as a letter
+    "[2481152:3f9a2c1b:7e]`x",   # a stray mark after the tag
+    "[2481152:3f9a2c1b:7e].x",
+    "[3274105;6083b9d1:ae]",
+    "[5:0b3d8e9f.f4]",           # the shortest size
+])
+def test_looks_like_tag(text):
+    assert split_label(text)[0] is None
+    assert looks_like_tag(text)
+
+
+def test_real_tag_looks_like_one():
+    assert looks_like_tag(T.page_text(1, 1)) and looks_like_tag(tagged_label(T, "x", 1, 1))
+
+
+@pytest.mark.parametrize("text", [
+    "", "x", "doc.tar", "holiday photos.tar", "3f9a2c1b0011.tar", "[", "[]",
+    "[draft] report.pdf", "[2024] taxes.zip", "[2024.08.31] photos", "[2024.08.31 holiday] x",
+    "[backup 2024-08-31]", "[20240831-1] x", "(2024) x", "[deadbeef] x",
+    "[2481152:3f9a2c1b] x", "[0:00000000]",  # the unreleased two-field form
+])
+def test_names_do_not_look_like_tags(text):
+    assert not looks_like_tag(text)

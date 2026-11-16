@@ -22,7 +22,7 @@ from optar.encoder import MAX_PAGES
 from optar.errors import DecodeError, IdentifyError
 from optar.format import PAPERS, PageFormat, Paper
 from optar.label import parse_label, read_label
-from optar.tag import Tag, split_label
+from optar.tag import Tag, looks_like_tag, split_label
 
 __all__ = ["ScanIdentity", "candidate_rotations", "decode_unlabelled", "identify_scan"]
 
@@ -100,7 +100,7 @@ def _identify_upright(
     except DecodeError:
         return None
     reading = read_label(grid)
-    if not reading.reliable:
+    if not reading.plausible:
         return None
     info = parse_label(reading.text)
     if info is None or info.format != fmt.to_string():
@@ -109,11 +109,15 @@ def _identify_upright(
     if info.total > MAX_PAGES or not 1 <= info.page <= min(max(info.total, 1), MAX_PAGES):
         return None
     tag, check, name = split_label(info.text)
-    # The check covers the page number and count as read: a misread digit
-    # that still leaves a well-formed label is caught here.
-    if tag is not None and not (
-        tag.fits(info.total, fmt) and tag.check(info.page, info.total) == check
-    ):
+    if tag is not None:
+        # The check covers the size, fingerprint, page number and count as
+        # read: a misread digit that still leaves a well-formed label is
+        # caught here, so a plausible reading is enough.
+        if not (tag.fits(info.total, fmt) and tag.check(info.page, info.total) == check):
+            return None
+    # Without a tag nothing checks the reading but the stroke and cell rules;
+    # and a tag that a misread has broken must not pass for a name.
+    elif not reading.reliable or looks_like_tag(info.text):
         return None
     return ScanIdentity(
         paper, fmt, rotation, info.page, info.total, tag, name,
@@ -126,10 +130,19 @@ def identify_scan(image: np.ndarray, options: DecodeOptions | None = None) -> Sc
 
     Raises IdentifyError("no page found") when no candidate rotation shows a
     page outline, else IdentifyError("label unreadable") when no rotation and
-    paper give a label that reads reliably, parses, carries the paper's own
-    format string, a page number within the total, a total the encoder could
-    have written (at most MAX_PAGES) and a tag (if any) that fits the total
-    and whose check is right for the page number and total read.
+    paper give a label that parses, carries the paper's own format string, a
+    page number within the total and a total the encoder could have written
+    (at most MAX_PAGES), and either
+    - a tag that fits the total and whose check is right for the page number
+      and total read, in a reading that is plausible (LabelReading), or
+    - no tag, in a reading that is reliable, with free text that does not
+      begin with a damaged tag (tag.looks_like_tag).
+
+    The check code is the error detector for tagged labels, so their
+    acceptance does not rest on the stroke heuristics, which can reject exact
+    readings of blurred scans. An untagged label has no detector and needs
+    the stricter reliable gate, a filter that makes misreads rare but cannot
+    rule them out.
     """
     image = _check(image)
     rotations = candidate_rotations(image)

@@ -26,33 +26,54 @@ from optar.format import FORMAT_PATTERN, TEXT_WIDTH, PageFormat
 # it cannot be read back exactly: that cell reads as some other character.
 _LAST_DRAWN = FIRST_CHAR + GLYPH_CELLS
 
-# What these thresholds do and do not give. A reading is reliable only if it
-# passes all of them; that makes the gate a filter, not a guarantee. Some
-# misreads are indistinguishable from print at the level of one cell (a speck
-# the size and place of a ".", a blotch that gives ":" the tail of ";"), and
-# under harsh conditions up to about one reading in a hundred is accepted
-# though wrong. In every condition measured none of those was a well-formed
-# substitution (a digit for a digit, a hex digit for a hex digit) in the format
-# string, the page numbers or the tag: what was accepted no longer parses or no
-# longer matches. Well-formed substitutions are what a check code in the tag
-# is for; this gate does not rule them out.
+# What the reader and its gates do and do not give.
 #
-# Evidence (synthetic scans of A4 and Letter at scale 3; tests/unit/test_label.py
-# has the perturbations). Ordinary scans, every DEGRADED case with five labels
-# on both papers (80 readings): all exact and reliable, confidence and margin
-# 1.0, ink loss and gain 0, no doubtful cell. Band blur 0.8 with noise 8,
-# noise of sigma 60 or blotchy noise of sigma 50 (1600 readings each), a band
-# offset of 0.45 page pixel (1040): no wrong reading accepted; at most 9 exact
-# readings in 1600 rejected. Wrong readings accepted per 1600 (confidence and
-# margin alone -> all rules):
-#   (a) band strokes thinned (MinFilter 3, blur 1.0, noise 8):          344 -> 0
-#   (b) blotchy noise (blurred over 2 scan pixels), sigma 60, 70, 80:  5, 17, 31 -> 2, 6, 2
-#   (c) a 120 or 100 grey-level ramp across the band, noise 30 or 40:   3, 0 -> 0, 0
-#   (d) the band sampled half a page pixel off in x, either way:        1, 1 -> 0, 0
-#   (e) a white speck of 2-4 page pixels over the text:                 7 -> 2
-#       the same speck always in a blank cell:                         57 -> 21
-# The price: under (a), (c) and (d) nearly every reading is now rejected, and
-# under (b) at sigma 80 three in four.
+# The cut. The band is white ink on black, sampled from the scan in linear
+# light, where blur leaves thin white strokes well below the white of wide
+# ones: a cut halfway between the band's darkest and brightest samples thinned
+# them, so that every exact reading of a moderately blurred scan failed the
+# ink-loss rule (scale 2 with blur 1.0, or scale 3 with blur 1.5, saved as PNG
+# and loaded with read_scan). Under heavy noise near black, on the other hand,
+# a low cut turns the noise into ink. No single fraction suited both (measured
+# 0.10 to 0.50, the darkest and brightest samples or the 1st/99th and
+# 2nd/98th percentiles; the percentiles helped nothing), so the band is cut at
+# each of BAND_CUTS and the cut whose cells best match glyphs is read. Fixed at
+# 0.30 instead, the blurred scans read but blotchy noise of sigma 60 gave 44
+# acceptable exact readings in 1600 instead of 1550.
+#
+# The gates. A reading is plausible when every identity cell matches its glyph
+# closely and clearly (MIN_LABEL_CONFIDENCE, MIN_LABEL_MARGIN), and reliable
+# when, besides, its strokes are neither thinned nor thickened (MAX_INK_BIAS)
+# and no cell is in doubt (_MIN_CLEAR_LEAD and the cells after the text). Both
+# are filters, not guarantees: some misreads are indistinguishable from print
+# at the level of one cell (a speck the size and place of a ".", a blotch that
+# gives ":" the tail of ";"). A tagged label needs only to be plausible,
+# because its check code is the error detector: a misread of the size,
+# fingerprint, page or total passes it about once in 256, and a misread that
+# breaks the tag's form is refused (identify.py). An untagged label has no
+# detector and must be reliable.
+#
+# Evidence (synthetic scans of A4 and Letter; tests/unit/test_label.py has the
+# perturbations, applied to the band of a clean scale-3 scan; whole scans went
+# through PNG and read_scan). Exact readings reliable, of exact readings:
+#   every DEGRADED case, 8 labels, 2 seeds, both papers:      256 of 256
+#   scale 2, blur 1.0, noise 0/15/20:  32/32/32 of 32 each (cut halfway: 0)
+#   scale 3, blur 1.5, noise 0/15/20:  32/32/32 of 32 each (cut halfway: 0)
+#   scale 2, blur 1.5, no noise:       28 of 32; with noise 15 or 20 few
+#                                      readings are exact at any cut (8, 3)
+#   ramps of 40/80/120 grey levels across the band, noise 20: 1600 of 1600
+#   thinned strokes (MinFilter 3, blur 1.0, noise 8): 1600 of 1600 (was 0)
+# Wrong readings that were reliable, per 1600 (none a well-formed digit or hex
+# substitution in the format string, page numbers or tag; the same as with the
+# cut halfway, or fewer):
+#   (a) thinned strokes 0; (b) blotchy noise, sigma 60/70/80: 0, 4, 5;
+#   (c) a 120/100-level ramp with noise 30/40: 0, 0; (d) half a page pixel
+#   off in x: 0, 0; (e) a white speck over the text: 1, always in a blank
+#   cell: 21.
+# Wrong readings that were only plausible, per 1600: (b) 3, 15, 23; (c) 3, 0;
+# (d) 2, 0; (e) 3, 36. Identification accepted 3, 12, 18 (b),
+# 1 (c) and 11 (e) of them, every one with the true page, total and tag and a
+# name differing in punctuation; it refused the rest.
 #
 # Lowest best-match score over the identity cells (the cells from the first
 # through the last non-space character read): the fraction of a cell's pixels
@@ -63,14 +84,14 @@ MIN_LABEL_CONFIDENCE = 0.90
 # cells (1 for a perfect read, 0 for a tie; see read_label). Systematic misreads
 # from stroke width or a 2-pixel band shift: at most 0.050.
 MIN_LABEL_MARGIN = 0.20
-# Highest ink loss and ink gain (see LabelReading). In exact readings that
-# confidence and margin accepted: loss at most 0.051 and gain at most 0.031
-# under noise of sigma 60, blotchy noise up to sigma 70 and specks; up to
-# 0.090 and 0.057 under blotchy noise of sigma 80, and 0.076 under a 100-level
-# ramp with noise 30, where some exact readings are now rejected. Thinned
-# strokes (a): loss 0.113-0.138; ramps (c) up to 0.21; half-pixel offsets (d)
-# 0.12-0.14.
+# Highest ink loss and ink gain (see LabelReading). In exact readings: at most
+# 0.009 and 0.005 on the blurred scans above; up to 0.097 and 0.060 under
+# blotchy noise of sigma 80 and 0.136 under a 120-level ramp with noise 30,
+# where some exact readings are rejected; 0.14 for half-pixel offsets (d).
 MAX_INK_BIAS = 0.08
+# Fractions of the way from the band's darkest to its brightest sample at
+# which it is cut (see above).
+BAND_CUTS = (0.2, 0.3, 0.4, 0.5)
 # A glyph must beat the blank by max(_MIN_CLEAR_LEAD, half its ink pixels)
 # agreeing pixels. The sparsest glyphs have 9 ("`") to 31 (";") ink pixels.
 _MIN_CLEAR_LEAD = 6
@@ -96,10 +117,15 @@ class LabelReading:
     doubtful_cells: int = 0
 
     @property
+    def plausible(self) -> bool:
+        """Every identity cell matches its glyph closely and clearly."""
+        return self.confidence >= MIN_LABEL_CONFIDENCE and self.margin >= MIN_LABEL_MARGIN
+
+    @property
     def reliable(self) -> bool:
+        """Plausible, and neither the strokes nor any cell cast doubt on it."""
         return (
-            self.confidence >= MIN_LABEL_CONFIDENCE
-            and self.margin >= MIN_LABEL_MARGIN
+            self.plausible
             and self.ink_loss <= MAX_INK_BIAS
             and self.ink_gain <= MAX_INK_BIAS
             and self.doubtful_cells == 0
@@ -152,10 +178,13 @@ def _glyphs() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
 def read_label(grid: PageGrid) -> LabelReading:
     """Read the label band of a located page.
 
-    Each cell is matched against every glyph by the fraction of its pixels
-    that agree. A cell's margin is the lead of the best glyph over the
-    runner-up, in units of the pixels in which those two glyphs differ:
-    1 when the cell is exactly the best glyph, 0 for a tie.
+    The band is cut into ink and background at each fraction in BAND_CUTS
+    of the way from its darkest to its brightest sample, and the cut whose
+    cells agree best with their best glyphs is read. Each cell is matched
+    against every glyph by the fraction of its pixels that agree. A cell's
+    margin is the lead of the best glyph over the runner-up, in units of the
+    pixels in which those two glyphs differ: 1 when the cell is exactly the
+    best glyph, 0 for a tie.
 
     A cell is doubtful when it is read as a glyph that does not beat the
     blank by its clear lead, or when it lies after the text and either some
@@ -176,16 +205,23 @@ def read_label(grid: PageGrid) -> LabelReading:
     sx, sy = page_to_scan(grid, xs[None, :], ys[:, None])
     band = interp(grid.cleaned, sx, sy)
     lo, hi = float(band.min()), float(band.max())
-    white = (band > (lo + hi) / 2).astype(np.float32)
-
-    # (ncells, text_height * TEXT_WIDTH), rows in the same order as _glyphs().
-    cells = white.reshape(fmt.text_height, ncells, TEXT_WIDTH).transpose(1, 0, 2)
-    cells = cells.reshape(ncells, -1)
     on, off, distance, clear_lead = _glyphs()
-    agree = cells @ on.T + (1 - cells) @ off.T  # agreeing pixels, exact in float32
+
+    def cut(fraction: float) -> tuple[float, np.ndarray, np.ndarray]:
+        """The band cut at a fraction of the way from lo to hi: (agreeing
+        pixels summed over every cell's best glyph, cells, agreement table)."""
+        white = (band > lo + fraction * (hi - lo)).astype(np.float32)
+        # (ncells, text_height * TEXT_WIDTH), rows in the same order as _glyphs().
+        cells = white.reshape(fmt.text_height, ncells, TEXT_WIDTH).transpose(1, 0, 2)
+        cells = cells.reshape(ncells, -1)
+        agree = cells @ on.T + (1 - cells) @ off.T  # agreeing pixels, exact in float32
+        return float(agree.max(axis=1).sum()), cells, agree
+
+    # The cut whose cells look most like glyphs; the first of equals.
+    _, cells, agree = max((cut(f) for f in BAND_CUTS), key=lambda c: c[0])
+    rows = np.arange(ncells)
     order = np.argsort(-agree, axis=1, kind="stable")  # ties go to the lowest code
     best, second = order[:, 0], order[:, 1]
-    rows = np.arange(ncells)
     scores = agree[rows, best] / cells.shape[1]
     margins = (agree[rows, best] - agree[rows, second]) / distance[best, second]
 
