@@ -488,6 +488,8 @@ def test_putting_on_paper_choices_and_summary():
         "12 pages · 2,000,000 bytes · can lose 1 page of 12")
     assert text.print_summary(40, 9_000_000, 3, True).endswith(" · can lose 3 pages of 40")
     assert text.print_summary(1, 10, 0, True) == f"1 page · 10 bytes · {text.DAMAGE_REPAIRED}"
+    assert text.DAMAGE_REPAIRED.endswith("losing a whole page loses the file")
+    assert "C tool" not in text.COMPATIBLE and "0.2" in text.COMPATIBLE
     assert text.print_summary(0, 0, 0, False) == "1 page · 0 bytes"
     for words in (text.DOTS_FIELD, text.PROTECT_FIELD, text.COMPATIBLE, text.DAMAGE_REPAIRED,
                   text.print_summary(12, 1, 1, True)):
@@ -501,6 +503,44 @@ def test_too_large_gives_the_reason_and_the_limit():
     assert "protect" in protect and "at most 1,343 pages" in protect
     pages = text.too_large(TOO_MANY_PAGES, 9_999)
     assert "protect" not in pages and "at most 9,999 pages" in pages
+    assert "It fits" not in protect and "It fits" not in pages  # nothing else would take it
+    assert (TOO_MANY_PAGES, TOO_LARGE_TO_PROTECT) == (
+        text.TOO_MANY_PAGES, text.TOO_LARGE_TO_PROTECT)
+
+
+def test_too_large_names_the_choices_that_would_take_the_file():
+    base = text.too_large(text.TOO_LARGE_TO_PROTECT, 1_343)
+    assert text.too_large(text.TOO_LARGE_TO_PROTECT, 1_343, True) == (
+        f"{base} It fits without protection.")
+    pages = text.too_large(text.TOO_MANY_PAGES, 9_999)
+    assert text.too_large(text.TOO_MANY_PAGES, 9_999, False, "big") == (
+        f"{pages} It fits with Big dots.")
+    assert text.too_large(text.TOO_MANY_PAGES, 9_999, True, "medium") == (
+        f"{pages} It fits without protection, or with Medium dots.")
+
+
+def test_name_warning_of_pages_that_identify_themselves():
+    old = text.name_warning("é", True)
+    assert old == (
+        "These characters are not in the label font and are not printed: é. The name is "
+        "too long for the page and is cut. The printed name is what identifies the pages later."
+    )
+    new = text.name_warning("é", True, stored=True)
+    assert new.startswith(old[: old.index(" The printed name")])
+    assert new.endswith("The pages do not need it: the full name is kept with the file.")
+    assert "identifies" not in new
+    none = text.name_warning("é", True, stored=True, printed=False)
+    assert none == (
+        "The label of this dot size has no room for the name, so it is not printed. "
+        "The pages do not need it: the full name is kept with the file."
+    )
+    assert text.name_warning("", False, stored=True) is None
+    assert text.name_warning("", False, stored=True, printed=False) is None
+    # A name of characters the font lacks prints nothing either, for that reason.
+    assert text.name_warning("от", False, stored=True, printed=False) == (
+        "These characters are not in the label font and are not printed: о т. "
+        "The pages do not need it: the full name is kept with the file."
+    )
 
 
 # --- Version-1 documents and coarse scans -----------------------------------------

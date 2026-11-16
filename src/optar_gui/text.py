@@ -90,7 +90,7 @@ DEST_IS_SOURCE = "the PDF would replace the file being put on paper; choose anot
 # The choices of how the file is put on paper.
 DOTS_FIELD = "Dot size:"
 PROTECT_FIELD = "Protection:"
-COMPATIBLE = "Compatible with optar 0.2 and the C tool"
+COMPATIBLE = "Compatible with optar 0.2 and the original optar"
 
 # What a document without a name is called.
 NO_NAME = "(no name)"
@@ -468,17 +468,31 @@ def file_info(total: int, size: int) -> str:
     return f"{count(max(total, 1), 'page')} · {count(size, 'byte')}"
 
 
-def name_warning(dropped: str, cut: bool) -> str | None:
-    """Why the printed name differs from the name typed, or None when it does not."""
+def name_warning(
+    dropped: str, cut: bool, *, stored: bool = False, printed: bool = True
+) -> str | None:
+    """Why the printed name differs from the name typed, or None when it does not.
+
+    ``stored`` is whether the pages carry the name in their data and identify
+    themselves from it (every printout but a compatible one): the printed name
+    is then only for people. ``printed`` is whether any of the name is printed
+    at all; the label of the largest dots has no room for it.
+    """
     parts = []
-    if dropped:
+    if dropped and (printed or not cut):
         shown = " ".join(ch if ch.isprintable() else repr(ch)[1:-1] for ch in dropped)
         parts.append(f"These characters are not in the label font and are not printed: {shown}")
-    if cut:
+    if cut and not printed:
+        parts.append("The label of this dot size has no room for the name, so it is not printed")
+    elif cut:
         parts.append("The name is too long for the page and is cut")
     if not parts:
         return None
-    return ". ".join(parts) + ". The printed name is what identifies the pages later."
+    if stored:
+        ending = "The pages do not need it: the full name is kept with the file."
+    else:
+        ending = "The printed name is what identifies the pages later."
+    return f"{'. '.join(parts)}. {ending}"
 
 
 def not_regular_file(path: str) -> str:
@@ -547,7 +561,7 @@ def promise(promised: int, total: int) -> str:
     return f"can lose {count(promised, 'page')} of {total:,}"
 
 
-DAMAGE_REPAIRED = "damage within pages is repaired, but no whole page may be lost"
+DAMAGE_REPAIRED = "damage within pages is repaired, but losing a whole page loses the file"
 
 
 def print_summary(total: int, size: int, promised: int, protected: bool) -> str:
@@ -560,24 +574,40 @@ def print_summary(total: int, size: int, promised: int, protected: bool) -> str:
     return line
 
 
-def too_large(reason: str, limit: int) -> str:
-    """Why a file cannot be put on paper with the chosen dot size and protection.
+# Why a file cannot be put on paper with the chosen dot size and protection
+# (``work.PrintPlan.too_large``): more pages than a printout may have, or more
+# than a protected one may have.
+TOO_MANY_PAGES = "too many pages"
+TOO_LARGE_TO_PROTECT = "too large to protect"
 
-    ``reason`` is ``work.TOO_MANY_PAGES`` or ``work.TOO_LARGE_TO_PROTECT``;
-    ``limit`` the most pages a printout of that kind may have.
+
+def too_large(
+    reason: str, limit: int, unprotected_fits: bool = False, smaller_dots: str | None = None
+) -> str:
+    """Why a file cannot be put on paper with the chosen dot size and protection,
+    and which other choice would take it.
+
+    ``reason`` is ``TOO_MANY_PAGES`` or ``TOO_LARGE_TO_PROTECT``; ``limit`` the
+    most pages a printout of that kind may have. ``unprotected_fits`` is whether
+    the file fits at this dot size without protection; ``smaller_dots`` names
+    the largest smaller dot size at which it fits with this protection, if any.
     """
-    # Imported here: the work module imports this one.
-    from optar_gui.work import TOO_LARGE_TO_PROTECT
-
     if reason == TOO_LARGE_TO_PROTECT:
-        return (
+        why = (
             "This file is too large to protect with this dot size: a protected "
             f"printout may have at most {count(limit, 'page')}."
         )
-    return (
-        "This file is too large to put on paper with these choices: a printout "
-        f"may have at most {count(limit, 'page')}."
-    )
+    else:
+        why = (
+            "This file is too large to put on paper with these choices: a printout "
+            f"may have at most {count(limit, 'page')}."
+        )
+    ways = []
+    if unprotected_fits:
+        ways.append("without protection")
+    if smaller_dots is not None:
+        ways.append(f"with {_DOT_NAMES.get(smaller_dots, smaller_dots)} dots")
+    return f"{why} It fits {', or '.join(ways)}." if ways else why
 
 
 # --- Documents that repair themselves, and coarse scans ---------------------------
@@ -612,10 +642,9 @@ def coarse_scan(scan_dpi: float, layout: Layout | None) -> str:
             f"Scan it at {layout.scan_dpi:,} dpi."
         )
     # Imported here: loading the optar package loads numpy.
-    from optar.format import DOT_SIZES, PAPERS, get_layout
+    from optar.format import DOT_SIZES
 
-    paper = next(iter(PAPERS))
-    needs = [(_DOT_NAMES.get(d, d), get_layout(paper, d).scan_dpi) for d in DOT_SIZES]
+    needs = [(_DOT_NAMES.get(d, d), dots.scan_dpi) for d, dots in DOT_SIZES.items()]
     (first, first_dpi), rest = needs[0], needs[1:]
     listed = ", ".join([f"{first_dpi:,} dpi for {first} dots", *(f"{d:,} {n}" for n, d in rest)])
     # Any image with a page outline has an estimate: this does not claim it is a page.

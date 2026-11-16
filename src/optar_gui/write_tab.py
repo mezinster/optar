@@ -254,6 +254,12 @@ class WriteTab(QWidget):
             self.compatible,
         )
 
+    @staticmethod
+    def _too_large(plan: PrintPlan) -> str:
+        return text.too_large(
+            plan.too_large, plan.limit, plan.unprotected_fits, plan.smaller_dots
+        )
+
     def refresh(self, *_args) -> None:
         facts = self._facts
         plan = self._plan()
@@ -262,7 +268,7 @@ class WriteTab(QWidget):
         if self._preparing:
             info = text.PREPARING
         elif plan is not None and plan.too_large is not None:
-            info = text.too_large(plan.too_large, plan.limit)
+            info = self._too_large(plan)
         elif plan is not None:
             info = text.print_summary(plan.total, facts.size, plan.promised, plan.protected)
             name = self.name_edit.text()
@@ -273,7 +279,10 @@ class WriteTab(QWidget):
                 preview = name_preview(self.paper, facts.tag, name)
             if preview is not None:
                 prints = preview.printed
-                warning = text.name_warning(preview.dropped, preview.cut)
+                warning = text.name_warning(
+                    preview.dropped, preview.cut,
+                    stored=not self.compatible, printed=preview.shown,
+                )
         self.info.setText(info)
         self.prints_as.setText(prints)
         self.warning.setText(warning or "")
@@ -311,7 +320,7 @@ class WriteTab(QWidget):
         plan = self._plan()
         if plan is None or plan.too_large is not None:
             if plan is not None:
-                self.status.setText(text.too_large(plan.too_large, plan.limit))
+                self.status.setText(self._too_large(plan))
             return
         paper = self.paper
         name = self.name_edit.text()

@@ -402,7 +402,9 @@ def test_summary_follows_every_choice(qtbot, make_tab, tmp_path):
                 select(child(tab, QComboBox, "protectBox"), protect)
                 want = plan(size, "data.bin", get_layout(paper, dots).fmt, parity)
                 shown = info.text()
-                assert f"{want.total:,} page" in shown, (paper, dots, protect)
+                # The whole count: "1 page" is also inside "11 pages".
+                assert shown.startswith(f"{text.count(want.total, 'page')} · "), (
+                    paper, dots, protect)
                 assert "400,000 bytes" in shown
                 promised = pages_promised(want)
                 if promised:
@@ -433,8 +435,9 @@ def test_too_large_to_protect_disables_create(qtbot, make_tab, tmp_path, monkeyp
     choose(qtbot, tab, write_file(tmp_path, "data.bin", seeded_bytes(15, 1_000_000)))
     info = child(tab, QLabel, "infoLabel")
     create = child(tab, QPushButton, "createButton")
-    assert info.text() == text.too_large(work.TOO_LARGE_TO_PROTECT, limit)
+    assert info.text() == text.too_large(work.TOO_LARGE_TO_PROTECT, limit, True)
     assert f"at most {limit} pages" in info.text()
+    assert info.text().endswith("It fits without protection.")
     assert not create.isEnabled()
     select(child(tab, QComboBox, "protectBox"), "none")
     assert create.isEnabled()
@@ -454,8 +457,19 @@ def test_protected_pages_print_the_name_only(qtbot, make_tab, tmp_path):
     fmt = get_layout("a4", "xlarge").fmt
     full = printed_label(fmt, label_text(fmt, 1, 1, "data.bin"))
     prefix = f"  {fmt.to_string()} 1/1 "
-    assert prints.text() == (full[len(prefix):] if full.startswith(prefix) else "")
-    assert "cut" in child(tab, QLabel, "warningLabel").text()
+    assert prints.text() == (full[len(prefix):] if full.startswith(prefix) else "") == ""
+    warning = child(tab, QLabel, "warningLabel")
+    # No name is printed at all on these dots, and the pages do not go by it.
+    assert warning.text() == text.name_warning("", True, stored=True, printed=False)
+    assert "cut" not in warning.text() and "identifies" not in warning.text()
+    select(child(tab, QComboBox, "dotsBox"), "large")
+    child(tab, QLineEdit, "nameEdit").setText("a-rather-long-name-for-large-dots.tar")
+    assert warning.text() == text.name_warning("", True, stored=True)
+    assert "is cut" in warning.text() and "identifies" not in warning.text()
+    compatible(tab)
+    child(tab, QLineEdit, "nameEdit").setText("x" * 90 + ".tar")
+    assert warning.text() == text.name_warning("", True)
+    assert warning.text().endswith("The printed name is what identifies the pages later.")
 
 
 def test_create_passes_the_choices(qtbot, make_tab, tmp_path):

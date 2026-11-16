@@ -679,7 +679,26 @@ def test_print_plan_too_large_to_protect(monkeypatch):
     monkeypatch.setattr(optar.container, "PROTECTED_MAX_BYTES", 3 * (A4.net_bits // 8))
     got = work.print_plan(1_000_000, "x", "a4", "standard", "standard")
     assert (got.too_large, got.limit) == (work.TOO_LARGE_TO_PROTECT, 3)
+    assert got.unprotected_fits and got.smaller_dots is None
     assert work.print_plan(1_000_000, "x", "a4", "standard", "none").too_large is None
+
+
+def test_print_plan_says_which_other_choice_takes_the_file(monkeypatch):
+    monkeypatch.setattr(optar.container, "MAX_PAGES", 10)
+    monkeypatch.setattr(optar.encoder, "MAX_PAGES", 10)
+    size = 9 * (get_layout("a4", "large").fmt.net_bits // 8)  # ten Large pages unprotected
+    plain = work.print_plan(size, "x", "a4", "large", "none")
+    assert plain.too_large is None and plain.total == 10
+    got = work.print_plan(size, "x", "a4", "large", "standard")
+    assert (got.too_large, got.limit) == (work.TOO_MANY_PAGES, 10)
+    assert got.unprotected_fits and got.smaller_dots == "big"  # the next smaller that fits
+    got = work.print_plan(size, "x", "a4", "xlarge", "none")
+    assert got.too_large == work.TOO_MANY_PAGES
+    assert not got.unprotected_fits and got.smaller_dots == "large"
+    huge = work.print_plan(100 * size, "x", "a4", "large", "standard")
+    assert not huge.unprotected_fits and huge.smaller_dots is None
+    old = work.print_plan(100 * size, "x", "a4", compatible=True)
+    assert old.too_large and not old.unprotected_fits and old.smaller_dots is None
 
 
 def test_dot_choices_name_each_size_and_its_scan_resolution():

@@ -456,8 +456,8 @@ def _parity(protect: str) -> int:
 
 
 # Why a file cannot be put on paper with the chosen dot size and protection.
-TOO_MANY_PAGES = "too many pages"
-TOO_LARGE_TO_PROTECT = "too large to protect"
+TOO_MANY_PAGES = text.TOO_MANY_PAGES
+TOO_LARGE_TO_PROTECT = text.TOO_LARGE_TO_PROTECT
 
 
 @dataclass(frozen=True)
@@ -469,7 +469,10 @@ class PrintPlan:
     is how many pages may be lost, from ``optar.container.pages_promised``;
     ``protected`` is whether damage within pages is repaired. ``too_large``
     is None, ``TOO_MANY_PAGES`` or ``TOO_LARGE_TO_PROTECT``, and ``limit``
-    then the most pages a printout of that kind may have.
+    then the most pages a printout of that kind may have. For a file too
+    large, ``unprotected_fits`` is whether it fits at the same dot size without
+    protection, and ``smaller_dots`` the largest smaller dot size at which it
+    fits with the same protection, or None.
     """
 
     total: int
@@ -477,6 +480,8 @@ class PrintPlan:
     protected: bool = False
     too_large: str | None = None
     limit: int = 0
+    unprotected_fits: bool = False
+    smaller_dots: str | None = None
 
 
 def print_plan(
@@ -503,20 +508,39 @@ def print_plan(
     try:
         p = plan(size, name, fmt, parity)
     except OptarError:
+        # What would take the file: no protection, or the next smaller dots that do.
+        smaller = [d for d in DOT_SIZES if DOT_SIZES[d].scale < DOT_SIZES[dots].scale]
+        other = {
+            "unprotected_fits": parity > 0 and _fits(size, name, fmt, 0),
+            "smaller_dots": next(
+                (d for d in reversed(smaller)
+                 if _fits(size, name, get_layout(paper_name, d).fmt, parity)),
+                None,
+            ),
+        }
         # The tighter of the two limits is the one the file is over.
         limit = optar.container.MAX_PAGES
         if parity:
             page_bytes = plan_for(1, fmt, parity).page_bytes
             protected = optar.container.PROTECTED_MAX_BYTES // page_bytes
             if protected < limit:
-                return PrintPlan(0, too_large=TOO_LARGE_TO_PROTECT, limit=protected)
-        return PrintPlan(0, too_large=TOO_MANY_PAGES, limit=limit)
+                return PrintPlan(0, too_large=TOO_LARGE_TO_PROTECT, limit=protected, **other)
+        return PrintPlan(0, too_large=TOO_MANY_PAGES, limit=limit, **other)
     return PrintPlan(p.total, pages_promised(p), parity > 0)
+
+
+def _fits(size: int, name: str, fmt: PageFormat, parity: int) -> bool:
+    """Whether a file of ``size`` bytes can be put on pages of ``fmt``."""
+    try:
+        plan(size, name, fmt, parity)
+    except OptarError:
+        return False
+    return True
 
 
 def dot_choices() -> list[tuple[str, int]]:
     """Each dot size, in order, with the scan resolution advised for it (dpi)."""
-    return [(dots, get_layout(next(iter(PAPERS)), dots).scan_dpi) for dots in DOT_SIZES]
+    return [(name, dots.scan_dpi) for name, dots in DOT_SIZES.items()]
 
 
 def native_path(path: str) -> str:
@@ -597,6 +621,11 @@ class NamePreview:
     printed: str
     dropped: str
     cut: bool
+
+    @property
+    def shown(self) -> bool:
+        """Whether the pages print any of the name at all."""
+        return bool(self.printed.strip())
 
 
 def _drawable(ch: str) -> bool:
