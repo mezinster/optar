@@ -155,7 +155,8 @@ def test_dot_scales_and_resolutions():
     assert [d.printer_dots for d in DOT_SIZES.values()] == [3, 4, 5, 6, 9]
     assert [d.scale for d in DOT_SIZES.values()] == [1, Fraction(4, 3), Fraction(5, 3), 2, 3]
     assert [get_layout("a4", d).scan_dpi for d in DOT_SIZES] == [600, 450, 360, 300, 200]
-    assert [get_layout("a4", d).pixels_per_inch for d in DOT_SIZES] == [200, 150, 120, 100, Fraction(200, 3)]
+    dpis = [get_layout("a4", d).pixels_per_inch for d in DOT_SIZES]
+    assert dpis == [200, 150, 120, 100, Fraction(200, 3)]
     assert PARITY == {"none": 0, "standard": 32, "high": 64}
 
 
