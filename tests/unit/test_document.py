@@ -18,6 +18,7 @@ import pytest
 from optar.tag import Tag, make_tag
 from optar_gui.document import (
     MAX_TOTAL_PAGES,
+    SCAN_EXTENSIONS,
     SIZE_MISMATCH,
     DocState,
     Document,
@@ -30,6 +31,7 @@ from optar_gui.document import (
     ScanState,
     ScanView,
     Summary,
+    expand_paths,
 )
 
 A = "0-65-93-24-3-1-2-24"
@@ -1692,3 +1694,79 @@ def test_one_event_on_a_large_printout_is_fast(tag):
         doc.set_identified(extra, info(1, total=2000, tag=tag))
         doc.slots()
     assert (time.perf_counter() - start) / 20 < 0.005
+
+
+# --- Checking the fingerprint off the interface thread ---------------------------
+
+
+def test_verdict_job_is_none_without_a_complete_tagged_document():
+    data = bytes(range(256)) * 10
+    assert Document().verdict_job() is None
+    doc, _ = decoded(None, split(data))  # untagged: nothing to hash
+    assert doc.verdict_job() is None
+    doc, _ = decoded(make_tag(data), [split(data)[0], None, split(data)[2]])  # incomplete
+    assert doc.verdict_job() is None
+
+
+def test_summary_without_verifying_reports_checking_and_hashes_nothing():
+    data = bytes(range(256)) * 10
+    doc, _ = decoded(make_tag(data), split(data))
+    passes = count_passes(doc)
+    s = doc.summary(verify=False)
+    assert s == Summary(DocState.CHECKING, 3, 0, 0, 0, 0, 2560)
+    assert passes == []
+
+
+def test_verdict_job_hashes_a_snapshot_and_its_verdict_is_cached():
+    data = bytes(range(256)) * 10
+    doc, (p1, p2, p3) = decoded(make_tag(data), split(data))
+    job = doc.verdict_job()
+    assert job is not None and job.size == 2560
+    # A change after the job was made does not affect what it hashes.
+    doc.set_outcome(p2, page_out(b"\xff" * PAGE))
+    verdict = job()
+    assert verdict.matches
+    doc.accept_verdict(verdict)  # stale: kept only for the bytes it was made from
+    assert doc.summary(verify=False).state == DocState.CHECKING
+    doc.accept_verdict(doc.verdict_job()())
+    assert doc.verdict_job() is None
+    passes = count_passes(doc)
+    assert doc.summary(verify=False).state == DocState.MISMATCH
+    assert doc.summary().state == DocState.MISMATCH
+    assert passes == []  # summary() used the accepted verdict
+
+
+def test_verdict_job_stops_when_cancelled():
+    data = bytes(range(256)) * 10
+    doc, _ = decoded(make_tag(data), split(data))
+    job = doc.verdict_job()
+    assert job(lambda: True) is None
+    doc.accept_verdict(None)  # ignored
+    assert doc.summary(verify=False).state == DocState.CHECKING
+
+
+# --- Which files are scans --------------------------------------------------------
+
+
+def test_expand_paths_takes_the_images_directly_inside_a_folder(tmp_path):
+    folder = tmp_path / "scans"
+    folder.mkdir()
+    for name in ["b.PNG", "a.tif", "c.jpeg", "notes.txt", "x.gif", "d.Pgm", "e.bmp"]:
+        (folder / name).write_bytes(b"")
+    (folder / "sub").mkdir()
+    (folder / "sub" / "deep.png").write_bytes(b"")
+    (folder / "dir.png").mkdir()  # a folder with an image's name is not a file
+    loose = tmp_path / "loose.txt"
+    loose.write_bytes(b"")
+    got = expand_paths([str(loose), str(folder)])
+    assert got == [str(loose)] + [
+        str(folder / n) for n in ["a.tif", "b.PNG", "c.jpeg", "d.Pgm", "e.bmp"]
+    ]
+
+
+def test_scan_extensions():
+    assert SCAN_EXTENSIONS == (".png", ".tif", ".tiff", ".bmp", ".pgm", ".ppm", ".jpg", ".jpeg")
+
+
+def test_expand_paths_keeps_a_missing_path(tmp_path):
+    assert expand_paths([str(tmp_path / "gone.png")]) == [str(tmp_path / "gone.png")]

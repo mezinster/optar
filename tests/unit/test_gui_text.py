@@ -10,10 +10,12 @@ from optar_gui.document import (
     SIZE_MISMATCH,
     DocState,
     Document,
+    GroupView,
     Health,
     PageOutcome,
     PageView,
     ScanInfo,
+    ScanView,
     Summary,
 )
 
@@ -273,3 +275,99 @@ def test_unreadable_reasons(reason, shown):
 def test_section_titles():
     assert text.NOT_PART_OF_THIS_FILE == "Not part of this file"
     assert text.NOT_READABLE == "Not readable"
+
+
+# --- The reading tab ------------------------------------------------------------
+
+
+def group(title="doc.tar", total=5, fmt=A, tag=None, scan_ids=(1,)):
+    return GroupView(scan_ids[0], title, total, fmt, tag, scan_ids)
+
+
+def test_paper_names():
+    assert text.paper_name(A) == "A4"
+    assert text.paper_name("0-67-87-24-3-1-2-24") == "US Letter"
+    assert text.paper_name("0-1-2-3-4-5-6-7") == "0-1-2-3-4-5-6-7"
+
+
+def test_document_title():
+    assert text.document_title(group()) == "doc.tar · A4 · 5 pages"
+    assert text.document_title(group(total=1)) == "doc.tar · A4 · 1 page"
+    assert text.document_title(group(total=0)) == "doc.tar · A4 · 1 page"  # empty file
+    assert text.document_title(group(title="", total=1205)) == (
+        "(no name) · A4 · 1,205 pages"
+    )
+
+
+def test_list_rows():
+    assert text.page_row(page(3, Health.GOOD)) == "Page 3 · Good"
+    assert text.page_row(page(1205, Health.DAMAGED, lost=37)) == "Page 1,205 · Damaged · 37 lost"
+    assert text.other_group_row(group(total=3, scan_ids=(4, 9))) == (
+        "doc.tar · A4 · 3 pages · 2 scans"
+    )
+    assert text.unreadable_row(ScanView(3, "/x/blank.png", "unreadable", None, None,
+                                        "no page found")) == (
+        "blank.png · No optar page found in this image"
+    )
+
+
+def test_unreadable_detail():
+    view = ScanView(3, "/x/blank.png", "unreadable", None, None, "label unreadable")
+    assert text.unreadable_detail(view) == (
+        "blank.png",
+        "The label at the bottom of the page could not be read",
+    )
+
+
+def test_other_group_detail():
+    assert text.other_group_detail(group(total=3, scan_ids=(4, 9))) == (
+        "doc.tar · A4 · 3 pages",
+        "2 scans of another printout, not part of this file",
+    )
+
+
+def test_caution():
+    tag = make_tag(DATA)
+    assert text.caution(Document()) is None
+    assert text.caution(document(five_pages(), tag)) is None
+    assert text.caution(document(five_pages(), None)) == text.untagged_caution()
+    doc = Document()
+    doc.start_by_hand(A, 3)
+    assert text.caution(doc) == text.by_hand_caution()
+    assert "by hand" in text.by_hand_caution()
+
+
+def test_summary_line_while_checking():
+    assert text.summary_line(S(D.CHECKING, 5, 0, 0, 0, 0, 9)) == (
+        "Checking the fingerprint…"
+    )
+
+
+def test_save_warning_while_checking_uses_the_given_summary():
+    doc = document(five_pages(), make_tag(DATA))
+    checking = doc.summary(verify=False)
+    assert checking.state == D.CHECKING
+    assert text.save_warning(doc, checking) == (
+        "The fingerprint is still being checked, so it is not yet known whether the "
+        "recovered file is the original."
+    )
+    assert text.save_warning(doc, doc.summary()) is None
+
+
+def test_bar_and_save_messages():
+    assert text.summary_bar("Verified · 9 bytes", "") == "Verified · 9 bytes"
+    assert text.summary_bar("Verified · 9 bytes", "Saved") == "Verified · 9 bytes — Saved"
+    assert text.saved_message("/out/doc.tar", 250_000) == "Saved 250,000 bytes to doc.tar"
+    assert text.save_failed("cannot write /x: Permission denied") == (
+        "The file could not be saved: cannot write /x: Permission denied"
+    )
+
+
+def test_captions_and_filter():
+    for caption in (text.ADD_SCANS, text.REMOVE_SCAN, text.SAVE_FILE, text.READ_TAB,
+                    text.WINDOW_TITLE, text.ADD_SCANS_TITLE, text.SAVE_TITLE,
+                    text.CONFIRM_SAVE_TITLE, text.ERROR_TITLE):
+        assert caption.strip()
+    assert text.scan_filter() == (
+        "Scans (*.png *.tif *.tiff *.bmp *.pgm *.ppm *.jpg *.jpeg);;All files (*)"
+    )

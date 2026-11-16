@@ -8,9 +8,18 @@ thousands separators and agree in number with their noun.
 
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING
 
-from optar_gui.document import DocState, Health, PageView, Summary
+from optar_gui.document import (
+    SCAN_EXTENSIONS,
+    DocState,
+    GroupView,
+    Health,
+    PageView,
+    ScanView,
+    Summary,
+)
 
 if TYPE_CHECKING:
     from optar_gui.document import Document
@@ -21,6 +30,23 @@ ACTUAL_SIZE = 'Print at actual size (100%), not "fit to page".'
 # Titles of the sections of the list of scans.
 NOT_PART_OF_THIS_FILE = "Not part of this file"
 NOT_READABLE = "Not readable"
+
+# The window, its tabs, buttons and dialogs.
+WINDOW_TITLE = "optar"
+READ_TAB = "Read from paper"
+ADD_SCANS = "+ Add scans…"
+REMOVE_SCAN = "Remove"
+SAVE_FILE = "Save file…"
+ADD_SCANS_TITLE = "Add scans"
+SAVE_TITLE = "Save the recovered file"
+CONFIRM_SAVE_TITLE = "Save anyway?"
+ERROR_TITLE = "Could not save"
+
+# What a document without a name is called.
+NO_NAME = "(no name)"
+
+# Paper names as the window shows them, by the paper's name in optar.format.
+_PAPER_NAMES = {"a4": "A4", "letter": "US Letter"}
 
 _HEALTH_LABELS = {
     Health.GOOD: "Good",
@@ -74,6 +100,8 @@ def summary_line(s: Summary) -> str:
         return ""
     if s.state == DocState.WORKING:
         return "Working…"
+    if s.state == DocState.CHECKING:
+        return "Checking the fingerprint…"
     if s.state == DocState.VERIFIED:
         return f"Verified · {count(s.size, 'byte')}"
     if s.state == DocState.MISMATCH:
@@ -113,11 +141,20 @@ def _run_text(first: int, last: int, problem: str) -> str:
     return f"pages {first}-{last} are {problem}"
 
 
-def save_warning(doc: Document) -> str | None:
-    """What saving must confirm first; None when the file is verified."""
-    state = doc.summary().state
+def save_warning(doc: Document, summary: Summary | None = None) -> str | None:
+    """What saving must confirm first; None when the file is verified.
+
+    ``summary`` is the document's summary if the caller has it (it may be
+    ``CHECKING``); otherwise ``doc.summary()`` is used, which may hash the file.
+    """
+    state = (summary if summary is not None else doc.summary()).state
     if state == DocState.VERIFIED:
         return None
+    if state == DocState.CHECKING:
+        return (
+            "The fingerprint is still being checked, so it is not yet known whether the "
+            "recovered file is the original."
+        )
     if state == DocState.EMPTY:
         return "There is nothing to save."
     if state == DocState.MISMATCH:
@@ -182,3 +219,85 @@ def detail_text(
     if page.health == Health.UNREADABLE:
         return (title, unreadable_reason(reason) if reason else "This scan could not be read")
     return (title, "Being read…")
+
+
+def by_hand_caution() -> str:
+    return (
+        "This document was put together by hand, so it cannot be confirmed that the "
+        "pages belong to the same printout or that the file is complete. The saved "
+        "file will be padded with zeros."
+    )
+
+
+def caution(doc: Document) -> str | None:
+    """The standing caution over the current document, or None when it has a tag."""
+    cur = doc.current
+    if cur is None or cur.tag is not None:
+        return None
+    return by_hand_caution() if doc.by_hand else untagged_caution()
+
+
+def paper_name(format: str) -> str:
+    """The paper a page format string belongs to, or the string itself."""
+    # Imported here: loading the optar package loads numpy, which importing this
+    # module must not.
+    from optar.format import PAPERS, PageFormat
+
+    for key, paper in PAPERS.items():
+        if PageFormat.for_paper(paper).to_string() == format:
+            return _PAPER_NAMES.get(key, paper.name)
+    return format
+
+
+def _group_line(group: GroupView) -> str:
+    pages = max(group.total, 1)  # an empty file prints one page labelled 1/0
+    name = group.title.rstrip(" ") or NO_NAME
+    return f"{name} · {paper_name(group.format)} · {count(pages, 'page')}"
+
+
+def document_title(group: GroupView) -> str:
+    """The first row of the list: name, paper and page count."""
+    return _group_line(group)
+
+
+def page_row(page: PageView) -> str:
+    return f"Page {page.number:,} · {health_label(page)}"
+
+
+def other_group_row(group: GroupView) -> str:
+    """A row under "Not part of this file": what the group says it is, and its scans."""
+    return f"{_group_line(group)} · {count(len(group.scan_ids), 'scan')}"
+
+
+def other_group_detail(group: GroupView) -> tuple[str, ...]:
+    return (
+        _group_line(group),
+        f"{count(len(group.scan_ids), 'scan')} of another printout, not part of this file",
+    )
+
+
+def unreadable_row(scan: ScanView) -> str:
+    return f"{os.path.basename(scan.path)} · {unreadable_reason(scan.reason)}"
+
+
+def unreadable_detail(scan: ScanView) -> tuple[str, ...]:
+    return (os.path.basename(scan.path), unreadable_reason(scan.reason))
+
+
+def summary_bar(line: str, note: str) -> str:
+    """The bottom bar: the document's state and, after a save, what was saved."""
+    return f"{line} — {note}" if note else line
+
+
+def saved_message(path: str, size: int) -> str:
+    return f"Saved {count(size, 'byte')} to {os.path.basename(path)}"
+
+
+def save_failed(message: str) -> str:
+    return f"The file could not be saved: {message}"
+
+
+def scan_filter() -> str:
+    """The file dialog's filter for scans."""
+    patterns = " ".join(f"*{ext}" for ext in SCAN_EXTENSIONS)
+    return f"Scans ({patterns});;All files (*)"

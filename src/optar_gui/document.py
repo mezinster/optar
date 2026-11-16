@@ -126,6 +126,15 @@ checking it against the tag; ``UNVERIFIABLE`` when every page is good or repaire
 and there is no tag; otherwise ``INCOMPLETE``. The verdict is cached until the
 scans in use, their outcomes or the tag change.
 
+Checking off the interface thread. Hashing a large file takes seconds, so the
+window does not let ``summary()`` hash a large document. ``summary(verify=False)``
+never hashes: where ``summary()`` would have to, it reports ``CHECKING`` instead.
+``verdict_job()`` returns ``None`` when ``summary()`` would not hash (no complete
+tagged document, or the verdict is cached); otherwise a ``VerdictJob``, a snapshot
+of the pages in use, safe to run on another thread while the document changes. Its
+result goes back through ``accept_verdict``, which caches it for exactly the bytes
+it hashed, so a verdict for a state that has since changed is never shown.
+
 Assembling. ``chunks()`` yields the recovered file page by page, ``1..max(total,
 1)`` in order, without building it in memory. A page whose scan in use has an
 outcome gives its data, damaged or not; any other page gives ``page_bytes`` zero
@@ -136,6 +145,10 @@ The verdict is computed by hashing the chunks as they are produced.
 no directories, no characters Windows refuses, no device names; otherwise
 ``"recovered.bin"``.
 
+Scan files. ``expand_paths`` turns the paths a user drops or picks into scans to
+add: a folder gives the files directly inside it with a ``SCAN_EXTENSIONS``
+extension (any case), sorted by name, without recursing; any other path is kept.
+
 Cost. Background results only mark the layout stale; it is recomputed, in time
 linear in the number of scans and pages (times the number of untagged groups for
 untagged scans), when it is next read.
@@ -145,7 +158,7 @@ from __future__ import annotations
 
 import hashlib
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -161,6 +174,27 @@ SIZE_MISMATCH = "page size does not match this document"
 # importing optar at run time loads numpy.
 MAX_TOTAL_PAGES = 9999
 RECOVERED_NAME = "recovered.bin"
+# The extensions of the image files ``optar.imageio.read_scan`` accepts.
+SCAN_EXTENSIONS = (".png", ".tif", ".tiff", ".bmp", ".pgm", ".ppm", ".jpg", ".jpeg")
+
+
+def expand_paths(paths: Iterable[str]) -> list[str]:
+    """The scans to add for ``paths``: a folder gives the image files directly in it,
+    sorted by name; anything else is kept as given."""
+    found: list[str] = []
+    for path in paths:
+        if not os.path.isdir(path):
+            found.append(path)
+            continue
+        try:
+            names = sorted(os.listdir(path))
+        except OSError:
+            continue  # a folder that cannot be listed has nothing to add
+        for name in names:
+            full = os.path.join(path, name)
+            if name.lower().endswith(SCAN_EXTENSIONS) and os.path.isfile(full):
+                found.append(full)
+    return found
 
 
 @dataclass(frozen=True)
@@ -261,6 +295,7 @@ class DocState:
     UNVERIFIABLE = "unverifiable"
     VERIFIED = "verified"
     MISMATCH = "mismatch"
+    CHECKING = "checking"  # summary(verify=False) only: complete, verdict not known yet
 
 
 @dataclass(frozen=True)
@@ -272,6 +307,48 @@ class Summary:
     unreadable: int
     missing: int
     size: int | None  # the tag's size, or None without a tag
+
+
+@dataclass(frozen=True)
+class Verdict:
+    """Whether the bytes identified by ``key`` match the tag."""
+
+    key: tuple
+    matches: bool
+
+
+class VerdictJob:
+    """Hashes a snapshot of a complete tagged document; see ``Document.verdict_job``.
+
+    ``size`` is the number of bytes it hashes. Calling it returns a ``Verdict``, or
+    None once ``cancelled()`` is true. It holds only immutable page data, so it may
+    run on any thread while the document changes.
+    """
+
+    def __init__(self, key: tuple, size: int, chunks: Iterator[bytes], tag: Tag) -> None:
+        self.key = key
+        self.size = size
+        self._chunks = chunks
+        self._tag = tag
+
+    def __call__(self, cancelled: Callable[[], bool] = lambda: False) -> Verdict | None:
+        matches = _matches(self._chunks, self._tag, cancelled)
+        return None if matches is None else Verdict(self.key, matches)
+
+
+def _matches(
+    chunks: Iterable[bytes], tag: Tag, cancelled: Callable[[], bool] = lambda: False
+) -> bool | None:
+    """Whether the chunks make a file of the tag's size and fingerprint; None if cancelled."""
+    digest = hashlib.sha256()
+    produced = 0
+    for chunk in chunks:
+        if cancelled():
+            return None
+        digest.update(chunk)
+        produced += len(chunk)
+    fingerprint = digest.hexdigest()[: len(tag.fingerprint)]
+    return produced == tag.size and fingerprint == tag.fingerprint
 
 
 @dataclass
@@ -564,13 +641,13 @@ class Document:
     def pages(self) -> tuple[PageView, ...]:
         return self._table().views
 
-    def summary(self) -> Summary:
+    def summary(self, verify: bool = True) -> Summary:
         """The state of the whole document and its page counts.
 
         For a complete tagged document this hashes the whole recovered file, once per
-        change (the verdict is cached). That takes seconds for a very large document,
-        so callers must not call it on the interface thread for large documents; a
-        later task moves it off that thread.
+        change (the verdict is cached). That takes seconds for a very large document;
+        with ``verify=False`` nothing is hashed and an unknown verdict is ``CHECKING``
+        (see ``verdict_job``).
         """
         cur = self._layout.current
         if cur is None:
@@ -583,7 +660,11 @@ class Document:
             if cur.tag is None:
                 state = DocState.UNVERIFIABLE
             else:
-                state = DocState.VERIFIED if self._verified(cur.tag) else DocState.MISMATCH
+                verified = self._verified(cur.tag, verify)
+                if verified is None:
+                    state = DocState.CHECKING
+                else:
+                    state = DocState.VERIFIED if verified else DocState.MISMATCH
         else:
             state = DocState.INCOMPLETE
         return Summary(
@@ -595,6 +676,26 @@ class Document:
             tally.get(Health.MISSING, 0),
             cur.tag.size if cur.tag is not None else None,
         )
+
+    def verdict_job(self) -> VerdictJob | None:
+        """A job that checks the file against the tag, or None when ``summary()``
+        would not hash anything (no complete tagged document, or verdict cached)."""
+        cur = self._layout.current
+        if cur is None or cur.tag is None:
+            return None
+        if not all(p.health in _SOUND for p in self.pages()):
+            return None
+        key = (cur.tag, self._table().key)
+        if self._verdict is not None and self._verdict[0] == key:
+            return None
+        table = self._table()
+        chunks = self._chunks(list(table.usable), bytes(table.page_bytes), cur.tag.size)
+        return VerdictJob(key, cur.tag.size, chunks, cur.tag)
+
+    def accept_verdict(self, verdict: Verdict | None) -> None:
+        """Caches a ``VerdictJob``'s result; it only counts for the bytes it hashed."""
+        if verdict is not None:
+            self._verdict = (verdict.key, verdict.matches)
 
     @property
     def page_bytes(self) -> int | None:
@@ -804,17 +905,16 @@ class Document:
             return view(Health.DAMAGED, o), o
         return view(Health.REPAIRED if repaired > 0 else Health.GOOD, o), o
 
-    def _verified(self, tag: Tag) -> bool:
-        """Whether the assembled file matches the tag; hashed once per distinct input."""
+    def _verified(self, tag: Tag, verify: bool = True) -> bool | None:
+        """Whether the assembled file matches the tag; hashed once per distinct input.
+
+        None when the verdict is not cached and ``verify`` is false.
+        """
         key = (tag, self._table().key)
         if self._verdict is None or self._verdict[0] != key:
-            digest = hashlib.sha256()
-            produced = 0
-            for chunk in self.chunks():
-                digest.update(chunk)
-                produced += len(chunk)
-            fingerprint = digest.hexdigest()[: len(tag.fingerprint)]
-            self._verdict = (key, produced == tag.size and fingerprint == tag.fingerprint)
+            if not verify:
+                return None
+            self._verdict = (key, _matches(self.chunks(), tag))
         return self._verdict[1]
 
     def _view(self, s: _Scan) -> ScanView:
