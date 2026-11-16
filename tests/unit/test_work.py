@@ -478,3 +478,62 @@ def test_library_does_not_import_the_application():
     result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == ""
+
+
+# --- Preparing a file to put on paper and how its name prints -------------------------
+
+
+@pytest.mark.parametrize("nbytes", [0, 1000, 3 * 2**20 + 5])
+def test_prepare_file_gives_size_and_tag(tmp_path, nbytes):
+    data = seeded_bytes(11, nbytes)
+    assert work.prepare_file(write_source(tmp_path, data)) == work.FileFacts(
+        nbytes, make_tag(data))
+
+
+def test_prepare_file_cancelled_and_unreadable(tmp_path):
+    src = write_source(tmp_path, seeded_bytes(12, 3 * 2**20))
+    with pytest.raises(Cancelled):
+        work.prepare_file(src, turns_true_after(1))
+    with pytest.raises(OptarError, match="missing.bin"):
+        work.prepare_file(str(tmp_path / "missing.bin"))
+
+
+def test_name_preview_matches_the_label_the_encoder_prints():
+    from optar.font import label_text
+    from optar.label import printed_label
+
+    data = seeded_bytes(13, 250_000)
+    tag = make_tag(data)
+    preview = work.name_preview("a4", tag, "data.bin")
+    assert preview.total == 2
+    full = printed_label(A4, label_text(A4, 1, 2, tagged_label(tag, "data.bin", 1, 2)))
+    assert full == f"  {A4.to_string()} 1/2 {preview.printed}"
+    assert preview.printed == f"{tag.page_text(1, 2)} data.bin"
+    assert (preview.dropped, preview.cut) == ("", False)
+
+
+def test_name_preview_drops_and_cuts():
+    tag = make_tag(b"x" * 1000)
+    foreign = work.name_preview("a4", tag, "отпуск.tar")
+    assert foreign.printed == f"{tag.page_text(1, 1)} .tar"
+    assert (foreign.dropped, foreign.cut) == ("отпуск", False)
+    assert work.name_preview("letter", tag, "о\tо").dropped == "о\t"
+    long_name = "y" * 200
+    cut = work.name_preview("a4", tag, long_name)
+    assert cut.cut and cut.dropped == ""
+    assert long_name.startswith(cut.printed[len(tag.page_text(1, 1)) + 1:])
+    empty = work.name_preview("letter", make_tag(b""), "")
+    assert (empty.total, empty.printed, empty.cut) == (0, make_tag(b"").page_text(1, 0), False)
+
+
+def test_name_preview_cut_on_a_later_page_only():
+    # A name that just fits page 1 of 10 is cut on page 10, whose number is longer.
+    from optar.label import label_capacity
+    from optar.tag import Tag
+
+    tag = Tag(10 * (A4.net_bits // 8), "0123abcd")  # a ten-page file
+    used = len(f"  {A4.to_string()} 1/10 {tag.page_text(1, 10)} ")
+    name = "z" * (label_capacity(A4) - used)
+    preview = work.name_preview("a4", tag, name)
+    assert preview.printed.endswith(name)
+    assert preview.cut

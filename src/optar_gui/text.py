@@ -46,6 +46,20 @@ ERROR_TITLE = "Could not save"
 SAVE_RUNNING = "a save is already running"
 SAVE_AFTER_CLOSE = "the window has been closed, so nothing more can be saved"
 
+# The "Put on paper" tab.
+WRITE_TAB = "Put on paper"
+FILE_FIELD = "File:"
+PAPER_FIELD = "Paper:"
+NAME_FIELD = "Name:"
+PRINTS_AS_FIELD = "Prints as:"
+CHOOSE_FILE = "Choose…"
+CHOOSE_FILE_TITLE = "Choose a file to put on paper"
+CREATE_PDF = "Create PDF…"
+CREATE_TITLE = "Save the PDF"
+PDF_FILTER = "PDF (*.pdf);;All files (*)"
+PREPARING = "Reading the file…"
+CREATING = "Creating the PDF…"
+
 # What a document without a name is called.
 NO_NAME = "(no name)"
 
@@ -304,6 +318,45 @@ def check_failed(message: str) -> str:
 
 def save_failed(message: str) -> str:
     return f"The file could not be saved: {message}"
+
+
+def paper_label(paper: str) -> str:
+    """A paper's name as the window shows it, by its name in optar.format."""
+    return _PAPER_NAMES.get(paper, paper)
+
+
+def file_info(total: int, size: int) -> str:
+    """Pages and size of a file to put on paper; an empty file prints one page."""
+    return f"{count(max(total, 1), 'page')} · {count(size, 'byte')}"
+
+
+def name_warning(dropped: str, cut: bool) -> str | None:
+    """Why the printed name differs from the name typed, or None when it does not."""
+    parts = []
+    if dropped:
+        shown = " ".join(ch if ch.isprintable() else repr(ch)[1:-1] for ch in dropped)
+        parts.append(f"These characters are not in the label font and are not printed: {shown}")
+    if cut:
+        parts.append("The name is too long for the page and is cut")
+    if not parts:
+        return None
+    return ". ".join(parts) + ". The printed name is what identifies the pages later."
+
+
+def file_unreadable(message: str) -> str:
+    return f"The file could not be read: {message}"
+
+
+def cannot_put_on_paper(message: str) -> str:
+    return f"This file cannot be put on paper: {message}"
+
+
+def created_message(path: str, pages: int) -> str:
+    return f"Created {os.path.basename(path)} · {count(max(pages, 1), 'page')}"
+
+
+def create_failed(message: str) -> str:
+    return f"The PDF could not be created: {message}"
 
 
 def scan_filter() -> str:

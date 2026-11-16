@@ -14,6 +14,9 @@ dependencies = ["numpy", "Pillow"]
 [project.scripts]
 optar = "optar.cli:main"
 
+[project.gui-scripts]
+optar-gui = "optar_gui.__main__:main"
+
 [project.optional-dependencies]
 dev = ["pytest", "ruff", "pyinstaller"]
 gui = ["PySide6-Essentials>=6.6"]
