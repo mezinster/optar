@@ -246,7 +246,9 @@ proof. ``Summary`` gives the parity (``protection``), the pages lacking
 ``save_bytes()`` is the file of an accepted result that has it (verified or not;
 ``can_save`` and ``chunks()`` follow it); ``salvage_bytes()`` is the result's
 best-effort file when it has none, which may contain wrong bytes and is only for
-saving after an explicit warning. ``suggested_name`` is the name an accepted
+saving after an explicit warning. ``can_save_anyway`` says whether either can be
+saved and ``save_chunks()`` gives what saving writes: the window offers saving by
+them, and warns first unless the file is verified. ``suggested_name`` is the name an accepted
 result read, when it has one, else the label's as for other documents. The page
 format is part of the identity, so one file printed at two dot sizes, or with two
 protections, makes two documents.
@@ -1207,6 +1209,21 @@ class Document:
         if cur is not None and cur.v1 is not None:
             return self.save_bytes() is not None
         return any(o is not None for o in self._table().usable)
+
+    @property
+    def can_save_anyway(self) -> bool:
+        """Whether saving is offered at all: the file can be saved (``can_save``), or a
+        version-1 document's best effort can (``salvage_bytes``), which may contain
+        wrong bytes and is only saved after an explicit warning."""
+        return self.can_save or self.salvage_bytes() is not None
+
+    def save_chunks(self) -> Iterator[bytes]:
+        """What saving writes, when ``can_save_anyway``: ``chunks()``, or the best
+        effort when only that can be saved. Raises ValueError when nothing can."""
+        salvage = self.salvage_bytes()
+        if salvage is not None:
+            return iter((salvage,))
+        return self.chunks()
 
     @property
     def suggested_name(self) -> str:

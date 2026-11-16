@@ -254,8 +254,9 @@ def process_scan(path: str, cancelled: Callable[[], bool] = _never) -> ScanWork:
 
     An unreadable file comes back with ``info=None`` and the reading error as
     the reason; a scan that is not identified with ``info=None`` and the
-    reason "no page found" or "label unreadable", with its ``scan_dpi`` when a
-    page outline gave one (see ``too_coarse``); an identified scan that does
+    reason "no page found" or "label unreadable" (``text.coarse_scan`` instead
+    when the resolution a page outline gave is ``too_coarse`` for any dots), with
+    its ``scan_dpi`` when known; an identified scan that does
     not decode with its ``info``, no outcome and the decoder's message. A
     version-1 page was decoded while it was identified: that decode is used,
     not repeated, and its payload kept.
@@ -274,8 +275,11 @@ def process_scan(path: str, cancelled: Callable[[], bool] = _never) -> ScanWork:
         try:
             identity = identify_scan(image)
         except IdentifyError as e:
+            reason = e.reason
+            if too_coarse(e.scan_dpi, None, unreadable=True):
+                reason = text.coarse_scan(e.scan_dpi, None)
             size = _upright_size(image, 0)
-            return ScanWork(None, e.reason, None, 0, None, size, scan_dpi=e.scan_dpi)
+            return ScanWork(None, reason, None, 0, None, size, scan_dpi=e.scan_dpi)
         except DecodeError as e:
             return ScanWork(None, str(e), None, 0, None, _upright_size(image, 0))
         rotation = identity.rotation
@@ -290,6 +294,7 @@ def process_scan(path: str, cancelled: Callable[[], bool] = _never) -> ScanWork:
             name=identity.name,
             tag=identity.tag,
             header=header,
+            scan_dpi=identity.scan_dpi,
         )
         grid, result = identity.grid, identity.result
         del identity

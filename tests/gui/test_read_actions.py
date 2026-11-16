@@ -240,13 +240,15 @@ def test_replace_with_the_wrong_page_is_rejected(qtbot, make_tab, scans):
     assert notices[1] == (
         "page-1.png was not used for page 2: it is page 1 of this document and is listed there."
     )
-    # A scan whose label cannot be read.
+    # A scan whose label cannot be read, made at fake_scan's scale 1 (200 dpi):
+    # too coarse for Standard dots, so that is the reason given.
     tab.ask_replace_path = lambda page: paths["page-1-no-label.png"]
     click(tab, "replaceButton")
     qtbot.waitUntil(lambda: len(notices) == 3, timeout=TIMEOUT)
     assert notices[2] == (
-        "page-1-no-label.png was not used for page 2. "
-        "The label at the bottom of the page could not be read."
+        "page-1-no-label.png was not used for page 2. Scanned at about 200 dpi, which "
+        "is too coarse to read. Scan at 600 dpi for Standard dots, 450 Medium, 360 Big, "
+        "300 Large, 200 Extra large."
     )
     assert doc.pages()[1].scan_id == in_use
     assert doc.pages()[0].scan_id == scan_id(tab, paths["page-1.png"])
@@ -421,9 +423,10 @@ def test_assign_unreadable_scan_decodes_it_in_the_best_rotation(qtbot, make_tab,
     tab = make_tab()
     tab.controller.add_paths([paths["page-1.png"], upside_down])
     wait_settled(qtbot, tab)
-    row = (
-        "page-2-no-label-upside-down.png · "
-        "The label at the bottom of the page could not be read"
+    row = (  # fake_scan's scale 1 is 200 dpi: too coarse, which is the reason given
+        "page-2-no-label-upside-down.png · Scanned at about 200 dpi, which is too coarse "
+        "to read. Scan at 600 dpi for Standard dots, 450 Medium, 360 Big, 300 Large, "
+        "200 Extra large."
     )
     assert tab.rows()[2:] == ["Page 2 · Missing", text.NOT_READABLE, row]
     select(tab, row)

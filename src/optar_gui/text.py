@@ -219,20 +219,24 @@ def save_warning(doc: Document, summary: Summary | None = None) -> str | None:
 
     ``summary`` is the document's summary if the caller has it (it may be
     ``CHECKING``); otherwise ``doc.summary()`` is used, which may hash the file.
-    A version-1 document whose repair could not give the file is saved as far as
-    it was recovered, which may be wrong in parts.
+    A version-1 document saves what its repair gave (``Summary.repair``), whatever
+    else is going on (another scan of a page may be being read): the warning is
+    about that result. One that could not give the file is saved as far as it was
+    recovered, which may be wrong in parts.
     """
     s = summary if summary is not None else doc.summary()
     state = s.state
     if state == DocState.VERIFIED:
         return None
-    if state == DocState.RECOVERABLE and s.repair is not None and s.repair.verified:
+    if s.repair is not None and s.repair.verified:
         return None  # repaired, and the fingerprint matches
-    if state == DocState.INCOMPLETE and s.repair is not None and s.repair.data is None:
+    if s.repair is not None and s.repair.data is None:
         return (
             f"{rescan_advice(s.repair)} If you save now, the saved file is only what "
             "could be recovered and may contain wrong parts."
         )
+    if s.repair is not None:
+        state = DocState.MISMATCH  # the file as repaired, which is not the original
     if state == DocState.CHECKING:
         return (
             "The fingerprint is still being checked, so it is not yet known whether the "
@@ -612,12 +616,10 @@ def coarse_scan(scan_dpi: float, layout: Layout | None) -> str:
 
     paper = next(iter(PAPERS))
     needs = [(_DOT_NAMES.get(d, d), get_layout(paper, d).scan_dpi) for d in DOT_SIZES]
-    first, rest = needs[0], needs[1:]
-    listed = ", ".join([f"{first[0]} {first[1]:,} dpi", *(f"{n} {dpi:,}" for n, dpi in rest)])
-    return (
-        f"Scanned too coarsely to read: {_about_dpi(scan_dpi)}. Scan it at the "
-        f"resolution its dots need: {listed}."
-    )
+    (first, first_dpi), rest = needs[0], needs[1:]
+    listed = ", ".join([f"{first_dpi:,} dpi for {first} dots", *(f"{d:,} {n}" for n, d in rest)])
+    # Any image with a page outline has an estimate: this does not claim it is a page.
+    return f"Scanned at {_about_dpi(scan_dpi)}, which is too coarse to read. Scan at {listed}."
 
 
 def _and(items: list[str]) -> str:

@@ -537,10 +537,11 @@ def test_coarse_scan_for_a_known_page():
 
 def test_coarse_scan_of_an_unreadable_scan_lists_every_dot_size():
     message = plain(text.coarse_scan(203.0, None))
-    assert "about 200 dpi" in message
-    for name, dpi in (("Standard", 600), ("Medium", 450), ("Big", 360), ("Large", 300),
-                      ("Extra large", 200)):
-        assert f"{name} dots {dpi}" in message or f"{name} {dpi}" in message, name
+    assert message == (
+        "Scanned at about 200 dpi, which is too coarse to read. Scan at 600 dpi for "
+        "Standard dots, 450 Medium, 360 Big, 300 Large, 200 Extra large."
+    )
+    assert "page" not in message  # any image with an outline gets an estimate
 
 
 def test_repair_line_states_bytes_repaired_and_the_worst_use():
@@ -607,6 +608,23 @@ def test_summary_line_of_version1_documents():
     error = text.summary_line(v1_summary(D.INCOMPLETE, None, error="ValueError: <b>x</b>"))
     assert error == text.repair_failed("ValueError: <b>x</b>")
     assert "<b>x</b>" in error
+
+
+def test_save_warning_of_a_version1_document_is_about_what_its_repair_gave():
+    # A further scan may be being read (the state is then WORKING) while the
+    # result for the pages in use stands: saving writes that result.
+    doc = Document()
+    bad = unwrapped(data=None, verified=False, failed=2, worst_used=40, page_damage={2: 9})
+    for state in (D.INCOMPLETE, D.WORKING):
+        warning = text.save_warning(doc, v1_summary(state, bad))
+        assert warning.startswith(text.rescan_advice(bad))
+        assert "could not be fully repaired" in warning
+        assert warning.endswith("may contain wrong parts.")
+    for state in (D.VERIFIED, D.RECOVERABLE, D.WORKING):
+        assert text.save_warning(doc, v1_summary(state, unwrapped())) is None
+    for state in (D.MISMATCH, D.WORKING):
+        warning = text.save_warning(doc, v1_summary(state, unwrapped(verified=False)))
+        assert warning.startswith("The recovered file does not match the fingerprint")
 
 
 def test_missing_pages_are_named_in_runs_and_counted_past_ten():

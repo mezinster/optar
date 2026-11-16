@@ -2280,6 +2280,30 @@ def test_version1_too_many_pages_missing_is_incomplete():
     assert doc.salvage_bytes() == result.best_effort and len(result.best_effort) == len(data)
 
 
+def test_saving_is_offered_for_the_file_or_for_the_best_effort():
+    data, payloads = v1_pages(3)
+    doc, ids = v1_document(payloads, skip=(2,))
+    assert not doc.can_save_anyway  # not repaired yet: nothing to save
+    with pytest.raises(ValueError):
+        doc.save_chunks()
+    result = repaired(doc)
+    assert result.data is None and not doc.can_save
+    assert doc.can_save_anyway  # the best effort, after a warning
+    assert b"".join(doc.save_chunks()) == result.best_effort
+    doc.remove_scan(ids[1])  # other pages: that result no longer counts
+    assert not doc.can_save_anyway
+    full, _ = v1_document(payloads)
+    repaired(full)
+    assert full.can_save and full.can_save_anyway
+    assert b"".join(full.save_chunks()) == data
+    tagged = Document()
+    scan_id = tagged.add_scan("/scans/1.png")
+    tagged.set_identified(scan_id, ScanInfo("0-65-93-24-3-1-2-24", 1, 1, "x", None))
+    assert not tagged.can_save_anyway
+    tagged.set_outcome(scan_id, PageOutcome(b"abc", (10, 0, 0, 0), 0))
+    assert tagged.can_save_anyway and b"".join(tagged.save_chunks()) == b"abc"
+
+
 def test_version1_failed_repair_of_a_complete_document_reports_damage():
     data, payloads = v1_pages(2, parity=0)
     payloads[1] = erased(payloads[1], 40)

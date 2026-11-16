@@ -1005,7 +1005,7 @@ def test_a_coarse_scan_is_noted_on_its_page_and_when_unreadable(qtbot, make_tab)
             scan_dpi=296.0, layout=std,
         ),
         "coarse.png": ScanWork(
-            None, "label unreadable", None, 0, None, (10, 10), scan_dpi=203.0
+            None, text.coarse_scan(203.0, None), None, 0, None, (10, 10), scan_dpi=203.0
         ),
         "photo.png": ScanWork(
             None, "label unreadable", None, 0, None, (10, 10), scan_dpi=600.0
@@ -1020,9 +1020,8 @@ def test_a_coarse_scan_is_noted_on_its_page_and_when_unreadable(qtbot, make_tab)
     tab.select_row(starting("Page 1 "))
     assert text.coarse_scan(296.0, std) in tab.detail.text().splitlines()
     tab.select_row(starting("coarse.png"))
-    assert tab.detail.text().splitlines() == [
-        "coarse.png", text.unreadable_reason("label unreadable"), text.coarse_scan(203.0, None)
-    ]
+    assert tab.detail.text().splitlines() == ["coarse.png", text.coarse_scan(203.0, None)]
+    assert f"coarse.png · {text.coarse_scan(203.0, None)}" in tab.rows()
     tab.select_row(starting("photo.png"))
     assert text.coarse_scan(600.0, None) not in tab.detail.text()
     assert "dpi" not in tab.detail.text()

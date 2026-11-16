@@ -109,10 +109,13 @@ def flipped_works(tmp_path_factory):
     }
 
 
-def check_identified(w, page=1):
+def check_identified(w, page=1, dpi=200):
+    """``dpi``: fake_scan's scale 1 is one scan pixel per 200 dpi page pixel."""
     data, _ = document()
     assert isinstance(w, ScanWork)
-    assert w.info == ScanInfo(A4.to_string(), 2, page, NAME, make_tag(data))
+    assert w.info.scan_dpi == pytest.approx(dpi, rel=0.02) and w.scan_dpi == w.info.scan_dpi
+    expected = ScanInfo(A4.to_string(), 2, page, NAME, make_tag(data), scan_dpi=w.info.scan_dpi)
+    assert w.info == expected
     assert w.reason == ""
     assert isinstance(w.outcome, PageOutcome)
     assert w.outcome.lost == 0
@@ -138,7 +141,7 @@ def test_process_scan_marks_flipped_bits(tmp_path):
     scale = 3
     path = write(tmp_path, "flipped.png", fake_scan(flipped_page(), scale=scale, margin=MARGIN))
     w = process_scan(path)
-    check_identified(w)
+    check_identified(w, dpi=600)
     data, _ = document()
     assert w.outcome.data == data[: A4.net_bits // 8]
     assert w.outcome.histogram[1] == 60 and sum(w.outcome.histogram[2:]) == 0
@@ -209,7 +212,9 @@ def test_process_scan_never_raises_for_bad_input(tmp_path, make):
     assert w.info is None and w.outcome is None and w.marks is None
     assert w.reason
     if make in (blank_png, random_noise_png):
-        assert w.reason in ("no page found", "label unreadable")
+        # Noise may show a page outline, whose size gives a (coarse) resolution.
+        coarse = text.coarse_scan(w.scan_dpi, None) if w.scan_dpi else None
+        assert w.reason in ("no page found", "label unreadable", coarse)
         assert w.size == (800, 1100)
     elif make is directory:
         assert w.reason == text.not_regular_file(path)
@@ -228,7 +233,10 @@ def test_process_scan_decode_failure_keeps_identity(tmp_path, monkeypatch):
 
     monkeypatch.setattr(work, "decode_located", fail)
     w = process_scan(path)
-    assert w.info == ScanInfo(A4.to_string(), 2, 2, NAME, make_tag(data))
+    assert w.info.scan_dpi == pytest.approx(200, rel=0.02)
+    assert w.info == ScanInfo(
+        A4.to_string(), 2, 2, NAME, make_tag(data), scan_dpi=w.info.scan_dpi
+    )
     assert w.outcome is None and w.marks is None
     assert w.reason == "sampling went wrong"
 
@@ -344,6 +352,7 @@ def test_process_scan_version1_page_is_decoded_once(tmp_path, monkeypatch):
     assert len(w.payload.data) == fmt.net_bits // 8
     assert w.layout is layout
     assert w.scan_dpi == pytest.approx(300, rel=0.05)
+    assert w.info.scan_dpi == w.scan_dpi
     assert not work.too_coarse(w.scan_dpi, w.layout)
 
 
@@ -354,10 +363,9 @@ def test_process_scan_of_a_coarse_standard_page_says_so(tmp_path):
     w = process_scan(path)
     assert w.info is None and w.outcome is None
     assert w.scan_dpi == pytest.approx(200, rel=0.10)
-    assert w.reason == "label unreadable"  # the window adds the note (ReadController)
     assert work.too_coarse(w.scan_dpi, None, unreadable=True)
-    note = text.coarse_scan(w.scan_dpi, None)
-    assert "200" in note and "600" in note
+    assert w.reason == text.coarse_scan(w.scan_dpi, None)
+    assert "200" in w.reason and "600" in w.reason
     assert w.payload is None and w.header is None
 
 
@@ -423,7 +431,9 @@ def test_process_unlabelled(tmp_path, turns):
     data, pages = document()
     upright = fake_scan(blacken_label(pages[0].pixels), scale=1, margin=MARGIN)
     path = write(tmp_path, "black.png", np.rot90(upright, -turns))
-    assert process_scan(path).reason == "label unreadable"
+    unread = process_scan(path)  # fake_scan's scale 1: 200 dpi, too coarse to say more
+    assert unread.scan_dpi == pytest.approx(200, rel=0.05)
+    assert unread.reason == text.coarse_scan(unread.scan_dpi, None)
     w = process_unlabelled(path, A4.to_string())
     assert w.info is None and w.reason == ""
     assert w.rotation == turns
