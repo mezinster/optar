@@ -219,15 +219,19 @@ The pages *lacking* are those whose slot gives no data (missing or unreadable).
 returns a ``RepairJob``, a snapshot of the payloads of the pages with data, to run
 off the interface thread, and ``accept_repair`` keeps its ``Repair`` only when it
 was made for the pages now in use (the scan in use of every page and its payload),
-so a result for an older set of scans is never shown. The accepted result is
-dropped as soon as the pages in use change, even for a moment, so that the whole
-file is not held for pages no longer in use; it is a cache, and the repair is then
-offered again (only this cache, not what the pages are, can depend on the order
-in which background results arrive). The job is offered when no page is
-waiting or working, at least one page has data and no result is accepted for the
-pages in use. The state:
+so a result for an older set of scans is never shown. The latest accepted result
+is kept with its key and counts whenever exactly those payloads are in use again
+(after switching away and back, or a change that leaves the payloads in use as
+they were); the key is compared only when the state is read, as for the tagged
+verdict. A job that raised is reported with ``fail_repair(job.key, reason)``: for
+those pages the job is not offered again, the state is ``INCOMPLETE`` and
+``Summary.repair_error`` gives the reason, until the pages in use change. The job
+(``RepairJob.key`` names its pages) is offered when no page is waiting or
+working, at least one page has data and neither a result nor a failure is
+recorded for the pages in use. The state:
 
 - ``WORKING`` while a page is waiting or working;
+- ``INCOMPLETE`` when the repair job failed for the pages in use;
 - with an accepted result: ``VERIFIED`` when it is verified (its fingerprint
   matches) and no page is lacking, ``RECOVERABLE`` when it is verified and pages
   are lacking, ``MISMATCH`` when it has the file but the fingerprint does not
@@ -476,6 +480,7 @@ class Summary:
     protection: int = 0  # version 1: parity bytes per codeword; else 0
     missing_pages: tuple[int, ...] = ()  # version 1: pages giving no data
     repair: Unwrapped | None = None  # version 1: the accepted repair result, if any
+    repair_error: str = ""  # version 1: why the repair job for these pages raised
 
 
 @dataclass(frozen=True)
@@ -726,7 +731,8 @@ class Document:
         self._serial = 0
         self._outcomes = 0  # outcomes recorded so far
         self._verdict: tuple[tuple, bool] | None = None  # (what was assembled, matches)
-        self._repair: Repair | None = None  # version 1: the accepted repair result
+        self._repair: Repair | None = None  # version 1: the latest accepted repair result
+        self._repair_failure: tuple[tuple, str] | None = None  # (key, reason) of a job that raised
         self._reals: dict[str, int] = {}  # resolved path -> scan
         self._lay = _Layout()
         self._dirty = False  # the layout is recomputed when next read
@@ -772,7 +778,9 @@ class Document:
 
     def set_payload(self, scan_id: int, payload: PagePayload) -> None:
         """Records a version-1 scan's page payload (its data and erased bytes). A
-        version-1 scan gives its page once it has both its outcome and its payload."""
+        version-1 scan gives its page once it has both its outcome and its payload; one
+        whose payload cannot be produced must be reported with ``set_unreadable``, or
+        it stays ``WORKING``."""
         s = self._get(scan_id)
         self._outcomes += 1
         s.payload = payload
@@ -1010,10 +1018,15 @@ class Document:
         lacking = tuple(
             p.number for p in table.views if p.health in (Health.MISSING, Health.UNREADABLE)
         )
-        repair = self._accepted_repair()
+        key = self._repair_key()
+        repair = self._repair if self._repair is not None and self._repair.key == key else None
         result = repair.result if repair is not None else None
+        failure = self._repair_failure
+        error = failure[1] if failure is not None and failure[0] == key else ""
         if tally.get(Health.WAITING) or tally.get(Health.WORKING):
             state = DocState.WORKING
+        elif error and result is None:
+            state = DocState.INCOMPLETE  # the repair failed for these pages
         elif result is not None:
             if result.verified:
                 state = DocState.RECOVERABLE if lacking else DocState.VERIFIED
@@ -1042,6 +1055,7 @@ class Document:
             cur.header.parity,
             lacking,
             result,
+            error,
         )
 
     def _repair_key(self) -> tuple | None:
@@ -1058,22 +1072,29 @@ class Document:
         return (_identity(lay.current), pages)
 
     def _accepted_repair(self) -> Repair | None:
-        """The accepted repair result if it is for the pages now in use; a result for
-        other pages is dropped, so a whole file is not held longer than needed."""
-        if self._repair is not None and self._repair.key != self._repair_key():
-            self._repair = None
-        return self._repair
+        """The accepted repair result if it is for the pages now in use, else None. A
+        result for other pages is kept (only the latest accepted one): it counts
+        again whenever exactly the payloads it came from are in use again."""
+        if self._repair is None:
+            return None
+        return self._repair if self._repair.key == self._repair_key() else None
+
+    def _failed_here(self) -> bool:
+        """Whether the repair failed for the pages now in use."""
+        failure = self._repair_failure
+        return failure is not None and failure[0] == self._repair_key()
 
     def repair_job(self) -> RepairJob | None:
         """A job that assembles, repairs and checks the current version-1 document, or
         None: no version-1 document, a page still waiting or being read, no page with
-        data, or a result already accepted for the pages in use."""
+        data, or a result already accepted, or a failure reported, for the pages in
+        use."""
         cur = self._layout.current
         if cur is None or cur.v1 is None:
             return None
         if any(p.health in (Health.WAITING, Health.WORKING) for p in self.pages()):
             return None
-        if self._accepted_repair() is not None:
+        if self._accepted_repair() is not None or self._failed_here():
             return None
         table = self._table()
         pages = {
@@ -1090,6 +1111,14 @@ class Document:
         for other pages, or None (cancelled), is ignored."""
         if repair is not None and repair.key == self._repair_key():
             self._repair = repair
+
+    def fail_repair(self, key: tuple, reason: str) -> None:
+        """Records that the ``RepairJob`` with ``key`` raised, with a plain ``reason``.
+        For the pages it was made for the job is not offered again, the state is
+        ``INCOMPLETE`` and ``Summary.repair_error`` is the reason; it counts no longer
+        once the pages in use change. A key for other pages is ignored."""
+        if key == self._repair_key():
+            self._repair_failure = (key, reason)
 
     def save_bytes(self) -> bytes | None:
         """A version-1 document's file, once an accepted repair result has it (verified
@@ -1607,10 +1636,6 @@ class Document:
 
     def _changed(self) -> None:
         self._dirty = True
-        if self._repair is not None:
-            # Dropped at once when the pages in use change, not when next read, so
-            # that whether a result is kept never depends on when the state is read.
-            self._accepted_repair()
 
     def _settle(self) -> None:
         hand, groups = self._group()

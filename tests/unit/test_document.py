@@ -2382,15 +2382,79 @@ def test_version1_result_is_dropped_when_a_scan_in_use_is_removed():
 
 
 @pytest.mark.parametrize("read_between", [False, True])
-def test_version1_result_dropped_on_a_change_whether_or_not_it_was_read(read_between):
+def test_version1_result_counts_again_when_its_pages_are_back_whether_or_not_read(
+    read_between,
+):
     data, payloads = v1_pages(2)
     doc, ids = v1_document({1: erased(payloads[1], 5), 2: payloads[2]})
-    repaired(doc)
+    result = repaired(doc)
     better = add_v1(doc, "better", payloads[1])  # now page 1's scan in use
     if read_between:
-        doc.summary()
-    doc.remove_scan(better)  # the scans in use are what they were
-    assert doc.summary().repair is None and doc.repair_job() is not None
+        assert doc.summary().repair is None and doc.repair_job() is not None
+    doc.remove_scan(better)  # the payloads in use are what they were
+    assert doc.summary().repair is result and doc.repair_job() is None
+    assert doc.summary().state == DocState.VERIFIED
+
+
+def test_version1_new_payload_of_the_scan_in_use_drops_the_result():
+    data, payloads = v1_pages(2)
+    doc, ids = v1_document(payloads)
+    repaired(doc)
+    doc.set_payload(ids[1], payloads[1])  # same bytes, but a new reading
+    assert doc.summary().repair is None and doc.summary().state == DocState.CHECKING
+    assert doc.repair_job() is not None
+
+
+def test_version1_result_kept_when_switching_away_and_back():
+    data, payloads = v1_pages(2)
+    doc, ids = v1_document(payloads)
+    result = repaired(doc)
+    other = add(doc, "other")
+    doc.set_identified(other, info(1, total=1, name="other.tar"))
+    doc.switch_to(other)
+    assert doc.summary().repair is None and doc.save_bytes() is None
+    doc.switch_to(ids[1])
+    assert doc.summary().repair is result and doc.repair_job() is None
+    assert doc.save_bytes() == data
+
+
+def test_version1_failed_repair_job_is_not_offered_again_until_the_pages_change():
+    data, payloads = v1_pages(2)
+    doc, ids = v1_document(payloads)
+    job = doc.repair_job()
+    doc.fail_repair(("not", "these", "pages"), "stale")  # ignored
+    assert doc.summary().repair_error == "" and doc.repair_job() is not None
+    doc.fail_repair(job.key, "header describes an impossible document")
+    s = doc.summary()
+    assert s.state == DocState.INCOMPLETE
+    assert s.repair_error == "header describes an impossible document"
+    assert s.repair is None and doc.repair_job() is None and not doc.can_save
+    assert doc.summary(verify=False).state == DocState.INCOMPLETE
+    again = add_v1(doc, "again", payloads[2], corrected=0)  # a spare: same pages
+    assert doc.repair_job() is None
+    doc.use_scan(again)  # the pages in use change: the failure counts no longer
+    assert doc.summary().repair_error == "" and doc.summary().state == DocState.CHECKING
+    assert doc.repair_job() is not None
+
+
+def test_holding_a_repair_result_keeps_background_results_cheap():
+    # Measured on the development machine: about 0.03 s either way; 10 s before
+    # the key was compared only when read.
+    def run(hold):
+        data, payloads = v1_pages(1)
+        doc, ids = v1_document(payloads)
+        if hold:
+            repaired(doc)
+        start = time.perf_counter()
+        for n in range(3000):
+            scan_id = doc.add_scan(f"/scans/other-{n}.png")
+            doc.set_identified(scan_id, info(1, total=1, name=f"other-{n}", tag=None))
+        elapsed = time.perf_counter() - start
+        assert (doc.summary().repair is not None) == hold
+        return elapsed
+
+    without, held = run(False), run(True)
+    assert held < 2.0 and held < 5 * without + 0.5
 
 
 def test_version1_stale_or_cancelled_repair_is_not_accepted():
