@@ -8,7 +8,7 @@ states), of the ordered user operations (``switch_to``, ``start_by_hand``,
 ``assign_page``, ``use_scan``, ``remove_scan``) and of which background results
 were known when each user operation was made. It does not depend on the order in
 which background results (``set_working``, ``set_identified``, ``set_outcome``,
-``set_unreadable``) arrive between user operations: everything shown is
+``set_unreadable``, ``set_decoding``) arrive between user operations: everything shown is
 recomputed from that information after every change, and a user's choice is
 never lost or changed by a passing intermediate state.
 
@@ -112,15 +112,23 @@ assigned by hand stays in its slot) is ``UNREADABLE``; otherwise the outcome
 decides: any lost block is ``DAMAGED``, else any repaired block is ``REPAIRED``,
 else ``GOOD``. ``PageView.reason`` says why an unreadable page is unreadable.
 
-Formats. An outcome is laid out in the page format it was decoded in: the one
-given to ``set_outcome``, else the identified one (an outcome with neither is
-taken as it is). Only outcomes decoded in the
-document's format are placed on its pages; a scan in use whose outcome was
-decoded in another format (a scan of another paper assigned by hand, or one
-decoded without its label for another document) is ``WORKING`` while it is being
-decoded again, else ``UNREADABLE`` with the reason ``FORMAT_MISMATCH`` (or its
-own reason), and gives zeros. ``needs_decoding`` says when a scan put into the
-document by hand must be decoded again.
+Formats. A scan has its own page (``set_outcome`` without a format), laid out in
+the format its label gives (or taken as it is when no label was read), and at
+most one page per other format, decoded without its label for a document it was
+put into by hand (``set_outcome`` with that format). A failed decode in a format
+(``set_unreadable`` with that format) is kept per format too: it never makes the
+scan unreadable, never drops its identity, its own page or another format's page.
+So a scan assigned to another document by mistake and decoded there is, back in
+its own document, its own page exactly as before. ``set_decoding`` records that a
+decode in a format has been asked for, from the moment it is queued until it
+reports. A scan assigned by hand is seen only through the document's format: it is
+``WORKING`` while a decode in that format is pending, ranks, shows and gives data
+only by its page in that format, is ``UNREADABLE`` with that decode's reason when it
+failed, and otherwise (no page in this format but one in another) ``UNREADABLE``
+with the reason ``FORMAT_MISMATCH``, giving zeros. ``needs_decoding`` says when a
+scan put into the document by hand has no page in its format yet. Memory: a page
+is about 200 kB; a scan holds at most one page per paper format, and only scans
+assigned by hand are ever decoded in a second format.
 
 Page size. A document has one page size: the outcome length of the earliest-added
 of its group's own scans (not those assigned by hand) that has an outcome; if none
@@ -173,7 +181,9 @@ scans to put into one. ``replacement_fit(scan_id, page)`` says whether a scan
 added to replace a page identifies as that page of the current document (same
 group: same format, total and tag or name), and if not, what it is instead; a
 scan of that page that gives no usable data is ``UNUSABLE`` when the page has
-usable data, so it never replaces it. ``paper_for_size`` guesses a paper from an
+usable data, so it never replaces it, and one still being read in the document's
+format is ``PENDING``. ``page_in_current`` says which page of the document a scan is
+in. ``paper_for_size`` guesses a paper from an
 image's shape, for starting a document by hand.
 ``page_with(scan_id)`` is the page a scan of the document is in, as it would be
 with that scan in use, so a spare's health can be shown. ``suggested_page``
@@ -445,7 +455,11 @@ class _Scan:
     info: ScanInfo | None = None
     outcome: PageOutcome | None = None
     outcome_serial: int = 0  # changes with every outcome, for the verdict cache
-    outcome_format: str | None = None  # given with the outcome; else the identified one
+    # Pages decoded without the label in a format given by the caller, and why a
+    # decode in a format failed, by format; never more than one per page format.
+    decoded: dict[str, tuple[PageOutcome, int]] = field(default_factory=dict)
+    failed: dict[str, str] = field(default_factory=dict)
+    decoding: set[str] = field(default_factory=set)  # formats being decoded in
     unreadable_reason: str | None = None
 
 
@@ -591,17 +605,42 @@ class Document:
     def set_outcome(
         self, scan_id: int, outcome: PageOutcome, format: str | None = None
     ) -> None:
-        """Records a decoded page. ``format`` is the page format it was decoded in;
-        None means the format its label gave (``ScanInfo.format``)."""
+        """Records a decoded page. Without ``format`` it is the scan's own page, in
+        the format its label gives (``ScanInfo.format``). With ``format`` it was
+        decoded without its label in that format, for a document the scan was put
+        into by hand; it is kept beside the scan's own page and any other format's,
+        and replaces only an earlier decode in the same format."""
         s = self._get(scan_id)
-        s.outcome_format = format
         self._outcomes += 1
-        s.outcome = outcome
-        s.outcome_serial = self._outcomes
+        if format is None:
+            s.outcome = outcome
+            s.outcome_serial = self._outcomes
+        else:
+            s.decoded[format] = (outcome, self._outcomes)
+            s.failed.pop(format, None)
         self._changed()
 
-    def set_unreadable(self, scan_id: int, reason: str) -> None:
-        self._get(scan_id).unreadable_reason = reason
+    def set_unreadable(self, scan_id: int, reason: str, format: str | None = None) -> None:
+        """Records why the scan could not be read. Without ``format`` this is final
+        for the scan itself. With ``format`` only its decode in that format failed:
+        the scan keeps its identity, its own page and pages in other formats."""
+        s = self._get(scan_id)
+        if format is None:
+            s.unreadable_reason = reason
+        else:
+            s.failed[format] = reason
+            s.decoded.pop(format, None)
+        self._changed()
+
+    def set_decoding(self, scan_id: int, format: str, pending: bool) -> None:
+        """Records that a decode of the scan in ``format`` has been asked for
+        (``pending``), from the moment it is queued, or that it has reported. Until
+        it reports, the scan counts as being read in that format."""
+        s = self._get(scan_id)
+        if pending:
+            s.decoding.add(format)
+        else:
+            s.decoding.discard(format)
         self._changed()
 
     # --- User operations -------------------------------------------------------
@@ -893,6 +932,8 @@ class Document:
         s = self._get(scan_id)
         in_page = self._page_in_current(scan_id)
         if in_page == page:
+            if self._status(s)[0] in (ScanState.WAITING, ScanState.WORKING):
+                return Fit.PENDING
             usable = self.page_with(scan_id).histogram is not None
             if not usable and self.pages()[page - 1].histogram is not None:
                 return Fit.UNUSABLE
@@ -923,18 +964,24 @@ class Document:
         has no decoded page, or one decoded in another format. Raises ValueError
         when there is no document."""
         s = self._get(scan_id)
-        return not self._decoded_in(s, self._require_current().format)
+        return self._out(s, self._require_current().format) is None
+
+    def page_in_current(self, scan_id: int) -> int | None:
+        """The page of the current document the scan is in (by its label or by hand)."""
+        self._get(scan_id)
+        return self._page_in_current(scan_id)
 
     @staticmethod
-    def _decoded_in(s: _Scan, format: str) -> bool:
-        """Whether the scan has a decoded page laid out in ``format`` (or in a format
-        nobody stated: no format given and no label read)."""
-        if s.outcome is None:
-            return False
-        decoded = s.outcome_format
-        if decoded is None and s.info is not None:
-            decoded = s.info.format
-        return decoded is None or decoded == format
+    def _out(s: _Scan, format: str) -> tuple[PageOutcome, int] | None:
+        """The scan's page decoded in ``format`` and its serial, or None: its own page
+        when its label gives that format, else its decode in that format, else (no
+        label read) an own page whose format nobody stated."""
+        own = (s.outcome, s.outcome_serial) if s.outcome is not None else None
+        if own is not None and s.info is not None and s.info.format == format:
+            return own
+        if format in s.decoded:
+            return s.decoded[format]
+        return own if s.info is None else None
 
     def suggested_page(self, scan_id: int) -> int:
         """The page to offer when assigning the scan; see the module docstring.
@@ -1024,22 +1071,47 @@ class Document:
         return None
 
     def _rank(self, scan_id: int) -> tuple:
-        """Sort key within a page: best outcome first, no outcome last, then add order."""
-        o = self._scans[scan_id].outcome
+        """Sort key within a page: best outcome (in the document's format) first, no
+        outcome last, then add order."""
+        o = self._status(self._scans[scan_id])[1]
         if o is None:
             return (1, 0, 0, scan_id)
         return (0, o.lost, o.repaired, scan_id)
 
     def _state(self, s: _Scan) -> str:
-        unreadable = self._unreadable_reason(s) is not None
-        assigned = s.id in self._layout.assigned
-        if s.outcome is not None and (assigned or (s.info is not None and not unreadable)):
-            return ScanState.DONE
-        if unreadable and not (assigned and s.working):
-            return ScanState.UNREADABLE
+        return self._status(s)[0]
+
+    def _status(self, s: _Scan) -> tuple[str, PageOutcome | None, int, str]:
+        """(state, outcome, its serial, reason) of a scan as the current document sees
+        it. A scan assigned by hand counts only by its page in the document's format;
+        any other scan by its own reading."""
+        lay = self._layout
+        own_reason = self._unreadable_reason(s)
+        if s.id in lay.assigned:
+            fmt = lay.current.format
+            if fmt in s.decoding:
+                return ScanState.WORKING, None, 0, ""
+            found = self._out(s, fmt)
+            if found is not None:
+                return ScanState.DONE, found[0], found[1], ""
+            if fmt in s.failed:
+                return ScanState.UNREADABLE, None, 0, s.failed[fmt]
+            if s.working:
+                return ScanState.WORKING, None, 0, ""
+            if own_reason is not None:
+                return ScanState.UNREADABLE, None, 0, own_reason
+            if s.outcome is not None or s.decoded:
+                return ScanState.UNREADABLE, None, 0, FORMAT_MISMATCH
+            if s.info is not None:
+                return ScanState.WORKING, None, 0, ""
+            return ScanState.WAITING, None, 0, ""
+        if s.outcome is not None and s.info is not None and own_reason is None:
+            return ScanState.DONE, s.outcome, s.outcome_serial, ""
+        if own_reason is not None:
+            return ScanState.UNREADABLE, None, 0, own_reason
         if s.working or s.info is not None or s.outcome is not None:
-            return ScanState.WORKING
-        return ScanState.WAITING
+            return ScanState.WORKING, None, 0, ""
+        return ScanState.WAITING, None, 0, ""
 
     def _table(self) -> _Table:
         lay = self._layout
@@ -1058,7 +1130,7 @@ class Document:
             views.append(view)
             usable.append(o)
             if o is not None:
-                key.append((slot.scan_id, self._scans[slot.scan_id].outcome_serial))
+                key.append((slot.scan_id, self._status(self._scans[slot.scan_id])[2]))
             else:
                 key.append(None)
         return _Table(tuple(views), tuple(usable), size, tuple(key))
@@ -1069,17 +1141,15 @@ class Document:
         Only outcomes decoded in the document's format count."""
         if lay.current is None:
             return None
-        fmt = lay.current.format
         for scan_id in lay.shown:
-            s = self._scans[scan_id]
-            if self._decoded_in(s, fmt):
-                return len(s.outcome.data)
-        assigned = sorted(
-            slot.scan_id
-            for slot in slots
-            if slot.scan_id in lay.assigned and self._decoded_in(self._scans[slot.scan_id], fmt)
-        )
-        return len(self._scans[assigned[0]].outcome.data) if assigned else None
+            o = self._status(self._scans[scan_id])[1]
+            if o is not None:
+                return len(o.data)
+        for scan_id in sorted(slot.scan_id for slot in slots if slot.scan_id in lay.assigned):
+            o = self._status(self._scans[scan_id])[1]
+            if o is not None:
+                return len(o.data)
+        return None
 
     def _page_view(
         self, slot: PageSlot, size: int | None
@@ -1097,19 +1167,13 @@ class Document:
 
         if slot.scan_id is None:
             return view(Health.MISSING), None
-        s = self._scans[slot.scan_id]
-        state = self._state(s)
+        state, o, _, why = self._status(self._scans[slot.scan_id])
         if state == ScanState.WAITING:
             return view(Health.WAITING), None
         if state == ScanState.UNREADABLE:
-            return view(Health.UNREADABLE, reason=self._unreadable_reason(s) or ""), None
+            return view(Health.UNREADABLE, reason=why), None
         if state != ScanState.DONE:
             return view(Health.WORKING), None
-        if not self._decoded_in(s, self._layout.current.format):
-            if s.working:  # being decoded again, in this document's format
-                return view(Health.WORKING), None
-            return view(Health.UNREADABLE, reason=s.unreadable_reason or FORMAT_MISMATCH), None
-        o = s.outcome
         if len(o.data) != size:
             return view(Health.UNREADABLE, reason=SIZE_MISMATCH), None
         repaired = o.repaired
@@ -1130,9 +1194,11 @@ class Document:
         return self._verdict[1]
 
     def _view(self, s: _Scan) -> ScanView:
-        return ScanView(
-            s.id, s.path, self._state(s), s.info, s.outcome, self._unreadable_reason(s) or ""
-        )
+        """For a scan assigned by hand, its page and reason in the document's format."""
+        state, o, _, why = self._status(s)
+        if s.id not in self._layout.assigned:
+            o, why = s.outcome, self._unreadable_reason(s) or ""
+        return ScanView(s.id, s.path, state, s.info, o, why)
 
     def _group_view(self, g: _Group, shown: list[int], scan_ids: tuple[int, ...]) -> GroupView:
         """The title comes from the group's own scans that it shows."""

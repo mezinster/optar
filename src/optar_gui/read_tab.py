@@ -80,7 +80,6 @@ from optar_gui.document import (
     Document,
     Fit,
     Row,
-    ScanState,
     Summary,
     expand_paths,
     paper_for_size,
@@ -263,26 +262,26 @@ class ReadController(QObject):
 
         In a document started by hand there are no labels to go by: the file is
         assigned to the page and decoded without its label, then judged the same way.
+        A scan is judged only once its reading for this document has reported
+        (the document counts a decode as pending from the moment it is queued);
+        until then the page keeps the scan it uses.
         """
         if self._closed:
             return
         self.note = ""
         doc = self._doc
-        self._replacing.pop(page, None)
         scan_id = doc.add_scan(path)
         added = scan_id is not None
         if not added:
             scan_id = doc.scan_id_of(path)
+        self._drop_pending(page, scan_id)
         if doc.by_hand:
             doc.assign_page(scan_id, page)
             if doc.needs_decoding(scan_id):
                 self._decode_for_document(scan_id)
         elif added:
             self._runner.submit(scan_id, partial(self._process, path))
-        if doc.scan(scan_id).state in (ScanState.WAITING, ScanState.WORKING):
-            self._replacing[page] = scan_id
-        else:
-            self._settle_replacement(scan_id, page)
+        self._settle_replacement(scan_id, page)
         self.refresh()
 
     def use_spare(self, scan_id: int) -> None:
@@ -312,7 +311,7 @@ class ReadController(QObject):
         doc = self._doc
         if self._closed or doc.current is None or not 1 <= page <= len(doc.slots()):
             return False
-        self._replacing.pop(page, None)
+        self._drop_pending(page, scan_id)
         doc.assign_page(scan_id, page)
         if doc.needs_decoding(scan_id):
             self._decode_for_document(scan_id)
@@ -342,20 +341,39 @@ class ReadController(QObject):
                 return paper
         return next(iter(PAPERS))
 
+    def _drop_pending(self, page: int, scan_id: int) -> None:
+        """A new choice for ``page`` or for the scan: earlier pending ones no longer count."""
+        self._replacing = {
+            p: s for p, s in self._replacing.items() if p != page and s != scan_id
+        }
+
     def _decode_for_document(self, scan_id: int) -> None:
-        """Decodes the scan without its label, in the current document's format."""
-        fmt = self._doc.current.format
+        """Decodes the scan without its label, in the current document's format; the
+        document knows it is pending from now, before a worker starts it."""
+        doc = self._doc
+        fmt = doc.current.format
         self._runner.cancel(scan_id)  # required before submitting the id again
+        earlier = self._decoding_in.pop(scan_id, None)
+        if earlier is not None:
+            doc.set_decoding(scan_id, earlier, False)  # cancelled: it will never report
         self._decoding_in[scan_id] = fmt
-        self._runner.submit(scan_id, partial(self._unlabelled, self._doc.scan(scan_id).path, fmt))
+        doc.set_decoding(scan_id, fmt, True)
+        self._runner.submit(scan_id, partial(self._unlabelled, doc.scan(scan_id).path, fmt))
 
     def _settle_replacement(self, scan_id: int, page: int) -> None:
+        """Judges a replacement now, or waits (``Fit.PENDING``) until the scan's reading
+        for this document reports."""
         doc = self._doc
         fit = doc.replacement_fit(scan_id, page)
-        if fit == Fit.THIS_PAGE:
+        if fit == Fit.PENDING:
+            self._replacing[page] = scan_id
+        elif fit == Fit.THIS_PAGE:
             doc.use_scan(scan_id)
         else:
-            self.replace_rejected.emit(text.replace_rejected(page, fit, doc.scan(scan_id)))
+            message = text.replace_rejected(
+                page, fit, doc.scan(scan_id), doc.page_in_current(scan_id)
+            )
+            self.replace_rejected.emit(message)
 
     def snapshot(self) -> Iterator[bytes]:
         """The recovered file as it is now, for ``save``; later changes do not affect it.
@@ -448,7 +466,9 @@ class ReadController(QObject):
             self._apply(scan_id, work)
         except KeyError:
             return  # the scan was removed
-        self._works[scan_id] = dataclasses.replace(work, outcome=None)
+        if work.info is not None or work.outcome is not None or scan_id not in self._works:
+            # A decode for a document that failed keeps the preview of what was read.
+            self._works[scan_id] = dataclasses.replace(work, outcome=None)
         self._schedule()
         self._settle_pending(scan_id)
 
@@ -462,11 +482,16 @@ class ReadController(QObject):
         doc = self._doc
         doc.scan(scan_id)  # KeyError for a removed scan, before anything changes
         doc.set_working(scan_id, False)
-        if work.info is None:
-            if work.outcome is not None:  # decoded without its label
-                doc.set_outcome(scan_id, work.outcome, self._decoding_in.pop(scan_id, None))
+        fmt = self._decoding_in.pop(scan_id, None)
+        if fmt is not None:  # decoded without its label for a document: per format
+            doc.set_decoding(scan_id, fmt, False)
+            if work.outcome is not None:
+                doc.set_outcome(scan_id, work.outcome, fmt)
             else:
-                doc.set_unreadable(scan_id, work.reason)
+                doc.set_unreadable(scan_id, work.reason, fmt)
+            return
+        if work.info is None:
+            doc.set_unreadable(scan_id, work.reason)
             return
         doc.set_identified(scan_id, work.info)
         if work.outcome is not None:
@@ -475,9 +500,12 @@ class ReadController(QObject):
             doc.set_unreadable(scan_id, work.reason)
 
     def _on_failed(self, scan_id: int, message: str) -> None:
+        fmt = self._decoding_in.pop(scan_id, None)
         try:
             self._doc.set_working(scan_id, False)
-            self._doc.set_unreadable(scan_id, message)
+            if fmt is not None:
+                self._doc.set_decoding(scan_id, fmt, False)
+            self._doc.set_unreadable(scan_id, message, fmt)
         except KeyError:
             return
         self._schedule()

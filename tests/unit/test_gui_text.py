@@ -454,3 +454,26 @@ def test_action_captions_and_dialog_wording():
     assert text.replace_title(1_205) == "Choose a scan of page 1,205"
     assert text.assign_prompt("scan 7.png") == "Which page of this document is scan 7.png?"
     assert text.of_pages(1_205) == " of 1,205"
+
+
+def test_replace_rejected_for_a_scan_on_another_page_without_a_label():
+    unlabelled = ScanView(4, "/x/new.png", "done", None, None, "")
+    assert text.replace_rejected(1, Fit.OTHER_PAGE, unlabelled, other_page=2) == (
+        "new.png was not used for page 1: it is page 2 of this document and is listed there."
+    )
+    assigned = ScanView(4, "/x/new.png", "done", None, None, "label unreadable")
+    assert text.replace_rejected(2, Fit.OTHER_PAGE, assigned, other_page=5) == (
+        "new.png was not used for page 2: it is page 5 of this document and is listed there."
+    )
+    # The page it is on, when given, wins over what its label says.
+    labelled = ScanView(4, "/x/new.png", "done", ScanInfo(A, 3, 1, "doc.tar", None), None, "")
+    assert text.replace_rejected(2, Fit.OTHER_PAGE, labelled, other_page=3).endswith(
+        "it is page 3 of this document and is listed there."
+    )
+
+
+def test_replace_rejected_never_gives_an_empty_reason():
+    for fit in (Fit.UNREADABLE, Fit.UNUSABLE, Fit.OTHER_DOCUMENT, Fit.PENDING):
+        message = text.replace_rejected(2, fit, ScanView(4, "/x/new.png", "done", None, None, ""))
+        assert ". ." not in message and not message.endswith(": .")
+        assert "could not be read" in message

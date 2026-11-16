@@ -24,13 +24,14 @@ from optar_gui.dialogs import AssignPageDialog, StartByHandDialog
 from optar_gui.document import (
     MAX_TOTAL_PAGES,
     DocState,
+    Health,
     PageOutcome,
     PageSlot,
     ScanInfo,
     ScanState,
 )
 from optar_gui.read_tab import ReadController, ReadTab
-from optar_gui.work import process_scan, process_unlabelled
+from optar_gui.work import NOT_DECODABLE, ScanWork, process_scan, process_unlabelled
 from tests.helpers import fake_scan, save_scan, seeded_bytes
 
 TIMEOUT = 300_000  # ms: decoding is slow on a loaded machine
@@ -572,6 +573,250 @@ def test_buttons_enable_only_when_applicable(qtbot, make_tab, scans, tmp_path):
     wait_settled(qtbot, tab)
     select(tab, "other.tar · A4 · 1 page · 2 scans")
     assert enabled(tab) == {"switchButton"}
+
+
+# --- Decoding for a document, with work that reads no image ---------------------------
+
+A_FMT, L_FMT = A4.to_string(), LETTER.to_string()
+SIZE = (100, 141)
+
+
+def unreadable_work():
+    return ScanWork(None, "label unreadable", None, 0, None, SIZE)
+
+
+def identified_work(fmt, total, page, name, tag, data, lost=0):
+    info = ScanInfo(fmt, total, page, name, tag)
+    return ScanWork(info, "", PageOutcome(data, (100, 0, 0, 0), lost), 0, None, SIZE)
+
+
+def decoded_work(data, lost=0):
+    return ScanWork(None, "", PageOutcome(data, (100, 0, 0, 0), lost), 0, None, SIZE)
+
+
+def failed_work():
+    return ScanWork(None, NOT_DECODABLE, None, 0, None, SIZE)
+
+
+class Fakes:
+    """``process`` and ``unlabelled`` by file name; names in ``held`` wait for ``gate``."""
+
+    def __init__(self, scans, decodes):
+        self.scans = scans  # name -> ScanWork
+        self.decodes = decodes  # (name, format) -> ScanWork
+        self.calls = []  # (name, format) of every decode without the label
+        self.held = set()
+        self.gate = threading.Event()
+
+    def _hold(self, name):
+        if name in self.held:
+            self.gate.wait(TIMEOUT / 1000)
+
+    def process(self, path, cancelled=lambda: False):
+        name = os.path.basename(path)
+        self._hold(name)
+        return self.scans[name]
+
+    def unlabelled(self, path, format, cancelled=lambda: False):
+        name = os.path.basename(path)
+        self.calls.append((name, format))
+        self._hold(name)
+        return self.decodes[(name, format)]
+
+
+@pytest.fixture
+def fake_controller(qtbot):
+    """fake_controller(fakes, max_workers=3) -> (controller, notices)."""
+    made = []
+
+    def make(fakes, max_workers=3):
+        controller = ReadController(
+            process=fakes.process, unlabelled=fakes.unlabelled, max_workers=max_workers
+        )
+        notices = []
+        controller.replace_rejected.connect(notices.append)
+        made.append((controller, fakes))
+        return controller, notices
+
+    yield make
+    for controller, fakes in made:
+        fakes.gate.set()
+        controller.shutdown(TIMEOUT)
+
+
+def idle(qtbot, controller):
+    qtbot.waitUntil(lambda: controller.runner.active == 0, timeout=TIMEOUT)
+    controller.refresh()
+    qtbot.waitUntil(lambda: not controller.checking, timeout=TIMEOUT)
+    controller.refresh()
+
+
+def by_hand_with_damaged_page_1(qtbot, make, fakes, max_workers=3):
+    """A document by hand whose page 1 is damaged.png, decoded without its label."""
+    controller, notices = make(fakes, max_workers)
+    controller.add_paths([f"/x/{name}" for name in fakes.scans if name not in fakes.held])
+    idle(qtbot, controller)
+    controller.start_by_hand("a4", 2)
+    doc = controller.document
+    dmg = doc.scan_id_of("/x/damaged.png")
+    assert controller.assign(dmg, 1)
+    idle(qtbot, controller)
+    assert (doc.pages()[0].scan_id, doc.pages()[0].health) == (dmg, Health.DAMAGED)
+    return controller, notices, dmg
+
+
+def test_replace_by_hand_with_a_scan_whose_decode_fails_keeps_the_page(qtbot, fake_controller):
+    fakes = Fakes(
+        {"damaged.png": unreadable_work(),
+         "letter.png": identified_work(L_FMT, 1, 1, "let", make_tag(b"L" * 5), b"L" * 5)},
+        {("damaged.png", A_FMT): decoded_work(b"d" * 10, lost=5),
+         ("letter.png", A_FMT): failed_work()},
+    )  # fmt: skip
+    controller, notices, dmg = by_hand_with_damaged_page_1(qtbot, fake_controller, fakes)
+    doc = controller.document
+    controller.replace(1, "/x/letter.png")
+    assert notices == []  # nothing is judged before the decode in A4 has reported
+    assert doc.pages()[0].scan_id == dmg  # ranked by its A4 page, which it has not
+    idle(qtbot, controller)
+    letter = doc.scan_id_of("/x/letter.png")
+    assert (doc.pages()[0].scan_id, doc.pages()[0].health) == (dmg, Health.DAMAGED)
+    assert doc.pages()[0].spare_ids == (letter,)
+    assert notices == [
+        "letter.png was not used for page 1: it could not be read "
+        f"({NOT_DECODABLE}), so page 1 keeps the scan it has."
+    ]
+    assert fakes.calls[-1] == ("letter.png", A_FMT)
+
+
+def test_replace_by_hand_with_an_added_file_while_every_worker_is_busy(qtbot, fake_controller):
+    fakes = Fakes(
+        {"damaged.png": unreadable_work(), "good.png": unreadable_work(),
+         "slow.png": unreadable_work()},
+        {("damaged.png", A_FMT): decoded_work(b"d" * 10, lost=5),
+         ("good.png", A_FMT): decoded_work(b"g" * 10)},
+    )  # fmt: skip
+    fakes.held.add("slow.png")
+    controller, notices, dmg = by_hand_with_damaged_page_1(qtbot, fake_controller, fakes, 1)
+    doc = controller.document
+    controller.add_paths(["/x/slow.png"])  # takes the only worker
+    controller.replace(1, "/x/good.png")
+    good = doc.scan_id_of("/x/good.png")
+    assert notices == []
+    assert doc.scan(good).state == ScanState.WORKING  # queued counts as being read
+    assert doc.pages()[0].scan_id == dmg
+    fakes.gate.set()
+    idle(qtbot, controller)
+    assert (doc.pages()[0].scan_id, doc.pages()[0].health) == (good, Health.GOOD)
+    assert notices == []
+
+
+def test_assign_with_a_failing_decode_keeps_the_pages_usable_scan(qtbot, fake_controller):
+    fakes = Fakes(
+        {"damaged.png": unreadable_work(),
+         "letter.png": identified_work(L_FMT, 1, 1, "let", make_tag(b"L" * 5), b"L" * 5)},
+        {("damaged.png", A_FMT): decoded_work(b"d" * 10, lost=5),
+         ("letter.png", A_FMT): failed_work()},
+    )  # fmt: skip
+    controller, notices, dmg = by_hand_with_damaged_page_1(qtbot, fake_controller, fakes)
+    doc = controller.document
+    letter = doc.scan_id_of("/x/letter.png")
+    assert controller.assign(letter, 1)
+    assert doc.pages()[0].scan_id == dmg
+    idle(qtbot, controller)
+    assert doc.slots()[0] == PageSlot(1, dmg, (letter,))
+    assert doc.pages()[0].health == Health.DAMAGED
+    assert notices == []
+
+
+def test_a_queued_decode_shows_the_page_working(qtbot, fake_controller):
+    fakes = Fakes(
+        {"bad.png": unreadable_work(), "slow.png": unreadable_work()},
+        {("bad.png", A_FMT): decoded_work(b"b" * 10)},
+    )
+    fakes.held.add("slow.png")
+    controller, _ = fake_controller(fakes, max_workers=1)
+    tab = ReadTab(controller)
+    qtbot.addWidget(tab)
+    controller.add_paths(["/x/bad.png"])
+    idle(qtbot, controller)
+    controller.add_paths(["/x/slow.png"])  # takes the only worker
+    controller.start_by_hand("a4", 1)
+    assert controller.assign(controller.document.scan_id_of("/x/bad.png"), 1)
+    assert controller.document.pages()[0].health == Health.WORKING
+    assert controller.summary.state == DocState.WORKING
+    assert tab.rows()[1] == "Page 1 · Working…"
+    fakes.gate.set()
+    idle(qtbot, controller)
+    assert tab.rows()[1] == "Page 1 · Good"
+
+
+@pytest.mark.parametrize("decode_succeeds", [False, True])
+def test_a_letter_scan_assigned_by_mistake_keeps_its_own_page(
+    qtbot, fake_controller, decode_succeeds
+):
+    a_data, l_data = b"a" * 4 + b"b" * 4, b"L" * 5 + b"M" * 5
+    a_tag, l_tag = make_tag(a_data), make_tag(l_data)
+    fakes = Fakes(
+        {"a1.png": identified_work(A_FMT, 2, 1, "doc", a_tag, a_data[:4]),
+         "a2.png": identified_work(A_FMT, 2, 2, "doc", a_tag, a_data[4:]),
+         "l1.png": identified_work(L_FMT, 2, 1, "let", l_tag, l_data[:5]),
+         "l2.png": identified_work(L_FMT, 2, 2, "let", l_tag, l_data[5:])},
+        {("l1.png", A_FMT): decoded_work(b"z" * 4, lost=9) if decode_succeeds
+         else failed_work()},
+    )  # fmt: skip
+    controller, notices = fake_controller(fakes)
+    controller.add_paths([f"/x/{n}" for n in ("a1.png", "a2.png", "l1.png", "l2.png")])
+    idle(qtbot, controller)
+    doc = controller.document
+    assert controller.summary.state == DocState.VERIFIED
+    a2, l1 = doc.scan_id_of("/x/a2.png"), doc.scan_id_of("/x/l1.png")
+    assert controller.assign(l1, 2)  # by mistake
+    idle(qtbot, controller)
+    assert doc.slots()[1] == PageSlot(2, a2, (l1,))
+    assert controller.summary.state == DocState.VERIFIED
+    controller.switch_document(doc.others()[0].key)
+    idle(qtbot, controller)
+    assert doc.current.format == L_FMT
+    assert [p.health for p in doc.pages()] == [Health.GOOD, Health.GOOD]
+    assert controller.summary.state == DocState.VERIFIED
+    assert b"".join(controller.snapshot()) == l_data
+    assert fakes.calls == [("l1.png", A_FMT)]  # nothing decoded again back home
+    assert notices == []
+
+
+def test_rejection_names_the_page_a_scan_assigned_by_hand_is_on(qtbot, fake_controller):
+    a_data = b"a" * 4 + b"b" * 4
+    fakes = Fakes(
+        {"a1.png": identified_work(A_FMT, 2, 1, "doc", make_tag(a_data), a_data[:4]),
+         "bad.png": unreadable_work()},
+        {("bad.png", A_FMT): decoded_work(a_data[4:])},
+    )  # fmt: skip
+    controller, notices = fake_controller(fakes)
+    controller.add_paths(["/x/a1.png", "/x/bad.png"])
+    idle(qtbot, controller)
+    assert controller.assign(controller.document.scan_id_of("/x/bad.png"), 2)
+    idle(qtbot, controller)
+    controller.replace(1, "/x/bad.png")
+    assert notices == [
+        "bad.png was not used for page 1: it is page 2 of this document and is listed there."
+    ]
+
+
+def test_choosing_one_new_file_for_two_pages_by_hand_keeps_the_later(qtbot, fake_controller):
+    fakes = Fakes({"damaged.png": unreadable_work()},
+                  {("damaged.png", A_FMT): decoded_work(b"d" * 10, lost=5),
+                   ("new.png", A_FMT): decoded_work(b"n" * 10)})  # fmt: skip
+    controller, notices, dmg = by_hand_with_damaged_page_1(qtbot, fake_controller, fakes)
+    fakes.held.add("new.png")
+    controller.replace(1, "/x/new.png")
+    controller.replace(2, "/x/new.png")  # the user changes their mind while it decodes
+    fakes.gate.set()
+    idle(qtbot, controller)
+    doc = controller.document
+    new = doc.scan_id_of("/x/new.png")
+    assert doc.pages()[0].scan_id == dmg
+    assert (doc.pages()[1].scan_id, doc.pages()[1].health) == (new, Health.GOOD)
+    assert notices == []
 
 
 # --- The controller on its own ---------------------------------------------------------

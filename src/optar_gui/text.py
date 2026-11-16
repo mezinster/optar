@@ -334,31 +334,39 @@ def _sentence(words: str) -> str:
     return words if words.endswith(".") else f"{words}."
 
 
-def replace_rejected(page: int, fit: str, scan: ScanView) -> str:
-    """Why a scan chosen to replace ``page`` was not used; ``fit`` is a ``Fit``."""
+def replace_rejected(
+    page: int, fit: str, scan: ScanView, other_page: int | None = None
+) -> str:
+    """Why a scan chosen to replace ``page`` was not used; ``fit`` is a ``Fit``.
+
+    ``other_page`` is the page of this document the scan is on, for ``OTHER_PAGE``
+    (by default the page its label names).
+    """
     name = os.path.basename(scan.path)
+    info = scan.info
     if fit == Fit.UNUSABLE:
         why = f" ({unreadable_reason(scan.reason)})" if scan.reason else ""
         return (
             f"{name} was not used for page {page:,}: it could not be read{why}, "
             f"so page {page:,} keeps the scan it has."
         )
-    if fit == Fit.UNREADABLE or scan.info is None:
-        return f"{name} was not used for page {page:,}. {_sentence(unreadable_reason(scan.reason))}"
-    info = scan.info
-    if fit == Fit.OTHER_PAGE:
+    if fit == Fit.OTHER_PAGE and (other_page is not None or info is not None):
+        where = other_page if other_page is not None else info.page
         return (
-            f"{name} was not used for page {page:,}: it is page {info.page:,} of this "
+            f"{name} was not used for page {page:,}: it is page {where:,} of this "
             "document and is listed there."
         )
-    printout = (
-        f"{info.name.rstrip(' ') or NO_NAME} · {paper_name(info.format)} · "
-        f"{count(max(info.total, 1), 'page')}"
-    )
-    return (
-        f"{name} was not used for page {page:,}: it is page {info.page:,} of another "
-        f"printout, {printout}."
-    )
+    if fit == Fit.OTHER_DOCUMENT and info is not None:
+        printout = (
+            f"{info.name.rstrip(' ') or NO_NAME} · {paper_name(info.format)} · "
+            f"{count(max(info.total, 1), 'page')}"
+        )
+        return (
+            f"{name} was not used for page {page:,}: it is page {info.page:,} of another "
+            f"printout, {printout}."
+        )
+    why = unreadable_reason(scan.reason) if scan.reason.strip() else "It could not be read"
+    return f"{name} was not used for page {page:,}. {_sentence(why)}"
 
 
 def assign_prompt(scan_name: str) -> str:

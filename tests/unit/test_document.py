@@ -1841,6 +1841,9 @@ def test_replacement_fit():
         info(2), info(2), info(1), info(2, tag=OTHER_TAG), info(2), None
     )
     doc.set_unreadable(bad, "decoding failed")
+    assert doc.replacement_fit(same, 2) == Fit.PENDING  # identified, not decoded yet
+    for scan_id in (a, same, other_page, foreign):
+        doc.set_outcome(scan_id, out())
     assert doc.replacement_fit(same, 2) == Fit.THIS_PAGE
     assert doc.replacement_fit(same, 3) == Fit.OTHER_PAGE
     assert doc.replacement_fit(other_page, 2) == Fit.OTHER_PAGE
@@ -1919,7 +1922,7 @@ def test_needs_decoding_when_no_outcome_or_decoded_in_another_format():
     doc.set_outcome(bad, out(data=b"bbbb"), format=A)  # decoded without its label as A4
     assert not doc.needs_decoding(bad)
     doc.set_outcome(bad, out(data=b"bbbb"), format=LETTER)
-    assert doc.needs_decoding(bad)
+    assert not doc.needs_decoding(bad)  # the A4 decode is kept beside the Letter one
     with pytest.raises(ValueError):
         build(None)[0].needs_decoding(1)  # no document
 
@@ -1974,3 +1977,101 @@ def test_a_replacement_without_usable_data_does_not_replace_usable_data():
     # A page with no usable data may take it.
     doc.assign_page(b, 2)
     assert doc.replacement_fit(b, 2) == Fit.THIS_PAGE
+
+
+# --- One outcome per page format ---------------------------------------------------
+
+
+def _letter_by_mistake(decode_succeeds):
+    """An A4 printout and a Letter one, both verified; page 1 of the Letter printout
+    is assigned by mistake to page 2 of the A4 document and decoded there as A4."""
+    a_data, l_data = b"a" * 4 + b"b" * 4, b"L" * 5 + b"M" * 5
+    a_tag, l_tag = make_tag(a_data), make_tag(l_data)
+    doc = Document()
+    a1, a2, l1, l2 = (add(doc, n) for n in ("a1", "a2", "l1", "l2"))
+    doc.set_identified(a1, info(1, total=2, tag=a_tag))
+    doc.set_outcome(a1, out(data=a_data[:4]))
+    doc.set_identified(a2, info(2, total=2, tag=a_tag))
+    doc.set_outcome(a2, out(data=a_data[4:]))
+    doc.set_identified(l1, info(1, total=2, tag=l_tag, fmt=LETTER, name="let"))
+    doc.set_identified(l2, info(2, total=2, tag=l_tag, fmt=LETTER, name="let"))
+    doc.set_outcome(l2, out(data=l_data[5:]))
+    doc.set_outcome(l1, out(data=l_data[:5]))
+    letter_key = doc.others()[0].key
+    assert doc.summary().state == DocState.VERIFIED
+    doc.assign_page(l1, 2)
+    assert doc.needs_decoding(l1)
+    doc.set_decoding(l1, A, True)
+    if decode_succeeds:
+        doc.set_outcome(l1, out(data=b"zzzz", lost=9), format=A)
+    else:
+        doc.set_unreadable(l1, "could not be decoded in any orientation", format=A)
+    doc.set_decoding(l1, A, False)
+    return doc, (a1, a2, l1, l2), letter_key, l_data
+
+
+@pytest.mark.parametrize("decode_succeeds", [False, True])
+def test_a_decode_in_another_format_leaves_the_scans_own_page_intact(decode_succeeds):
+    doc, (a1, a2, l1, l2), _, l_data = _letter_by_mistake(decode_succeeds)
+    # In the A4 document: the A4 page keeps its place, never demoted by the mistake.
+    assert doc.slots()[1] == PageSlot(2, a2, (l1,))
+    assert doc.summary().state == DocState.VERIFIED
+    assert doc.unreadable() == ()  # the Letter scan is still identified
+    doc.switch_to(doc.others()[0].key)  # the Letter printout, as listed now
+    assert (doc.current.format, doc.current.scan_ids) == (LETTER, (l1, l2))
+    assert [p.health for p in doc.pages()] == [Health.GOOD, Health.GOOD]
+    assert doc.assemble() == l_data
+    assert doc.summary().state == DocState.VERIFIED
+    assert not doc.needs_decoding(l1)  # no decoding again in its own document
+    assert doc.scan(l1).outcome == out(data=l_data[:5])
+
+
+def test_a_decode_requested_is_pending_from_the_moment_it_is_asked_for():
+    doc, (bad,) = build(None)
+    doc.set_unreadable(bad, "label unreadable")
+    doc.start_by_hand(A, 1)
+    doc.assign_page(bad, 1)
+    doc.set_decoding(bad, A, True)  # queued: no worker has started it
+    assert doc.scan(bad).state == ScanState.WORKING
+    assert doc.pages()[0].health == Health.WORKING
+    assert doc.summary().state == DocState.WORKING
+    assert doc.replacement_fit(bad, 1) == Fit.PENDING
+    doc.set_outcome(bad, out(data=b"dddd"), format=A)
+    assert doc.pages()[0].health == Health.WORKING  # until the decode has reported
+    doc.set_decoding(bad, A, False)
+    assert doc.pages()[0].health == Health.GOOD
+    assert doc.replacement_fit(bad, 1) == Fit.THIS_PAGE
+
+
+def test_a_scan_ranks_only_by_its_outcome_in_the_documents_format():
+    # Page 1 of a document by hand uses a damaged scan; a Letter scan with a clean
+    # Letter page is assigned there: it has no A4 page, so it does not displace it.
+    doc, (dmg, letter) = build(None, info(1, total=1, fmt=LETTER, name="l"))
+    doc.set_unreadable(dmg, "label unreadable")
+    doc.set_outcome(letter, out(data=b"LLLL"))
+    doc.start_by_hand(A, 2)
+    doc.assign_page(dmg, 1)
+    doc.set_outcome(dmg, out(data=b"dddd", lost=5), format=A)
+    doc.assign_page(letter, 1)
+    assert doc.slots()[0] == PageSlot(1, dmg, (letter,))
+    doc.set_decoding(letter, A, True)
+    assert doc.slots()[0] == PageSlot(1, dmg, (letter,))
+    assert doc.pages()[0].health == Health.DAMAGED
+    doc.set_unreadable(letter, "could not be decoded in any orientation", format=A)
+    doc.set_decoding(letter, A, False)
+    assert doc.slots()[0] == PageSlot(1, dmg, (letter,))  # still its usable scan
+    assert doc.replacement_fit(letter, 1) == Fit.UNUSABLE
+    assert doc.scan(letter).reason == "could not be decoded in any orientation"
+    # Unassigned again (a new document by hand drops the assignment), the Letter scan
+    # is its own Letter page, never unreadable.
+    doc.start_by_hand(A, 2)
+    doc.switch_to(doc.others()[0].key)
+    assert doc.pages()[0].health == Health.GOOD
+
+
+def test_page_in_current():
+    doc, (a, bad) = build(info(1), None)
+    doc.set_unreadable(bad, "label unreadable")
+    assert (doc.page_in_current(a), doc.page_in_current(bad)) == (1, None)
+    doc.assign_page(bad, 3)
+    assert doc.page_in_current(bad) == 3
