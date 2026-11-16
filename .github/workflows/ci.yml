@@ -1,8 +1,17 @@
 name: CI
 
 on:
+  # A branch with an open pull request is tested once, by the pull request;
+  # pushes are tested only on master, after a merge.
   push:
+    branches: [master]
   pull_request:
+
+# A newer commit on the same pull request (or on master) replaces the run in
+# progress, so superseded runs do not hold the scarce macOS machines.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
