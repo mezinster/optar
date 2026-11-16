@@ -10,7 +10,9 @@ from PySide6.QtCore import QEvent, QPoint, QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QImage, QMouseEvent, QPainter, QWheelEvent
 from PySide6.QtWidgets import QApplication
 
+import optar_gui.preview as preview_module
 from optar import PAPERS, PageFormat
+from optar.imageio import read_scan
 from optar_gui import text
 from optar_gui.preview import PREVIEW_MAX_PIXELS, ScanPreview, load_for_preview
 from optar_gui.read_tab import ReadController, ReadTab
@@ -49,6 +51,19 @@ def sample(view, x, y):
     view.scene().render(painter, QRectF(0, 0, 1, 1), QRectF(x, y, 1, 1))
     painter.end()
     return QColor(image.pixel(0, 0)).value()
+
+
+def render_scene(view):
+    """The whole scene drawn at one screen pixel per scan pixel, as an RGB array."""
+    rect = view.scene().sceneRect()
+    w, h = int(rect.width()), int(rect.height())
+    image = QImage(w, h, QImage.Format.Format_RGB32)
+    image.fill(QColor(255, 0, 255))
+    painter = QPainter(image)
+    view.scene().render(painter, QRectF(0, 0, w, h), rect)
+    painter.end()
+    a = np.frombuffer(image.constBits(), np.uint8).reshape(h, image.bytesPerLine())
+    return a[:, : w * 4].reshape(h, w, 4)[..., 2::-1].copy()  # B, G, R, A -> R, G, B
 
 
 def red_pixels(view):
@@ -207,7 +222,8 @@ def test_large_scan_is_reduced_for_display(tmp_path):
     side = int(PREVIEW_MAX_PIXELS**0.5) + 100
     path = tmp_path / "big.png"
     Image.new("L", (side, side + 10), 255).save(path)
-    image, size = load_for_preview(str(path), 1, lambda: False)
+    loaded = load_for_preview(str(path), 1, lambda: False)
+    image, size = loaded.pixels, loaded.size
     h, w = image.shape
     assert h * w <= PREVIEW_MAX_PIXELS
     assert (w, h) == ((side + 11) // 2, (side + 1) // 2)  # upright: turned a quarter
@@ -219,12 +235,16 @@ def test_colour_and_deep_scans_load_as_gray(tmp_path):
     Image.fromarray(np.dstack([gray] * 3)).save(tmp_path / "c.png")
     Image.fromarray(gray.astype(np.uint16) * 257).save(tmp_path / "d.png")
     Image.fromarray(gray >= 128).save(tmp_path / "b.png")
-    colour, _ = load_for_preview(str(tmp_path / "c.png"), 0, lambda: False)
-    deep, _ = load_for_preview(str(tmp_path / "d.png"), 0, lambda: False)
-    bits, size = load_for_preview(str(tmp_path / "b.png"), 0, lambda: False)
-    assert size == (256, 4)
+    Image.fromarray(gray.astype(np.uint16) * 257).save(tmp_path / "d.tif")
+    colour = load_for_preview(str(tmp_path / "c.png"), 0, lambda: False).pixels
+    deep = load_for_preview(str(tmp_path / "d.png"), 0, lambda: False).pixels
+    deep_tiff = load_for_preview(str(tmp_path / "d.tif"), 0, lambda: False).pixels
+    loaded = load_for_preview(str(tmp_path / "b.png"), 0, lambda: False)
+    bits = loaded.pixels
+    assert loaded.size == (256, 4)
     assert colour.dtype == deep.dtype == bits.dtype == np.uint8
     assert np.array_equal(colour, gray) and np.array_equal(deep, gray)
+    assert np.array_equal(deep_tiff, gray)
     assert np.array_equal(bits, np.where(gray >= 128, 255, 0))
 
 
@@ -292,3 +312,58 @@ def test_thirty_thousand_marks_draw_quickly(qtbot, preview, tmp_path):
         start = time.perf_counter()
         preview.viewport().repaint()
         assert time.perf_counter() - start < 0.5
+
+
+def test_orientation_tagged_tiff_is_sized_as_read_scan_reads_it(qtbot, preview, tmp_path):
+    # Pillow turns a TIFF with orientation 6 or 8 while loading it; read_scan
+    # (so the marks) uses the loaded image, and the preview must too.
+    a = np.full((20, 40), 255, np.uint8)
+    a[3, 7] = 0
+    path = tmp_path / "turned.tif"
+    Image.fromarray(a).save(path, tiffinfo={274: 6})
+    scan = read_scan(path)
+    ys, xs = np.nonzero(scan < 128)
+    assert len(xs) == 1
+    x, y = int(xs[0]), int(ys[0])
+
+    loaded = load_for_preview(str(path), 0, lambda: False)
+    assert loaded.size == (scan.shape[1], scan.shape[0])
+    assert loaded.pixels.shape == scan.shape
+
+    show_and_wait(qtbot, preview, str(path), 0, None)
+    assert scene_size(preview) == (scan.shape[1], scan.shape[0])
+    drawn = render_scene(preview)
+    assert np.array_equal(drawn[..., 0] < 128, scan < 128)
+    preview.show_scan(str(path), 0, np.array([[x, y]], np.float32))
+    r, g, b = render_scene(preview)[y, x]
+    assert r > 150 and g < 80 and b < 80  # the mark is on that very pixel
+
+
+@pytest.mark.parametrize("rotation", [0, 1, 2, 3])
+def test_reduced_scan_lines_up_with_marks(qtbot, preview, tmp_path, monkeypatch, rotation):
+    # 101 x 61 reduced 2 x 2: the last column and row are half boxes.
+    monkeypatch.setattr(preview_module, "PREVIEW_MAX_PIXELS", 2000)
+    full = np.full((61, 101), 255, np.uint8)
+    full[20:22, 100] = 0  # in the half-box column
+    full[60, 30:32] = 0  # in the half-box row
+    full[10:12, 40:42] = 0  # a whole box
+    path = tmp_path / "odd.png"
+    Image.fromarray(full).save(path)
+    upright = np.rot90(full, rotation)
+    loaded = load_for_preview(str(path), rotation, lambda: False)
+    assert loaded.pixels.shape == np.rot90(np.zeros((31, 51)), rotation).shape
+
+    show_and_wait(qtbot, preview, str(path), rotation, None)
+    assert scene_size(preview) == (upright.shape[1], upright.shape[0])
+    drawn = render_scene(preview)[..., 0]
+    assert np.array_equal(drawn < 128, upright < 128)
+
+
+def test_shows_loading_until_the_image_arrives(qtbot, preview, tmp_path):
+    path = tmp_path / "blank.png"
+    Image.new("L", (300, 400), 255).save(path)
+    preview.show_scan(str(path), 0, None)
+    items = preview.scene().items()
+    assert preview.loading and len(items) == 1 and items[0].text() == text.PREVIEW_LOADING
+    qtbot.waitUntil(lambda: not preview.loading, timeout=TIMEOUT)
+    assert all(not hasattr(item, "text") for item in preview.scene().items())

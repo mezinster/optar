@@ -365,6 +365,14 @@ def scan_filter() -> str:
     return f"Scans ({patterns});;All files (*)"
 
 
+PREVIEW_LOADING = "Loading…"
+
+
+def size_changed() -> str:
+    """The preview's reason when an image's size changed while it loaded."""
+    return "the image's size changed while it was loading"
+
+
 def preview_failed(message: str) -> str:
     """Shown in the preview instead of a scan it could not load."""
     return f"This scan cannot be shown: {message}"

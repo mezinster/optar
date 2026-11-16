@@ -394,3 +394,5 @@ def test_preview_messages():
     assert text.too_large_to_show(700_000_000, 600_000_000) == (
         "700,000,000 pixels is more than the 600,000,000 a scan may have"
     )
+    assert text.PREVIEW_LOADING == "Loading…"
+    assert text.size_changed() == "the image's size changed while it was loading"

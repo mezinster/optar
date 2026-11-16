@@ -79,7 +79,9 @@ def scan_pixel_limit() -> Iterator[None]:
     For code that opens scans with Pillow itself (to show one, say). The limit is
     process-wide, so the block holds the lock read_scan takes: reads in other
     threads wait meanwhile and never see the raised limit. Keep the block short:
-    open the image (and, for formats other than PNG, load it) inside it.
+    open the image (and, for formats other than PNG, load it) inside it. The lock
+    is not reentrant: calling read_scan (or entering this block again) inside the
+    block deadlocks.
     """
     with _OPEN_LOCK:
         pillow_limit = Image.MAX_IMAGE_PIXELS

@@ -15,12 +15,17 @@ worker), never on the interface thread. Selecting another scan cancels the
 load in progress, and a cancelled job never reports, so only the latest
 selection is shown.
 
+Size. The scan's size is the loaded image's, as ``read_scan`` sees it (Pillow
+turns a TIFF with an orientation tag while loading it), so marks fall on the
+pixels they belong to.
+
 Memory. Only a gray copy of at most ``PREVIEW_MAX_PIXELS`` is kept for
-display: a larger scan is reduced by a whole factor (box filter) and drawn
-scaled up to its full size, so marks stay exact. While loading, the decoded
-file is held once at full size (8 bits a pixel for a gray scan, its own depth
-for colour) until it has been reduced. Scans above ``MAX_SCAN_PIXELS`` are
-refused, as ``read_scan`` refuses them.
+display: a larger scan is reduced by a whole factor (box filter, boxes from
+the top left corner of the file) and each reduced pixel is drawn over exactly
+the scan pixels of its box, so marks stay exact at any zoom. While loading,
+the decoded file is held once at full size (8 bits a pixel for a gray scan,
+16 for a 16-bit one, its own depth for colour) until it has been reduced.
+Scans above ``MAX_SCAN_PIXELS`` are refused, as ``read_scan`` refuses them.
 
 Marks are one item drawn in a single ``drawPoints`` call with a cosmetic pen,
 so they keep their size on screen at any zoom and tens of thousands draw fast.
@@ -30,6 +35,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from functools import partial
+from typing import NamedTuple
 
 import numpy as np
 from PIL import Image
@@ -50,7 +56,14 @@ from optar_gui import text
 from optar_gui.jobs import JobRunner
 from optar_gui.work import Cancelled
 
-__all__ = ["MARK_SIZE", "MAX_ZOOM", "PREVIEW_MAX_PIXELS", "ScanPreview", "load_for_preview"]
+__all__ = [
+    "MARK_SIZE",
+    "MAX_ZOOM",
+    "PREVIEW_MAX_PIXELS",
+    "Loaded",
+    "ScanPreview",
+    "load_for_preview",
+]
 
 # Largest image kept for display: a 600 dpi A4 or Letter scan (about 35
 # megapixels) is shown as it is; a 1200 dpi one is reduced 2 x 2.
@@ -66,6 +79,8 @@ MAX_ZOOM = 16.0
 _LOAD_JOB = 1  # the preview's only job id on its runner
 # Modes Image.reduce handles; other modes become 8-bit gray before reducing.
 _REDUCIBLE = ("L", "RGB", "RGBA")
+# Pixels converted at a time from a 16-bit scan to 8 bits.
+_STRIP_PIXELS = 4_000_000
 
 
 def _check(cancelled: Callable[[], bool]) -> None:
@@ -85,34 +100,71 @@ def _reduction(width: int, height: int) -> int:
     return factor
 
 
-def _gray8(im: Image.Image) -> Image.Image:
-    """The loaded image reduced to PREVIEW_MAX_PIXELS, as 8-bit gray."""
-    mode = im.mode
-    if mode.startswith("I"):  # 16-bit gray: keep the high byte, as read_scan does
-        a = np.array(im)
-        if mode == "I":
-            np.clip(a, 0, 65535, out=a)
-        im = Image.fromarray((a >> 8).astype(np.uint8))
-        del a
-    elif mode not in _REDUCIBLE:
+def _high_bytes(im: Image.Image) -> Image.Image:
+    """A 16-bit (or 32-bit integer) gray image as 8-bit gray: its high byte, as
+    read_scan takes it. Converted a strip at a time into one 8-bit array, so no
+    other full-size copy is made."""
+    width, height = im.size
+    out = np.empty((height, width), np.uint8)
+    rows = max(1, _STRIP_PIXELS // width)
+    for top in range(0, height, rows):
+        strip = np.array(im.crop((0, top, width, min(top + rows, height))))
+        if im.mode == "I":
+            np.clip(strip, 0, 65535, out=strip)
+        strip >>= 8
+        out[top : top + rows] = strip
+    return Image.fromarray(out)
+
+
+def _gray8(im: Image.Image) -> tuple[Image.Image, int]:
+    """The loaded image reduced to PREVIEW_MAX_PIXELS, as 8-bit gray, and the
+    reduction factor."""
+    if im.mode.startswith("I"):
+        im = _high_bytes(im)
+    elif im.mode not in _REDUCIBLE:
         im = im.convert("L")
     factor = _reduction(*im.size)
     if factor > 1:
         im = im.reduce(factor)
     if im.mode != "L":
         im = im.convert("L")
-    return im
+    return im, factor
 
 
-def load_for_preview(
-    path: str, rotation: int, cancelled: Callable[[], bool]
-) -> tuple[np.ndarray, tuple[int, int]]:
-    """Reads a scan for display: (upright 8-bit gray image, upright scan (width, height)).
+def _upright_box(
+    size: tuple[int, int], cover: tuple[int, int], rotation: int
+) -> tuple[int, int, int, int]:
+    """Where the rectangle (0, 0, *cover) of a scan of ``size`` lies once the scan
+    is turned upright: (x, y, width, height) in upright scan pixels."""
+    w, h = size
+    x0, y0, x1, y1 = 0, 0, cover[0], cover[1]
+    for _ in range(rotation % 4):
+        # A counter-clockwise quarter turn (np.rot90) takes (x, y) to (y, w - x).
+        x0, y0, x1, y1 = y0, w - x1, y1, w - x0
+        w, h = h, w
+    return (x0, y0, x1 - x0, y1 - y0)
 
-    The image has at most PREVIEW_MAX_PIXELS; the size is the scan's own, so a
-    reduced image is to be drawn scaled to it. Opens only the formats
-    ``read_scan`` opens and refuses what it refuses for size. Raises OptarError
-    when the file cannot be read, Cancelled when ``cancelled()`` turns True.
+
+class Loaded(NamedTuple):
+    """A scan read for display.
+
+    ``pixels``: the upright image, 8-bit gray, at most PREVIEW_MAX_PIXELS.
+    ``size``: the upright scan's (width, height). ``box``: where ``pixels`` is to
+    be drawn, (x, y, width, height) in upright scan pixels; it reaches past the
+    scan by part of a reduction box when the size does not divide by it.
+    """
+
+    pixels: np.ndarray
+    size: tuple[int, int]
+    box: tuple[int, int, int, int]
+
+
+def load_for_preview(path: str, rotation: int, cancelled: Callable[[], bool]) -> Loaded:
+    """Reads a scan for display, upright.
+
+    Opens only the formats ``read_scan`` opens and refuses what it refuses for
+    size. Raises OptarError when the file cannot be read, Cancelled when
+    ``cancelled()`` turns True.
     """
     im = None
     try:
@@ -123,20 +175,30 @@ def load_for_preview(
             width, height = im.size
             if width * height > MAX_SCAN_PIXELS:
                 raise OptarError(text.too_large_to_show(width * height, MAX_SCAN_PIXELS))
+            drafted = 1  # JPEG decodes straight to a smaller size; others ignore it
             factor = _reduction(width, height)
-            if factor > 1:  # JPEG decodes straight to a smaller size; others ignore it
-                im.draft("L", (_ceil_div(width, factor), _ceil_div(height, factor)))
+            if factor > 1:
+                draft = im.draft("L", (_ceil_div(width, factor), _ceil_div(height, factor)))
+                if draft is not None:
+                    drafted = round(width / draft[1][2])
             if im.format != "PNG":  # other formats check the size again while loading
                 im.load()
         _check(cancelled)
         im.load()
-        if im.width * im.height > width * height:
-            raise OptarError(text.too_large_to_show(im.width * im.height, width * height))
+        if drafted == 1:
+            # Pillow may turn the image while loading it (TIFF orientation);
+            # read_scan, and so the marks, see the loaded image.
+            if im.width * im.height != width * height:
+                raise OptarError(text.size_changed())
+            width, height = im.size
         _check(cancelled)
-        gray = np.asarray(_gray8(im))  # may be ``im`` itself: take the pixels first
+        gray, reduced = _gray8(im)
+        gray = np.asarray(gray)  # may be ``im`` itself: take the pixels first
         im.close()
         im = None
         _check(cancelled)
+        step = drafted * reduced  # scan pixels per displayed pixel, each way
+        cover = (gray.shape[1] * step, gray.shape[0] * step)
         upright = np.rot90(gray, rotation % 4).copy()  # contiguous, writable
         del gray
     except (OSError, ValueError, SyntaxError, Image.DecompressionBombError) as e:
@@ -145,20 +207,22 @@ def load_for_preview(
         if im is not None:
             im.close()
     size = (height, width) if rotation % 2 else (width, height)
-    return upright, size
+    return Loaded(upright, size, _upright_box((width, height), cover, rotation))
 
 
 class _ImageItem(QGraphicsItem):
-    """A gray image drawn over the rectangle (0, 0, width, height) of the scene."""
+    """A gray image drawn over its box, clipped to the scan (0, 0, width, height)."""
 
-    def __init__(self, pixels: np.ndarray, size: tuple[int, int]) -> None:
+    def __init__(self, loaded: Loaded) -> None:
         super().__init__()
+        pixels = loaded.pixels
         self._pixels = pixels  # the QImage below refers to this buffer
         h, w = pixels.shape
         self._image = QImage(pixels.data, w, h, pixels.strides[0], QImage.Format.Format_Grayscale8)
-        self._rect = QRectF(0, 0, size[0], size[1])
-        self._kx = w / size[0]
-        self._ky = h / size[1]
+        self._rect = QRectF(0, 0, *loaded.size)
+        self._box = QRectF(*loaded.box)
+        self._kx = w / self._box.width()  # image pixels per scan pixel
+        self._ky = h / self._box.height()
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemUsesExtendedStyleOption)
 
     def boundingRect(self) -> QRectF:  # noqa: N802
@@ -167,12 +231,13 @@ class _ImageItem(QGraphicsItem):
     def paint(
         self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget | None = None
     ) -> None:
-        exposed = option.exposedRect & self._rect
+        exposed = option.exposedRect & self._rect & self._box
         if exposed.isEmpty():
             return
         kx, ky = self._kx, self._ky
-        source = QRectF(exposed.x() * kx, exposed.y() * ky, exposed.width() * kx,
-                        exposed.height() * ky)  # fmt: skip
+        box = self._box
+        source = QRectF((exposed.x() - box.x()) * kx, (exposed.y() - box.y()) * ky,
+                        exposed.width() * kx, exposed.height() * ky)  # fmt: skip
         # Smooth when shrinking; sharp image pixels when zoomed in.
         on_screen = painter.worldTransform().m11() / kx
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, on_screen < 1)
@@ -291,6 +356,7 @@ class ScanPreview(QGraphicsView):
             self._path = None
             return
         self._loading = True
+        self._show_text(text.PREVIEW_LOADING)
 
     def fit(self) -> None:
         """Fits the whole page into the view."""
@@ -325,14 +391,14 @@ class ScanPreview(QGraphicsView):
         self._marks_item = _MarksItem(self._points, QRectF(0, 0, *self._size))
         self._scene.addItem(self._marks_item)
 
-    def _on_loaded(self, job: int, result: tuple[np.ndarray, tuple[int, int]]) -> None:
+    def _on_loaded(self, job: int, result: Loaded) -> None:
         if job != _LOAD_JOB or not self._loading:
             return
-        pixels, size = result
         self._loading = False
-        self._size = size
-        self._scene.setSceneRect(QRectF(0, 0, *size))
-        self._scene.addItem(_ImageItem(pixels, size))
+        self._scene.clear()  # the "loading" text
+        self._size = result.size
+        self._scene.setSceneRect(QRectF(0, 0, *result.size))
+        self._scene.addItem(_ImageItem(result))
         self._add_marks()
         self.fit()
         self.loaded.emit(self._path)
@@ -342,10 +408,15 @@ class ScanPreview(QGraphicsView):
             return
         self._loading = False
         self._message = text.preview_failed(message)
-        item = QGraphicsSimpleTextItem(self._message)
+        self._show_text(self._message)
+        self.loaded.emit(self._path)
+
+    def _show_text(self, line: str) -> None:
+        """Shows only ``line``, at its natural size."""
+        self._scene.clear()
+        item = QGraphicsSimpleTextItem(line)
         self._scene.addItem(item)
         self._scene.setSceneRect(item.boundingRect())
-        self.loaded.emit(self._path)
 
     # --- Zooming and panning -----------------------------------------------------
 
