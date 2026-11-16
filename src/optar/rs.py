@@ -76,11 +76,21 @@ def _apply(table: np.ndarray, x: np.ndarray, n_out: int) -> np.ndarray:
     return acc.view(np.uint8)[:, :n_out]
 
 
+def _bytes(x, what: str) -> np.ndarray:
+    """x as a uint8 array; any other dtype is refused rather than wrapped."""
+    x = np.asarray(x)
+    if x.dtype != np.uint8:
+        raise ValueError(f"{what} must be a uint8 array, not {x.dtype}")
+    return x
+
+
 @dataclass(frozen=True)
 class RSResult:
     words: np.ndarray  # corrected codewords (w, 255); rows that failed are returned as received
     ok: np.ndarray  # bool (w,)
-    errors: np.ndarray  # int (w,): bytes changed at places not marked erased
+    # int (w,): bytes changed at places not marked erased. A failed row
+    # reports 0: its errors are unknown, so 0 does not mean clean.
+    errors: np.ndarray
     erasures: np.ndarray  # int (w,): bytes marked erased (whether or not their value changed)
 
 
@@ -146,14 +156,14 @@ class RSCode:
 
         Systematic: the codeword is the data, then the parity.
         """
-        data = np.asarray(data, dtype=np.uint8)
+        data = _bytes(data, "data")
         if data.ndim != 2 or data.shape[1] != self.k:
             raise ValueError(f"data must have shape (w, {self.k}), not {data.shape}")
         return _apply(self._encoder(), data, self.parity).copy()
 
     def decode(self, words: np.ndarray, erased: np.ndarray | None = None) -> RSResult:
         """words uint8 (w, 255); erased bool (w, 255), True where the byte is known bad."""
-        words = np.asarray(words, dtype=np.uint8)
+        words = _bytes(words, "words")
         if words.ndim != 2 or words.shape[1] != _N:
             raise ValueError(f"words must have shape (w, {_N}), not {words.shape}")
         if erased is None:

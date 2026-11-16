@@ -226,3 +226,14 @@ def test_20000_words_with_few_errors_decode_quickly():
     assert result.ok.all()
     assert np.array_equal(result.words, words)
     assert elapsed < 5, f"decoding took {elapsed:.1f} s"
+
+
+@pytest.mark.parametrize("dtype", [np.int64, np.uint16, np.int8, np.float64])
+def test_non_uint8_arrays_are_refused(dtype):
+    code = RSCode(8)
+    with pytest.raises(ValueError):
+        code.encode(np.zeros((2, N - 8), dtype=dtype))
+    with pytest.raises(ValueError):
+        code.decode(np.zeros((2, N), dtype=dtype))
+    # A bool erasure mask is accepted as before.
+    code.decode(np.zeros((2, N), dtype=np.uint8), np.zeros((2, N), dtype=bool))

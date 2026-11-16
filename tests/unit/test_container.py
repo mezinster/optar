@@ -8,22 +8,38 @@ import time
 import numpy as np
 import pytest
 
-from optar import OptarError
+import optar
+from optar import OptarError, PageFormat, decode_page, encode
 from optar.container import (
     PROTECTED_MAX_BYTES,
     Header,
+    PagePayload,
     Plan,
+    Unwrapped,
     fingerprint,
+    page_payload,
     pages_promised,
     plan,
     plan_for,
     positions,
     read_header,
+    unwrap,
     wrap,
 )
+from optar.decoder import PageResult, PageStats
 from optar.encoder import MAX_PAGES, page_count
-from optar.format import CODEWORD, HEADER_COPIES, HEADER_SIZE, LAYOUTS, PARITY, get_layout
+from optar.format import (
+    CODEWORD,
+    HEADER_COPIES,
+    HEADER_SIZE,
+    LAYOUTS,
+    PARITY,
+    PROMISE_DEN,
+    PROMISE_NUM,
+    get_layout,
+)
 from optar.rs import RSCode
+from tests.helpers import fake_scan
 
 A4 = get_layout("a4").fmt
 
@@ -66,6 +82,12 @@ def _page_payloads(stream, fmt, total):
 def test_header_packs_to_header_size():
     assert len(_header().pack()) == HEADER_SIZE
     assert _header().pack()[:4] == b"oPt1"
+
+
+@pytest.mark.parametrize("size", [0, 15, 17, 32])
+def test_header_with_wrong_fingerprint_size_is_refused(size):
+    with pytest.raises(ValueError):
+        _header(fingerprint=bytes(size)).pack()
 
 
 def test_header_round_trip():
@@ -171,12 +193,26 @@ def test_pages_promised():
     def promised(total, parity):
         return pages_promised(plan_for(total, A4, parity))
 
-    assert promised(10, 32) == 0
-    assert promised(11, 32) == 1
-    assert promised(22, 32) == 2
+    assert promised(11, 32) == 0
+    assert promised(12, 32) == 1
+    assert promised(22, 32) == 1
+    assert promised(23, 32) == 2
     assert promised(5, 64) == 0
     assert promised(6, 64) == 1
     assert promised(50, 0) == 0
+
+
+@pytest.mark.parametrize(("total", "parity"), [(12, 32), (23, 32), (6, 64)])
+def test_promised_pages_fit_the_budget(total, parity):
+    p = plan_for(total, A4, parity)
+    n = pages_promised(p)
+    assert n >= 1
+    page = positions(p) // p.page_body  # (m, CODEWORD) page index of each byte
+    counts = np.zeros((p.codewords, total), dtype=np.int64)
+    np.add.at(counts, (np.arange(p.codewords)[:, None], page), 1)
+    windows = np.cumsum(np.pad(counts, ((0, 0), (1, 0))), axis=1)
+    worst = int((windows[:, n:] - windows[:, :-n]).max())
+    assert worst <= PROMISE_NUM * parity // PROMISE_DEN
 
 
 # Spreading
@@ -272,3 +308,274 @@ def test_wrap_of_50_mb_is_fast():
     stream = wrap(data, "big.bin", A4, 32)
     assert time.perf_counter() - started < 30
     assert page_count(len(stream), A4) == plan(len(data), "big.bin", A4, 32).total
+
+
+# Reading
+
+
+def test_new_names_are_exported():
+    for name in ("PagePayload", "Unwrapped", "page_payload", "unwrap", "name_bytes"):
+        assert getattr(optar, name) is getattr(optar.container, name)
+        assert name in optar.__all__
+
+
+def _fake_result(fmt, lost, seed=0):
+    rng = np.random.default_rng(seed)
+    bits = rng.integers(0, 2, fmt.net_bits, dtype=np.uint8)
+    stats = PageStats(symbols=fmt.fec_syms, error_histogram=(0, 0, 0, 0), uncorrectable=len(lost))
+    return PageResult(
+        bits=bits,
+        stats=stats,
+        debug_image=None,
+        corrected_bits=np.zeros(0, dtype=np.int64),
+        lost_symbols=np.asarray(lost, dtype=np.int64),
+    )
+
+
+@pytest.mark.parametrize("fmt", [A4, PageFormat(65, 93, fec_order=3), get_layout("a4", "big").fmt])
+def test_page_payload_packs_bits_and_erases_lost_symbols(fmt):
+    small = fmt.fec_smallbits
+    lost = [0, 1, 7, fmt.fec_syms // 2, fmt.fec_syms - 1]
+    result = _fake_result(fmt, lost)
+    out = page_payload(result, fmt)
+    assert isinstance(out, PagePayload)
+    page_bytes = fmt.net_bits // 8
+    assert out.data == np.packbits(result.bits[: page_bytes * 8]).tobytes()
+    expected = np.zeros(page_bytes, dtype=bool)
+    for s in lost:
+        for bit in range(s * small, (s + 1) * small):
+            if bit // 8 < page_bytes:
+                expected[bit // 8] = True
+    assert out.erased.dtype == bool
+    assert np.array_equal(out.erased, expected)
+
+
+def test_page_payload_without_loss_erases_nothing():
+    out = page_payload(_fake_result(A4, []), A4)
+    assert len(out.data) == A4.net_bits // 8
+    assert not out.erased.any()
+
+
+def test_page_payload_needs_detail():
+    result = _fake_result(A4, [])
+    plain = PageResult(bits=result.bits, stats=result.stats, debug_image=None)
+    with pytest.raises(ValueError):
+        page_payload(plain, A4)
+
+
+def _clean_pages(stream, fmt, total):
+    return {
+        number: PagePayload(payload, np.zeros(len(payload), dtype=bool))
+        for number, payload in enumerate(_page_payloads(stream, fmt, total), start=1)
+    }
+
+
+def _document(fmt, parity, total=None, size=None, name="name.txt", seed=0):
+    """(data, name, plan, header, clean pages) of a document of `total` pages."""
+    if size is None:
+        size = plan_for(total, fmt, parity).data_bytes - 1 - len(name)
+    data = random.Random(f"{seed}-{size}").randbytes(size)
+    p = plan(len(data), name, fmt, parity)
+    assert total is None or p.total == total
+    stream = wrap(data, name, fmt, parity)
+    pages = _clean_pages(stream, fmt, p.total)
+    header = read_header(pages[1].data)
+    return data, name, p, header, pages
+
+
+@pytest.mark.parametrize("parity", PARITY.values())
+@pytest.mark.parametrize("key", list(LAYOUTS))
+def test_unwrap_round_trip(key, parity):
+    fmt = LAYOUTS[key].fmt
+    page_bytes = fmt.net_bits // 8
+    data, name, p, header, pages = _document(fmt, parity, size=int(page_bytes * 1.5))
+    out = unwrap(header, fmt, pages)
+    assert isinstance(out, Unwrapped)
+    assert out.verified
+    assert out.data == data
+    assert out.name == name
+    assert out.repaired_bytes == 0
+    assert out.worst_used == 0
+    assert out.budget == parity
+    assert out.failed == 0
+    assert out.page_damage == {}
+    assert out.missing == ()
+
+
+def test_unwrap_of_empty_file():
+    data, name, p, header, pages = _document(A4, 32, size=0, name="")
+    out = unwrap(header, A4, pages)
+    assert out.verified and out.data == b"" and out.name == ""
+
+
+def _covered(p):
+    covered = np.zeros(p.page_bytes, dtype=bool)
+    for c in range(HEADER_COPIES):
+        start = c * (p.page_bytes // HEADER_COPIES)
+        covered[start : start + HEADER_SIZE] = True
+    return covered
+
+
+def _damage(pages, p, fraction, seed, erase):
+    """Corrupt `fraction` of the codeword bytes of every page (not headers).
+
+    Returns (damaged pages, number of corrupted bytes, per-page counts).
+    """
+    rng = np.random.default_rng(seed)
+    body_index = np.flatnonzero(~_covered(p))
+    out, total, per_page = {}, 0, {}
+    for number, page in pages.items():
+        data = np.frombuffer(page.data, dtype=np.uint8).copy()
+        erased = page.erased.copy()
+        # Body bytes of this page that lie in a codeword.
+        start = (number - 1) * p.page_body
+        usable = np.flatnonzero(start + np.arange(p.page_body) < CODEWORD * p.codewords)
+        hit = body_index[rng.choice(usable, int(len(usable) * fraction), replace=False)]
+        data[hit] ^= rng.integers(1, 256, len(hit), dtype=np.uint8)
+        if erase:
+            erased[hit] = True
+        out[number] = PagePayload(data.tobytes(), erased)
+        total += len(hit)
+        per_page[number] = len(hit)
+    return out, total, per_page
+
+
+def test_unwrap_repairs_random_errors():
+    fmt = get_layout("a4", "xlarge").fmt
+    data, name, p, header, pages = _document(fmt, 32, total=6)
+    damaged, count, per_page = _damage(pages, p, 0.02, seed=1, erase=False)
+    out = unwrap(header, fmt, damaged)
+    assert out.verified and out.data == data and out.name == name
+    assert out.repaired_bytes == count
+    assert 0 < out.worst_used <= 32
+    assert out.failed == 0
+    assert out.page_damage == per_page
+
+    erased, count_e, _ = _damage(pages, p, 0.02, seed=1, erase=True)
+    assert count_e == count
+    out_e = unwrap(header, fmt, erased)
+    assert out_e.verified and out_e.data == data
+    assert out_e.repaired_bytes == count
+    assert out_e.worst_used * 2 == out.worst_used
+    assert out_e.page_damage == per_page
+
+
+@pytest.mark.parametrize("lost", range(1, 13))
+def test_unwrap_with_one_page_missing(lost):
+    fmt = get_layout("a4", "xlarge").fmt
+    data, name, p, header, pages = _document(fmt, 32, total=12)
+    del pages[lost]
+    out = unwrap(header, fmt, pages)
+    assert out.verified and out.data == data and out.name == name
+    assert out.missing == (lost,)
+    assert out.failed == 0
+    assert 0 < out.worst_used <= 24
+    assert set(out.page_damage) == {lost}
+    in_codewords = min(p.page_body, CODEWORD * p.codewords - (lost - 1) * p.page_body)
+    assert out.page_damage[lost] == in_codewords
+    assert out.repaired_bytes == in_codewords
+
+
+def test_unwrap_beyond_repair_reports_failure():
+    fmt = get_layout("a4", "xlarge").fmt
+    data, name, p, header, pages = _document(fmt, 32, total=8)
+    damaged, _, _ = _damage(pages, p, 0.01, seed=2, erase=False)
+    del damaged[3]
+    out = unwrap(header, fmt, damaged)
+    assert not out.verified
+    assert out.data is None
+    assert out.failed > 0
+    assert out.worst_used > out.budget
+    assert out.missing == (3,)
+    assert max(out.page_damage, key=out.page_damage.get) == 3
+
+
+def test_unwrap_with_another_documents_header():
+    fmt = get_layout("a4", "xlarge").fmt
+    _, _, _, _, pages = _document(fmt, 32, total=4)
+    for total in (4, 3, 6):
+        _, _, _, other, _ = _document(fmt, 32, total=total, seed=9)
+        out = unwrap(other, fmt, pages)
+        assert not out.verified
+    # A header that claims a file larger than the document.
+    _, _, p, header, _ = _document(fmt, 32, total=4)
+    big = Header(header.page, header.total, p.data_bytes + 5, header.fingerprint, 32)
+    out = unwrap(big, fmt, pages)
+    assert not out.verified and out.data is None and out.name == ""
+
+
+def test_unwrap_without_parity_takes_data_as_read():
+    fmt = get_layout("a4", "xlarge").fmt
+    data, name, p, header, pages = _document(fmt, 0, total=3)
+    damaged, count, _ = _damage(pages, p, 0.001, seed=3, erase=False)
+    out = unwrap(header, fmt, damaged)
+    assert out.data is not None and out.data != data
+    assert not out.verified
+    assert out.repaired_bytes == 0
+    assert out.budget == 0
+    del pages[2]
+    out = unwrap(header, fmt, pages)
+    assert out.data is None and not out.verified
+    assert out.missing == (2,)
+    assert out.failed > 0
+
+
+def test_unwrap_ignores_pages_outside_the_document():
+    fmt = get_layout("a4", "xlarge").fmt
+    data, name, p, header, pages = _document(fmt, 32, total=2)
+    pages[7] = pages[1]
+    out = unwrap(header, fmt, pages)
+    assert out.verified and out.missing == ()
+
+
+def _blotted_payload(stream, fmt, number, centre, radius):
+    """Page `number` encoded, a white disc painted on it, decoded with detail."""
+    page = list(encode(stream, fmt))[number - 1].pixels.copy()
+    h, w = page.shape
+    yy, xx = np.mgrid[0:h, 0:w]
+    cx, cy = centre[0] * w, centre[1] * h
+    page[(xx - cx) ** 2 + (yy - cy) ** 2 <= (radius * w) ** 2] = 255
+    result = decode_page(fake_scan(page, scale=1, margin=40), fmt, detail=True)
+    return page_payload(result, fmt), result
+
+
+@pytest.mark.parametrize(
+    ("centre", "radius"),
+    [
+        ((0.5, 0.5), 0.12),
+        ((0.25, 0.25), 0.12),
+        ((0.75, 0.3), 0.12),
+        ((0.3, 0.8), 0.12),
+        ((0.5, 0.5), 0.30),
+    ],
+)
+def test_unwrap_repairs_a_blotted_page(centre, radius):
+    fmt = get_layout("a4", "large").fmt
+    data, name, p, header, pages = _document(fmt, 32, total=12)
+    stream = wrap(data, name, fmt, 32)
+    pages[5], result = _blotted_payload(stream, fmt, 5, centre, radius)
+    out = unwrap(header, fmt, pages)
+    assert out.verified and out.data == data
+    assert out.worst_used <= 24
+    if radius > 0.2:
+        # Golay alone absorbs the small discs; the large one needs the parity.
+        assert len(result.lost_symbols) > 0
+        assert out.repaired_bytes > 0
+
+
+@pytest.mark.slow
+def test_unwrap_of_50_mb_is_fast():
+    data = np.random.default_rng(3).integers(0, 256, 50_000_000, dtype=np.uint8).tobytes()
+    stream = wrap(data, "big.bin", A4, 32)
+    p = plan(len(data), "big.bin", A4, 32)
+    pages = _clean_pages(stream, A4, p.total)
+    header = read_header(pages[1].data)
+    started = time.perf_counter()
+    out = unwrap(header, A4, pages)
+    assert time.perf_counter() - started < 30
+    assert out.verified and out.data == data
+    del pages[p.total // 2]
+    started = time.perf_counter()
+    out = unwrap(header, A4, pages)
+    assert time.perf_counter() - started < 60
+    assert out.verified and out.data == data

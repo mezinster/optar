@@ -6,13 +6,18 @@ __version__ = "0.2.0"
 from optar.container import (  # noqa: E402
     PROTECTED_MAX_BYTES,
     Header,
+    PagePayload,
     Plan,
+    Unwrapped,
     fingerprint,
+    name_bytes,
+    page_payload,
     pages_promised,
     plan,
     plan_for,
     positions,
     read_header,
+    unwrap,
     wrap,
 )
 from optar.decoder import (  # noqa: E402
@@ -116,4 +121,9 @@ __all__ = [
     "positions",
     "read_header",
     "wrap",
+    "name_bytes",
+    "PagePayload",
+    "page_payload",
+    "Unwrapped",
+    "unwrap",
 ]
