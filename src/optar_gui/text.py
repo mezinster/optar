@@ -42,6 +42,10 @@ SAVE_TITLE = "Save the recovered file"
 CONFIRM_SAVE_TITLE = "Save anyway?"
 ERROR_TITLE = "Could not save"
 
+# Why a save cannot start (programming errors, never shown in a dialog).
+SAVE_RUNNING = "a save is already running"
+SAVE_AFTER_CLOSE = "the window has been closed, so nothing more can be saved"
+
 # What a document without a name is called.
 NO_NAME = "(no name)"
 
@@ -201,7 +205,7 @@ def detail_text(
     ``reason`` defaults to the page's own reason for being unreadable.
     """
     reason = reason or page.reason
-    title = f"Page {page.number} of {pages}"
+    title = f"Page {page.number:,} of {pages:,}"
     if scan_name:
         title += f" · {scan_name}"
     if page.histogram is not None:
@@ -291,6 +295,11 @@ def summary_bar(line: str, note: str) -> str:
 
 def saved_message(path: str, size: int) -> str:
     return f"Saved {count(size, 'byte')} to {os.path.basename(path)}"
+
+
+def check_failed(message: str) -> str:
+    """The bar when the fingerprint check itself failed (not a mismatch)."""
+    return f"The fingerprint could not be checked: {message}"
 
 
 def save_failed(message: str) -> str:

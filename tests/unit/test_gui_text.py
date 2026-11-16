@@ -371,3 +371,17 @@ def test_captions_and_filter():
     assert text.scan_filter() == (
         "Scans (*.png *.tif *.tiff *.bmp *.pgm *.ppm *.jpg *.jpeg);;All files (*)"
     )
+
+
+def test_detail_text_counts_pages_with_thousands_separators():
+    assert text.detail_text(page(1205, Health.MISSING, scan_id=None), None, 9999)[0] == (
+        "Page 1,205 of 9,999"
+    )
+
+
+def test_check_failed_and_save_refusals():
+    assert text.check_failed("MemoryError") == (
+        "The fingerprint could not be checked: MemoryError"
+    )
+    assert text.SAVE_RUNNING == "a save is already running"
+    assert "closed" in text.SAVE_AFTER_CLOSE

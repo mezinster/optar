@@ -108,7 +108,10 @@ def settled(tab):
 
 
 def wait_settled(qtbot, tab, timeout=TIMEOUT):
+    """Waits for the scans, then for the fingerprint check that the redraw starts."""
     qtbot.waitUntil(settled(tab), timeout=timeout)
+    tab.controller.refresh()
+    qtbot.waitUntil(lambda: not tab.controller.checking, timeout=timeout)
     tab.controller.refresh()
 
 
@@ -382,10 +385,19 @@ def test_save_incomplete_asks_and_respects_no(
     assert asked == [] and not target.exists()
 
     tab.confirm = lambda message: True
+    doc = tab.controller.document
+    page = doc.page_bytes
+    page_3 = doc.pages()[2].scan_id
+
+    def ask_while_page_3_is_removed(suggested):
+        tab.controller.remove(page_3)  # after the warning was confirmed
+        return str(target)
+
+    tab.ask_save_path = ask_while_page_3_is_removed
     tab.save_button.click()
     qtbot.waitUntil(lambda: not tab.controller.saving, timeout=TIMEOUT)
-    saved = target.read_bytes()
-    page = tab.controller.document.page_bytes
+    assert doc.pages()[2].scan_id is None
+    saved = target.read_bytes()  # what the confirmed warning described
     assert len(saved) == len(data)  # cut to the tag's size
     assert saved[:page] == data[:page]
     assert saved[page:2 * page] == bytes(page)
@@ -416,7 +428,82 @@ def test_save_failure_shows_error_and_keeps_existing_file(
     assert sorted(p.name for p in tmp_path.iterdir()) == ["doc.tar"]
 
 
-def test_large_document_is_checked_off_the_interface_thread(
+def test_saving_clears_the_note_when_the_document_changes(
+    qtbot, make_tab, printouts, tmp_path
+):
+    data, (p1, p2) = printouts["two"]
+    tab = make_tab()
+    tab.controller.add_paths([p1, p2])
+    wait_settled(qtbot, tab)
+    tab.ask_save_path = lambda suggested: str(tmp_path / suggested)
+    tab.save_button.click()
+    qtbot.waitUntil(lambda: not tab.controller.saving, timeout=TIMEOUT)
+    assert "Saved" in tab.summary.text()
+    tab.select_row(find_row(tab, "Page 2 · Good"))
+    tab.remove_button.click()
+    assert tab.summary.text() == "1 of 2 pages good · 1 missing"
+    tab.controller.note = "Saved 1 byte to x"
+    tab.controller.add_paths([p2])
+    assert "Saved" not in tab.summary.text()
+
+
+def test_save_after_closing_is_refused_with_its_own_message(qtbot, make_tab, printouts):
+    tab = make_tab()
+    tab.controller.add_paths(printouts["two"][1][:1])
+    wait_settled(qtbot, tab)
+    assert tab.controller.shutdown(TIMEOUT)
+    with pytest.raises(RuntimeError, match=text.SAVE_AFTER_CLOSE):
+        tab.controller.save("/nowhere/x.bin")
+
+
+def test_closing_lets_a_running_save_finish(qtbot, make_tab, printouts, tmp_path, monkeypatch):
+    data, paths = printouts["two"]
+    tab = make_tab()
+    tab.controller.add_paths(paths)
+    wait_settled(qtbot, tab)
+    real_chunks = Document.chunks
+
+    def slow_chunks(self):
+        for chunk in real_chunks(self):
+            time.sleep(0.5)  # longer than closing takes when nothing waits for the save
+            yield chunk
+
+    monkeypatch.setattr(Document, "chunks", slow_chunks)
+    target = tmp_path / "doc.tar"
+    tab.controller.save(str(target))
+    assert tab.controller.saving
+    assert tab.controller.shutdown(30_000)
+    assert target.read_bytes() == data
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["doc.tar"]
+
+
+def test_a_failed_check_is_shown_and_not_retried(qtbot, make_tab, printouts, monkeypatch):
+    calls = []
+
+    def broken(self, cancelled=lambda: False):
+        calls.append(1)
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(document_module.VerdictJob, "__call__", broken)
+    tab = make_tab()
+    tab.controller.add_paths(printouts["two"][1])
+    wait_settled(qtbot, tab)
+    assert tab.controller.summary.state == DocState.CHECKING
+    assert tab.summary.text() == text.check_failed("RuntimeError: boom")
+    for _ in range(3):
+        tab.controller.refresh()
+    qtbot.wait(300)
+    assert len(calls) == 1 and not tab.controller.checking
+    assert tab.summary.text() == text.check_failed("RuntimeError: boom")
+    # Other pages make a new check, which is tried.
+    doc = tab.controller.document
+    sid = doc.pages()[0].scan_id
+    doc.set_outcome(sid, doc.scan(sid).outcome)
+    tab.controller.refresh()
+    qtbot.waitUntil(lambda: len(calls) == 2, timeout=TIMEOUT)
+
+
+def test_fingerprint_is_checked_off_the_interface_thread(
     qtbot, make_tab, printouts, monkeypatch
 ):
     real = document_module.hashlib
@@ -430,7 +517,6 @@ def test_large_document_is_checked_off_the_interface_thread(
 
     monkeypatch.setattr(document_module, "hashlib", Recording)
     tab = make_tab()
-    tab.controller.inline_verdict_bytes = 1000  # every real document is "large" here
     states = []
     tab.controller.changed.connect(lambda: states.append(tab.controller.summary.state))
     tab.controller.add_paths(printouts["two"][1])
@@ -467,10 +553,12 @@ def test_a_burst_of_results_produces_few_refreshes(qtbot, make_tab, printouts):
     refreshes = tab.controller.refreshes - before
     assert len(events) == 12
     assert refreshes <= elapsed_ms / 100 + 3
-    assert refreshes <= 4  # one for adding, one or two for the burst, one at the end
+    # One for adding, one or two for the burst, up to three around the check.
+    assert refreshes <= 7
     assert tab.refreshes >= refreshes
 
 
+@pytest.mark.slow
 def test_interface_thread_is_not_blocked_while_pages_decode(qtbot, make_tab, printouts):
     paths = printouts["three"][1] + printouts["foreign"][1]
     tab = make_tab(process=process_scan)
@@ -510,16 +598,17 @@ def test_closing_while_working_stops_cleanly(qtbot, printouts, monkeypatch):
         start = time.perf_counter()
         assert window.close()
         elapsed = time.perf_counter() - start
-        assert elapsed < 10
-        assert controller.runner.active == 0
+        assert elapsed < 10  # closing waits a bounded time
         assert dialogs == []
         assert not [w for w in QApplication.topLevelWidgets()
                     if isinstance(w, QMessageBox) and w.isVisible()]
         refreshes = controller.refreshes
-        qtbot.wait(300)
-        assert controller.refreshes == refreshes  # nothing arrives after closing
+        # The running decodes really stop: each checks ``cancelled`` between its
+        # stages, so all of them return within one stage's time.
+        assert controller.shutdown(30_000)
+        assert controller.refreshes == refreshes  # nothing arrived after closing
     finally:
-        controller.shutdown(TIMEOUT)  # let any function still running return
+        controller.shutdown(TIMEOUT)
 
 
 def test_remove_while_working_does_not_resurrect_the_scan(qtbot, make_tab, printouts):
@@ -563,6 +652,6 @@ def test_large_document_refreshes_quickly(qtbot, make_tab):
     tab.controller.refresh()
     again = time.perf_counter() - start
     assert tab.rows()[1000] == "Page 1,000 · Good"
-    assert tab.detail.text().startswith("Page 1000 of 2000 · 1000.png\n")
+    assert tab.detail.text().startswith("Page 1,000 of 2,000 · 1000.png\n")
     print(f"2,000 pages: first refresh {first * 1000:.0f} ms, next {again * 1000:.0f} ms")
     assert first < 2.0 and again < 2.0

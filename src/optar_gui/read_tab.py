@@ -13,21 +13,28 @@ Responsiveness.
   pending, so a burst of results costs one redraw (a redraw reads the document,
   which costs time linear in the number of scans). User actions redraw at once.
 - Checking a complete tagged document against its fingerprint hashes the whole
-  file. Up to ``INLINE_VERDICT_BYTES`` this is done on the interface thread
-  (``Document.summary()``); above it the controller shows ``CHECKING`` and runs
-  the document's ``VerdictJob`` (a snapshot of the pages) in the background,
-  then hands the verdict back with ``Document.accept_verdict``.
-- Saving streams ``Document.chunks()`` (a snapshot taken when the save starts)
-  through ``optar.fileio.replacing`` in the background, so an existing file is
-  untouched by a failed save and a large file never freezes the window.
+  file, which is never done on the interface thread: the controller shows
+  ``CHECKING`` and runs the document's ``VerdictJob`` (a snapshot of the pages)
+  in the background, then hands the verdict back with
+  ``Document.accept_verdict``. A job that fails is not retried for the same
+  pages; the bar says the check failed.
+- Saving streams ``Document.chunks()`` (a snapshot taken when the user has
+  confirmed the warning) through ``optar.fileio.replacing`` in the background,
+  so an existing file is untouched by a failed save and a large file never
+  freezes the window.
 - Scans are read and decoded only by background jobs. Saving and checking run on
   a second runner, so they never wait behind scans being decoded.
+- Closing cancels every scan and check, lets a running save finish, and waits
+  for all of it within one time budget; a save still running when the budget
+  runs out is told to stop and leaves no file.
 """
 
 from __future__ import annotations
 
 import dataclasses
 import os
+import threading
+import time
 from collections.abc import Callable, Iterable, Iterator
 from functools import partial
 
@@ -50,16 +57,14 @@ from PySide6.QtWidgets import (
 
 from optar.fileio import replacing
 from optar_gui import text
-from optar_gui.document import Document, Summary, expand_paths
+from optar_gui.document import DocState, Document, Summary, expand_paths
 from optar_gui.jobs import JobRunner
 from optar_gui.work import Cancelled, ScanWork, process_scan
 
-__all__ = ["INLINE_VERDICT_BYTES", "REFRESH_MS", "ReadController", "ReadTab"]
+__all__ = ["REFRESH_MS", "SHUTDOWN_MS", "ReadController", "ReadTab"]
 
 # How long background results are gathered before the view is redrawn.
 REFRESH_MS = 100
-# The largest file whose fingerprint is checked on the interface thread.
-INLINE_VERDICT_BYTES = 64 * 2**20
 # How long closing the window waits for running work to stop.
 SHUTDOWN_MS = 3000
 
@@ -68,12 +73,18 @@ _VERDICT_JOB = 1
 _SAVE_JOB = 2
 
 
-def _write_chunks(path: str, chunks: Iterator[bytes], cancelled: Callable[[], bool]) -> int:
-    """Writes the chunks to ``path`` through a temporary file; returns the bytes written."""
+def _write_chunks(
+    path: str, chunks: Iterator[bytes], stop: threading.Event, _cancelled: Callable[[], bool]
+) -> int:
+    """Writes the chunks to ``path`` through a temporary file; returns the bytes written.
+
+    Stops, leaving no file, when ``stop`` is set. The runner's own cancellation is
+    ignored, so that closing the window lets a running save finish.
+    """
     written = 0
     with replacing(path) as temp, open(temp, "wb") as f:
         for chunk in chunks:
-            if cancelled():
+            if stop.is_set():
                 raise Cancelled()
             f.write(chunk)
             written += len(chunk)
@@ -115,9 +126,10 @@ class ReadController(QObject):
         self._works: dict[int, ScanWork] = {}
         self._summary = self._doc.summary()
         self._verdict_key: tuple | None = None  # what the running verdict job hashes
+        self._verdict_error: tuple[tuple, str] | None = None  # (key, message) of a failed job
         self._save_path: str | None = None  # while a save runs
+        self._save_stop = threading.Event()
         self._closed = False
-        self.inline_verdict_bytes = INLINE_VERDICT_BYTES
         self.note = ""  # what the last save did, until the document changes
         self.refreshes = 0  # for tests: how often ``changed`` was emitted
 
@@ -136,6 +148,24 @@ class ReadController(QObject):
     def summary(self) -> Summary:
         """The document's summary as of the last redraw; never hashes on its own."""
         return self._summary
+
+    @property
+    def checking(self) -> bool:
+        """Whether a fingerprint check is running in the background."""
+        return self._verdict_key is not None
+
+    @property
+    def check_error(self) -> str:
+        """Why the check of the current pages failed, or ""."""
+        return self._verdict_error[1] if self._verdict_error is not None else ""
+
+    def summary_text(self) -> str:
+        """The bottom bar's text."""
+        if self._summary.state == DocState.CHECKING and self.check_error:
+            line = text.check_failed(self.check_error)
+        else:
+            line = text.summary_line(self._summary)
+        return text.summary_bar(line, self.note)
 
     @property
     def saving(self) -> bool:
@@ -161,6 +191,7 @@ class ReadController(QObject):
         """Adds the scans (folders give the images directly inside them) and starts them."""
         if self._closed:
             return
+        self.note = ""
         for path in expand_paths(paths):
             scan_id = self._doc.add_scan(path)
             if scan_id is not None:
@@ -170,30 +201,52 @@ class ReadController(QObject):
     def remove(self, scan_id: int) -> None:
         self._runner.cancel(scan_id)
         self._doc.remove_scan(scan_id)
+        self.note = ""
         self._works.pop(scan_id, None)
         self.refresh()
 
-    def save(self, path: str) -> None:
-        """Starts writing the recovered file to ``path`` in the background.
+    def snapshot(self) -> Iterator[bytes]:
+        """The recovered file as it is now, for ``save``; later changes do not affect it.
 
-        Raises RuntimeError while another save runs and ValueError when no page has
-        been decoded.
+        Raises ValueError when no page has been decoded.
         """
-        if self.saving or self._closed:
-            raise RuntimeError("a save is already running")
-        chunks = self._doc.chunks()  # a snapshot: later changes do not affect it
+        return self._doc.chunks()
+
+    def save(self, path: str, chunks: Iterator[bytes] | None = None) -> None:
+        """Starts writing ``chunks`` (default: a snapshot taken now) to ``path`` in the
+        background.
+
+        Raises RuntimeError while another save runs or after ``shutdown``, and
+        ValueError when no page has been decoded.
+        """
+        if self._closed:
+            raise RuntimeError(text.SAVE_AFTER_CLOSE)
+        if self.saving:
+            raise RuntimeError(text.SAVE_RUNNING)
+        if chunks is None:
+            chunks = self.snapshot()
         self._save_path = path
-        self._tasks.submit(_SAVE_JOB, partial(_write_chunks, path, chunks))
+        self._tasks.submit(_SAVE_JOB, partial(_write_chunks, path, chunks, self._save_stop))
         self.refresh()
 
     def shutdown(self, timeout_ms: int = SHUTDOWN_MS) -> bool:
-        """Cancels all work and waits up to ``timeout_ms`` for it to stop."""
+        """Cancels the scans and the check, lets a running save finish, and waits for
+        all of it within ``timeout_ms`` in all. A save still running then is told to
+        stop (it leaves no file). Returns whether everything stopped in time."""
+        deadline = time.monotonic() + max(0, timeout_ms) / 1000
         self._closed = True
         self._timer.stop()
-        self._runner.cancel_all()
-        self._tasks.cancel_all()
-        done = self._runner.shutdown(timeout_ms)
-        return self._tasks.shutdown(timeout_ms) and done
+        self._runner.cancel_all()  # every scan stops at its next check from now on
+        self._tasks.cancel(_VERDICT_JOB)  # the save ignores cancelling: see _write_chunks
+
+        def left() -> int:
+            return max(0, int((deadline - time.monotonic()) * 1000))
+
+        tasks_done = self._tasks.shutdown(left())
+        if not tasks_done:
+            self._save_stop.set()
+        scans_done = self._runner.shutdown(left())
+        return tasks_done and scans_done
 
     # --- Redrawing ---------------------------------------------------------------
 
@@ -213,10 +266,14 @@ class ReadController(QObject):
             self._timer.start()
 
     def _safe_summary(self) -> Summary:
+        """The summary, never hashing here: a needed check runs in the background."""
         job = self._doc.verdict_job()
-        if job is None or job.size <= self.inline_verdict_bytes:
-            return self._doc.summary()
-        if job.key != self._verdict_key:
+        if job is None:
+            self._verdict_error = None
+            return self._doc.summary()  # nothing to hash
+        failed = self._verdict_error is not None and self._verdict_error[0] == job.key
+        if not failed and job.key != self._verdict_key:
+            self._verdict_error = None
             self._tasks.cancel(_VERDICT_JOB)
             self._verdict_key = job.key
             self._tasks.submit(_VERDICT_JOB, job)
@@ -271,7 +328,10 @@ class ReadController(QObject):
 
     def _on_task_failed(self, job: int, message: str) -> None:
         if job == _VERDICT_JOB:
+            if self._verdict_key is not None:
+                self._verdict_error = (self._verdict_key, message)  # not retried
             self._verdict_key = None
+            self._schedule()
             return
         self._save_path = None
         self.refresh()
@@ -468,8 +528,7 @@ class ReadTab(QWidget):
         caution = text.caution(doc)
         self.caution.setText(caution or "")
         self.caution.setVisible(caution is not None)
-        line = text.summary_line(self.controller.summary)
-        self.summary.setText(text.summary_bar(line, self.controller.note))
+        self.summary.setText(self.controller.summary_text())
         self.save_button.setEnabled(self.controller.can_save)
         self._show_selection()
         self.refreshes += 1
@@ -545,10 +604,11 @@ class ReadTab(QWidget):
         warning = controller.save_warning()
         if warning is not None and not self.confirm(warning):
             return
+        chunks = controller.snapshot()  # what the warning described
         path = self.ask_save_path(controller.document.suggested_name)
         if not path or not controller.can_save:
             return
-        controller.save(path)
+        controller.save(path, chunks)
 
     def _on_save_failed(self, message: str) -> None:
         self.show_error(text.save_failed(message))
