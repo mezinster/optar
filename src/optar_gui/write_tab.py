@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from optar.encoder import check_encodable
+from optar.encoder import check_encodable, page_count
 from optar.errors import OptarError
 from optar.format import PageFormat, get_paper
 from optar_gui import text
@@ -193,6 +193,9 @@ class WriteTab(QWidget):
         warning = None
         if self._preparing:
             info = text.PREPARING
+        elif facts is not None and facts.tag is None:  # too large: Create says so
+            fmt = PageFormat.for_paper(get_paper(self.paper))
+            info = text.file_info(page_count(facts.size, fmt), facts.size)
         elif facts is not None:
             preview = name_preview(self.paper, facts.tag, self.name_edit.text())
             info = text.file_info(preview.total, facts.size)

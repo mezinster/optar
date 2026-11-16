@@ -346,10 +346,14 @@ _READ_CHUNK = 1 << 20
 
 @dataclass(frozen=True)
 class FileFacts:
-    """What the writing tab needs to know about a chosen file: its size and tag."""
+    """What the writing tab needs to know about a chosen file: its size and tag.
+
+    ``tag`` is None for a file that needs more pages than the encoder allows on
+    any paper: it was not read, since it cannot be put on paper.
+    """
 
     size: int
-    tag: Tag
+    tag: Tag | None
 
 
 def _roomiest_format() -> PageFormat:
@@ -362,14 +366,18 @@ def prepare_file(path: str, cancelled: Callable[[], bool] = _never) -> FileFacts
 
     The tag equals ``make_tag`` of the whole contents, without holding them in
     memory. Checks ``cancelled`` after every chunk. Raises OptarError when the
-    file cannot be read, and before reading it when it needs more pages than
-    the encoder allows on any paper.
+    file cannot be read. A file that needs more pages than the encoder allows on
+    any paper is not read: its facts come back with no tag.
     """
     digest = hashlib.sha256()
     size = 0
     with _open_regular(path) as f:
         try:
-            check_encodable(os.fstat(f.fileno()).st_size, _roomiest_format())
+            whole = os.fstat(f.fileno()).st_size
+            try:
+                check_encodable(whole, _roomiest_format())
+            except OptarError:
+                return FileFacts(whole, None)  # too large on any paper: not read
             while chunk := f.read(_READ_CHUNK):
                 digest.update(chunk)
                 size += len(chunk)

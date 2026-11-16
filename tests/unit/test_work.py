@@ -634,18 +634,18 @@ def traced_peak(fn):
 def test_a_file_too_large_is_refused_before_it_is_read(tmp_path, monkeypatch, function):
     monkeypatch.setattr(optar.encoder, "MAX_PAGES", 1)
     src = write_source(tmp_path, seeded_bytes(13, 3 * 2**20))  # far more than one page
-    if function == "prepare_file":
-        def run():
-            work.prepare_file(src)
-    else:
-        def run():
-            encode_to_pdf(src, str(tmp_path / "out.pdf"), "a4", "x")
+    facts = []
 
     def refused():
-        with pytest.raises(OptarError, match="too many pages"):
-            run()
+        if function == "prepare_file":
+            facts.append(work.prepare_file(src))  # the size, and no tag: not read
+        else:
+            with pytest.raises(OptarError, match="too many pages"):
+                encode_to_pdf(src, str(tmp_path / "out.pdf"), "a4", "x")
 
     assert traced_peak(refused) < 2**19  # nothing near a chunk of the file was read
+    if function == "prepare_file":
+        assert facts == [work.FileFacts(3 * 2**20, None)]
     assert sorted(os.listdir(tmp_path)) == ["source.bin"]
 
 
