@@ -7,7 +7,7 @@ name = "optar"
 dynamic = ["version"]
 description = "Store files on paper: Python port of optar/unoptar"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 license = "GPL-2.0-only"
 dependencies = ["numpy", "Pillow"]
 

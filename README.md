@@ -59,7 +59,7 @@ Settings, Privacy & Security, and choose "Open Anyway" (on older macOS
 versions, right-click the application and choose Open). The macOS and
 Windows builds have not yet run in CI.
 
-Or install from source, from a checkout of the repository (Python 3.10 or
+Or install from source, from a checkout of the repository (Python 3.12 or
 newer):
 
     pip install '.[gui]'
@@ -169,7 +169,7 @@ GitHub Releases page of `mezinster/optar`: `optar-<tag>-linux-x86_64`,
 macOS, run `chmod +x` on the downloaded file; the executables are unsigned, so
 macOS and Windows may warn on first run.
 
-Or install from source (Python 3.10 or newer; installs numpy and Pillow):
+Or install from source (Python 3.12 or newer; installs numpy and Pillow):
 
     pip install .
 
