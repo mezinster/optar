@@ -200,3 +200,31 @@ def test_socket_is_written_directly_and_kept(tmp_path):
             raise OSError(111, "Connection refused")
         assert stat.S_ISSOCK(os.stat(path).st_mode)
     assert _no_temp_files(tmp_path)
+
+
+@posix
+def test_concurrent_writers_never_leave_the_umask_changed():
+    import sys
+
+    import optar.fileio as fileio
+
+    original = os.umask(0o022)
+    os.umask(original)
+    old_interval = sys.getswitchinterval()
+    sys.setswitchinterval(1e-6)  # switch threads as often as possible
+    seen = []
+    try:
+        def many():
+            for _ in range(3000):
+                seen.append(fileio._new_file_mode())
+
+        threads = [threading.Thread(target=many) for _ in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+    finally:
+        sys.setswitchinterval(old_interval)
+        left = os.umask(original)
+    assert left == original
+    assert set(seen) == {0o666 & ~original}

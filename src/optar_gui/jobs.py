@@ -109,9 +109,11 @@ class JobRunner(QObject):
     ``Cancelled`` is not a failure and emits nothing either.
 
     Concurrency. At most ``max_workers`` functions run at once (default
-    ``default_max_workers()``: half the cores, at most 3). Identifying one
-    600 dpi scan peaks at 260-360 MB, so three at once already need about
-    1 GB; more would gain little speed for a lot of memory. A cancelled
+    ``default_max_workers()``: half the cores, at most 3). Identifying and
+    decoding one 600 dpi A4 scan peaks at about 513 MB, and three at once at
+    about 1.33 GB; more would gain little speed for a lot of memory. Three
+    1200 dpi scans at once would peak near 4 GB, so ``work`` runs scans above
+    ``work.LARGE_SCAN_PIXELS`` one at a time, whatever this limit. A cancelled
     function keeps its slot until it actually returns, so cancelling never
     lets more scans than that be in memory at once. Further jobs wait in the
     order submitted; cancelling a waiting job removes it without running it.

@@ -7,6 +7,9 @@ import pickle
 import stat
 import subprocess
 import sys
+import threading
+import time
+import tracemalloc
 import types
 from functools import cache
 
@@ -201,6 +204,9 @@ def test_process_scan_never_raises_for_bad_input(tmp_path, make):
     if make in (blank_png, random_noise_png):
         assert w.reason in ("no page found", "label unreadable")
         assert w.size == (800, 1100)
+    elif make is directory:
+        assert w.reason == text.not_regular_file(path)
+        assert w.size == (0, 0)
     else:
         assert w.reason.startswith("cannot read image ")
         assert w.size == (0, 0)
@@ -561,3 +567,215 @@ def test_name_preview_cut_on_a_later_page_only():
     preview = work.name_preview("a4", tag, name)
     assert preview.printed.endswith(name)
     assert preview.cut
+
+
+# --- Files that are not regular files, and files too large to put on paper ------------
+
+fifo = pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="needs named pipes")
+
+
+def finishes(fn, pipe):
+    """Runs fn() on a thread; fails (after unblocking it) if it blocks on the pipe."""
+    outcome = {}
+
+    def run():
+        try:
+            outcome["value"] = fn()
+        except BaseException as e:
+            outcome["error"] = e
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    thread.join(20)
+    if thread.is_alive():
+        os.close(os.open(pipe, os.O_WRONLY | os.O_NONBLOCK))  # lets the reader see the end
+        thread.join(20)
+        pytest.fail(f"{fn} blocked on a named pipe")
+    return outcome
+
+
+@fifo
+def test_a_named_pipe_is_refused_without_waiting_for_a_writer(tmp_path):
+    pipe = str(tmp_path / "pipe.png")
+    os.mkfifo(pipe)
+    refused = text.not_regular_file(pipe)
+    for fn in (lambda: process_scan(pipe), lambda: process_unlabelled(pipe, A4.to_string())):
+        w = finishes(fn, pipe)["value"]
+        assert (w.info, w.outcome, w.reason, w.size) == (None, None, refused, (0, 0))
+    for fn in (lambda: work.prepare_file(pipe),
+               lambda: encode_to_pdf(pipe, str(tmp_path / "out.pdf"), "a4", "x")):  # fmt: skip
+        error = finishes(fn, pipe)["error"]
+        assert isinstance(error, OptarError) and str(error) == refused
+    assert os.listdir(tmp_path) == ["pipe.png"]
+
+
+def test_a_folder_is_not_a_regular_file(tmp_path):
+    folder = str(tmp_path / "folder.bin")
+    os.mkdir(folder)
+    with pytest.raises(OptarError, match="not a regular file"):
+        work.prepare_file(folder)
+    with pytest.raises(OptarError, match="not a regular file"):
+        encode_to_pdf(folder, str(tmp_path / "out.pdf"), "a4", "x")
+    assert process_scan(folder).reason == text.not_regular_file(folder)
+
+
+def traced_peak(fn):
+    """The most memory Python allocated while fn() ran (bytes)."""
+    tracemalloc.start()
+    try:
+        fn()
+    finally:
+        peak = tracemalloc.get_traced_memory()[1]
+        tracemalloc.stop()
+    return peak
+
+
+@pytest.mark.parametrize("function", ["prepare_file", "encode_to_pdf"])
+def test_a_file_too_large_is_refused_before_it_is_read(tmp_path, monkeypatch, function):
+    monkeypatch.setattr(optar.encoder, "MAX_PAGES", 1)
+    src = write_source(tmp_path, seeded_bytes(13, 3 * 2**20))  # far more than one page
+    if function == "prepare_file":
+        def run():
+            work.prepare_file(src)
+    else:
+        def run():
+            encode_to_pdf(src, str(tmp_path / "out.pdf"), "a4", "x")
+
+    def refused():
+        with pytest.raises(OptarError, match="too many pages"):
+            run()
+
+    assert traced_peak(refused) < 2**19  # nothing near a chunk of the file was read
+    assert sorted(os.listdir(tmp_path)) == ["source.bin"]
+
+
+# --- One large scan at a time ------------------------------------------------------------
+
+
+class Overlap:
+    """Records how many stages run at once; ``hold`` keeps the first one waiting."""
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.now = self.most = 0
+        self.entered = threading.Event()
+        self.hold = threading.Event()
+        self.hold.set()
+
+    def stage(self, fail=False):
+        with self.lock:
+            self.now += 1
+            self.most = max(self.most, self.now)
+        self.entered.set()
+        try:
+            assert self.hold.wait(20)
+            time.sleep(0.05)
+            if fail:
+                raise RuntimeError("stage failed")
+        finally:
+            with self.lock:
+                self.now -= 1
+
+
+@pytest.fixture
+def large_stages(monkeypatch, tmp_path):
+    """process_scan and process_unlabelled on a 20 x 10 image counted as large."""
+    overlap = Overlap()
+    monkeypatch.setattr(work, "LARGE_SCAN_PIXELS", 100)
+    monkeypatch.setattr(work, "read_scan", lambda path: np.zeros((20, 10), np.uint8))
+
+    def identify(image):
+        overlap.stage()
+        raise work.IdentifyError("no page found")
+
+    def unlabelled(image, fmt, detail):
+        overlap.stage()
+        raise DecodeError("nothing")
+
+    monkeypatch.setattr(work, "identify_scan", identify)
+    monkeypatch.setattr(work, "decode_unlabelled", unlabelled)
+    path = tmp_path / "large.png"
+    path.write_bytes(b"x")
+    overlap.path = str(path)
+    return overlap
+
+
+def run_threads(*fns):
+    threads = [threading.Thread(target=fn) for fn in fns]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(60)
+    assert not any(t.is_alive() for t in threads)
+
+
+def test_large_scans_are_identified_and_decoded_one_at_a_time(large_stages):
+    path = large_stages.path
+    run_threads(*[lambda: process_scan(path)] * 3,
+                *[lambda: process_unlabelled(path, A4.to_string())] * 3)  # fmt: skip
+    assert large_stages.most == 1
+
+
+def test_small_scans_still_run_together(large_stages, monkeypatch):
+    monkeypatch.setattr(work, "LARGE_SCAN_PIXELS", 200)  # the 200-pixel image is not large
+    large_stages.hold.clear()
+    threads = [threading.Thread(target=process_scan, args=(large_stages.path,))
+               for _ in range(2)]  # fmt: skip
+    for t in threads:
+        t.start()
+    deadline = time.monotonic() + 20
+    while large_stages.now < 2 and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert large_stages.now == 2
+    large_stages.hold.set()
+    for t in threads:
+        t.join(20)
+
+
+def test_a_cancelled_scan_stops_waiting_for_its_turn(large_stages):
+    path = large_stages.path
+    large_stages.hold.clear()  # the first scan keeps its turn
+    first = threading.Thread(target=process_scan, args=(path,))
+    first.start()
+    try:
+        assert large_stages.entered.wait(20)
+        flag = threading.Event()
+        outcome = {}
+
+        def waiter():
+            try:
+                process_scan(path, flag.is_set)
+            except Cancelled:
+                outcome["cancelled"] = time.monotonic()
+
+        second = threading.Thread(target=waiter)
+        second.start()
+        time.sleep(0.2)
+        assert second.is_alive() and large_stages.now == 1  # waiting for its turn
+        cancelled_at = time.monotonic()
+        flag.set()
+        second.join(5)
+        assert not second.is_alive()
+        assert outcome["cancelled"] - cancelled_at < 2
+    finally:
+        large_stages.hold.set()
+        first.join(20)
+
+
+def test_the_turn_is_released_when_a_stage_raises(large_stages, monkeypatch):
+    path = large_stages.path
+
+    def broken(image):
+        large_stages.stage(fail=True)
+
+    monkeypatch.setattr(work, "identify_scan", broken)
+    with pytest.raises(RuntimeError, match="stage failed"):
+        process_scan(path)
+    assert work._LARGE_SCAN_TURN.acquire(timeout=1)
+    work._LARGE_SCAN_TURN.release()
+    monkeypatch.setattr(work, "decode_unlabelled",
+                        lambda image, fmt, detail: large_stages.stage(fail=True))  # fmt: skip
+    with pytest.raises(RuntimeError, match="stage failed"):
+        process_unlabelled(path, A4.to_string())
+    assert work._LARGE_SCAN_TURN.acquire(timeout=1)
+    work._LARGE_SCAN_TURN.release()

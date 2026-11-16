@@ -15,13 +15,21 @@ it comes back as a ``ScanWork`` with a reason.
 Memory. A located page holds the whole cleaned scan (tens of MB for a 600 dpi
 scan). A ``ScanWork`` holds only the page's packed data (about 200 KB), its
 statistics and the positions of its corrected bits, so the interface can keep
-one per scan.
+one per scan. Identifying and decoding a scan larger than ``LARGE_SCAN_PIXELS``
+waits for its turn: only one such scan is worked on at a time, whatever the
+number of workers.
+
+Only regular files are read: a named pipe would block a worker until something
+writes to it, and a device never ends. ``optar.imageio.read_scan`` itself
+accepts them (``optar decode`` may read a pipe), so the checks are here.
 """
 
 from __future__ import annotations
 
 import hashlib
 import os
+import stat
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -32,7 +40,7 @@ from optar.encoder import check_encodable, encode, page_count
 from optar.errors import DecodeError, IdentifyError, OptarError
 from optar.fileio import io_error, replacing
 from optar.font import FIRST_CHAR, GLYPH_CELLS, label_text
-from optar.format import PageFormat, get_paper
+from optar.format import PAPERS, PageFormat, get_paper
 from optar.identify import decode_unlabelled, identify_scan
 from optar.imageio import read_scan
 from optar.label import printed_label
@@ -44,6 +52,7 @@ from optar_gui.document import PageOutcome, ScanInfo
 
 __all__ = [
     "NOT_DECODABLE",
+    "LARGE_SCAN_PIXELS",
     "Cancelled",
     "FileFacts",
     "NamePreview",
@@ -53,11 +62,23 @@ __all__ = [
     "prepare_file",
     "process_scan",
     "process_unlabelled",
+    "regular_file",
     "same_file",
 ]
 
 # The reason given when a page assigned by hand decodes badly in every rotation.
 NOT_DECODABLE = "could not be decoded in any orientation"
+
+
+# Scans with more pixels than this are identified and decoded one at a time.
+# Measured peaks: 513 MB for one 600 dpi A4 scan (about 35 megapixels) and
+# 1.33 GB for three at once; three 1200 dpi scans (about 140 megapixels each)
+# at once peak near 4 GB. A 600 dpi scan stays below the limit and runs in
+# parallel; a 1200 dpi one waits for its turn.
+LARGE_SCAN_PIXELS = 80_000_000
+_LARGE_SCAN_TURN = threading.Lock()
+# How often a scan waiting for its turn checks whether it was cancelled (seconds).
+_TURN_POLL_S = 0.1
 
 
 class Cancelled(Exception):
@@ -71,6 +92,61 @@ def _never() -> bool:
 def _check(cancelled: Callable[[], bool]) -> None:
     if cancelled():
         raise Cancelled()
+
+
+def _take_turn(pixels: int, cancelled: Callable[[], bool]) -> bool:
+    """For a large scan, waits until no other large scan is being worked on and
+    returns True: the caller then releases ``_LARGE_SCAN_TURN``. Returns False at
+    once for a smaller scan. Raises ``Cancelled`` while waiting, holding nothing."""
+    if pixels <= LARGE_SCAN_PIXELS:
+        return False
+    while not _LARGE_SCAN_TURN.acquire(timeout=_TURN_POLL_S):
+        _check(cancelled)
+    return True
+
+
+def _irregular(path: str) -> bool:
+    """Whether ``path`` exists but is not a regular file. A path that cannot be
+    examined is left for reading it to report."""
+    try:
+        return not stat.S_ISREG(os.stat(path).st_mode)
+    except (OSError, ValueError):
+        return False
+
+
+def regular_file(path: str) -> None:
+    """Raises OptarError when ``path`` exists but is not a regular file (a folder,
+    a named pipe, a device), without opening it."""
+    if _irregular(path):
+        raise OptarError(text.not_regular_file(path))
+
+
+def _open_regular(path: str):
+    """Opens ``path`` for reading in binary, only if it is a regular file.
+
+    Where the system has it, the file is opened without waiting (a named pipe
+    with no writer would block an ordinary open) and checked once open, so it
+    cannot be swapped between the check and the open. Raises OptarError.
+    """
+    nonblock = getattr(os, "O_NONBLOCK", 0)
+    try:
+        if not nonblock:
+            regular_file(path)
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_BINARY", 0) | nonblock)
+    except OSError as e:
+        raise io_error("read", path, e) from e
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise OptarError(text.not_regular_file(path))
+        if nonblock:
+            os.set_blocking(fd, True)
+        return os.fdopen(fd, "rb")
+    except OSError as e:
+        os.close(fd)
+        raise io_error("read", path, e) from e
+    except BaseException:
+        os.close(fd)
+        raise
 
 
 @dataclass(frozen=True, eq=False)
@@ -127,38 +203,46 @@ def process_scan(path: str, cancelled: Callable[[], bool] = _never) -> ScanWork:
     the reason; a scan that is not identified with ``info=None`` and the
     reason "no page found" or "label unreadable"; an identified scan that
     does not decode with its ``info``, no outcome and the decoder's message.
-    Checks ``cancelled`` after loading, after identifying and after decoding.
+    Checks ``cancelled`` after loading, after identifying and after decoding, and
+    while a large scan waits for its turn.
     """
+    if _irregular(path):
+        return ScanWork(None, text.not_regular_file(path), None, 0, None, (0, 0))
     try:
         image = read_scan(path)
     except OptarError as e:
         return ScanWork(None, str(e), None, 0, None, (0, 0))
     _check(cancelled)
+    turn = _take_turn(image.size, cancelled)
     try:
-        identity = identify_scan(image)
-    except IdentifyError as e:
-        return ScanWork(None, e.reason, None, 0, None, _upright_size(image, 0))
-    except DecodeError as e:
-        return ScanWork(None, str(e), None, 0, None, _upright_size(image, 0))
-    rotation = identity.rotation
-    size = _upright_size(image, rotation)
-    del image
-    info = ScanInfo(
-        format=identity.fmt.to_string(),
-        total=identity.total,
-        page=identity.page,
-        name=identity.name,
-        tag=identity.tag,
-    )
-    grid = identity.grid
-    del identity
-    _check(cancelled)
-    try:
-        result = decode_located(grid, detail=True)
-    except DecodeError as e:
-        return ScanWork(info, str(e), None, rotation, None, size)
+        try:
+            identity = identify_scan(image)
+        except IdentifyError as e:
+            return ScanWork(None, e.reason, None, 0, None, _upright_size(image, 0))
+        except DecodeError as e:
+            return ScanWork(None, str(e), None, 0, None, _upright_size(image, 0))
+        rotation = identity.rotation
+        size = _upright_size(image, rotation)
+        del image
+        info = ScanInfo(
+            format=identity.fmt.to_string(),
+            total=identity.total,
+            page=identity.page,
+            name=identity.name,
+            tag=identity.tag,
+        )
+        grid = identity.grid
+        del identity
+        _check(cancelled)
+        try:
+            result = decode_located(grid, detail=True)
+        except DecodeError as e:
+            return ScanWork(info, str(e), None, rotation, None, size)
+        finally:
+            del grid
     finally:
-        del grid
+        if turn:
+            _LARGE_SCAN_TURN.release()
     outcome, marks = _outcome(result)
     del result
     _check(cancelled)
@@ -175,18 +259,24 @@ def process_unlabelled(
     ``info`` is always None. If even the best rotation has more than a
     quarter of its symbols unrecoverable, the page was not found the right
     way up: no outcome, reason NOT_DECODABLE. Checks ``cancelled`` after
-    loading and after decoding.
+    loading and after decoding, and while a large scan waits for its turn.
     """
     fmt = PageFormat.parse(format)
+    if _irregular(path):
+        return ScanWork(None, text.not_regular_file(path), None, 0, None, (0, 0))
     try:
         image = read_scan(path)
     except OptarError as e:
         return ScanWork(None, str(e), None, 0, None, (0, 0))
     _check(cancelled)
+    turn = _take_turn(image.size, cancelled)
     try:
         rotation, result = decode_unlabelled(image, fmt, detail=True)
     except DecodeError as e:
         return ScanWork(None, str(e), None, 0, None, _upright_size(image, 0))
+    finally:
+        if turn:
+            _LARGE_SCAN_TURN.release()
     size = _upright_size(image, rotation)
     del image
     if result.stats.uncorrectable > result.stats.symbols // 4:
@@ -218,12 +308,13 @@ def encode_to_pdf(
         raise OptarError(text.DEST_IS_SOURCE)
     paper = get_paper(paper_name)
     fmt = PageFormat.for_paper(paper)
-    try:
-        with open(src, "rb") as f:
+    with _open_regular(src) as f:
+        try:
+            check_encodable(os.fstat(f.fileno()).st_size, fmt)  # before reading it
             data = f.read()
-    except OSError as e:
-        raise io_error("read", src, e) from e
-    check_encodable(len(data), fmt)
+        except OSError as e:
+            raise io_error("read", src, e) from e
+    check_encodable(len(data), fmt)  # it may have grown
     tag = make_tag(data)
 
     def pages():
@@ -261,23 +352,30 @@ class FileFacts:
     tag: Tag
 
 
+def _roomiest_format() -> PageFormat:
+    """The paper preset's format that holds the most bytes a page."""
+    return max((PageFormat.for_paper(p) for p in PAPERS.values()), key=lambda f: f.net_bits)
+
+
 def prepare_file(path: str, cancelled: Callable[[], bool] = _never) -> FileFacts:
     """Read the file at ``path`` once, in chunks, and make its document tag.
 
     The tag equals ``make_tag`` of the whole contents, without holding them in
     memory. Checks ``cancelled`` after every chunk. Raises OptarError when the
-    file cannot be read.
+    file cannot be read, and before reading it when it needs more pages than
+    the encoder allows on any paper.
     """
     digest = hashlib.sha256()
     size = 0
-    try:
-        with open(path, "rb") as f:
+    with _open_regular(path) as f:
+        try:
+            check_encodable(os.fstat(f.fileno()).st_size, _roomiest_format())
             while chunk := f.read(_READ_CHUNK):
                 digest.update(chunk)
                 size += len(chunk)
                 _check(cancelled)
-    except OSError as e:
-        raise io_error("read", path, e) from e
+        except OSError as e:
+            raise io_error("read", path, e) from e
     return FileFacts(size, Tag(size, digest.hexdigest()[:FINGERPRINT_DIGITS]))
 
 

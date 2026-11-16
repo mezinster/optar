@@ -1,6 +1,8 @@
 # (c) GPL 2007 Karel 'Clock' Kulhavy, Twibright Labs; Python port 2026
 """The scan preview, off-screen: upright image, damage marks, zoom and pan."""
 
+import os
+import threading
 import time
 
 import numpy as np
@@ -215,6 +217,51 @@ def test_unreadable_file_shows_why(qtbot, preview, tmp_path):
     show_and_wait(qtbot, preview, str(path))
     assert preview.message.startswith(text.preview_failed(""))
     assert preview.mark_count == 0
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="needs named pipes")
+def test_a_named_pipe_is_refused_without_waiting_for_a_writer(tmp_path):
+    pipe = str(tmp_path / "pipe.png")
+    os.mkfifo(pipe)
+    errors = []
+
+    def load():
+        try:
+            load_for_preview(pipe, 0, lambda: False)
+        except Exception as e:
+            errors.append(e)
+
+    thread = threading.Thread(target=load, daemon=True)
+    thread.start()
+    thread.join(20)
+    if thread.is_alive():
+        os.close(os.open(pipe, os.O_WRONLY | os.O_NONBLOCK))  # unblock it
+        thread.join(20)
+        pytest.fail("the preview blocked on a named pipe")
+    assert [str(e) for e in errors] == [text.not_regular_file(pipe)]
+
+
+def test_a_jpeg_whose_reduced_size_differs_is_refused(tmp_path, monkeypatch):
+    from PIL import JpegImagePlugin
+
+    path = tmp_path / "scan.jpg"
+    Image.new("L", (400, 300), 255).save(path)
+    monkeypatch.setattr(preview_module, "PREVIEW_MAX_PIXELS", 5000)  # reduced 4 x 4 or more
+    loaded = load_for_preview(str(path), 0, lambda: False)  # as it should be
+    assert loaded.size == (400, 300)
+    real_draft = JpegImagePlugin.JpegImageFile.draft
+
+    def misreported(self, mode, size):
+        # Pillow decodes at the reduced size but reports half the reduction.
+        found = real_draft(self, mode, size)
+        if found is None:
+            return None
+        mode, (x0, y0, x1, y1) = found
+        return mode, (x0, y0, x1 * 2, y1 * 2)
+
+    monkeypatch.setattr(JpegImagePlugin.JpegImageFile, "draft", misreported)
+    with pytest.raises(preview_module.OptarError, match=text.size_changed()):
+        load_for_preview(str(path), 0, lambda: False)
 
 
 def test_large_scan_is_reduced_for_display(tmp_path):

@@ -54,7 +54,7 @@ from optar.errors import OptarError
 from optar.imageio import MAX_SCAN_PIXELS, SCAN_FORMATS, scan_pixel_limit
 from optar_gui import text
 from optar_gui.jobs import JobRunner
-from optar_gui.work import Cancelled
+from optar_gui.work import Cancelled, regular_file
 
 __all__ = [
     "MARK_SIZE",
@@ -163,9 +163,11 @@ def load_for_preview(path: str, rotation: int, cancelled: Callable[[], bool]) ->
     """Reads a scan for display, upright.
 
     Opens only the formats ``read_scan`` opens and refuses what it refuses for
-    size. Raises OptarError when the file cannot be read, Cancelled when
-    ``cancelled()`` turns True.
+    size, and only regular files (a named pipe would block the worker). Raises
+    OptarError when the file cannot be read, Cancelled when ``cancelled()``
+    turns True.
     """
+    regular_file(path)
     im = None
     try:
         # Pillow's own pixel limit would warn about or refuse 1200 dpi scans;
@@ -191,6 +193,10 @@ def load_for_preview(path: str, rotation: int, cancelled: Callable[[], bool]) ->
             if im.width * im.height != width * height:
                 raise OptarError(text.size_changed())
             width, height = im.size
+        elif im.size != (_ceil_div(width, drafted), _ceil_div(height, drafted)):
+            # A JPEG decoded smaller must be exactly the reduction draft reported,
+            # or its pixels would be drawn over the wrong scan pixels.
+            raise OptarError(text.size_changed())
         _check(cancelled)
         gray, reduced = _gray8(im)
         gray = np.asarray(gray)  # may be ``im`` itself: take the pixels first

@@ -8,6 +8,7 @@ import errno
 import os
 import stat
 import tempfile
+import threading
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -18,9 +19,15 @@ def io_error(verb: str, path: str | os.PathLike, e: OSError) -> OptarError:
     return OptarError(f"cannot {verb} {path}: {e.strerror or e}")
 
 
+# The umask can only be read by setting it; the lock keeps two threads from
+# interleaving the pair and leaving it set to 0.
+_UMASK_LOCK = threading.Lock()
+
+
 def _new_file_mode() -> int:
-    umask = os.umask(0)
-    os.umask(umask)
+    with _UMASK_LOCK:
+        umask = os.umask(0)
+        os.umask(umask)
     return 0o666 & ~umask
 
 

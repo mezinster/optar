@@ -429,6 +429,11 @@ def name_warning(dropped: str, cut: bool) -> str | None:
     return ". ".join(parts) + ". The printed name is what identifies the pages later."
 
 
+def not_regular_file(path: str) -> str:
+    """Why a folder, a named pipe or a device is not read as a scan or a file to print."""
+    return f"cannot read {path}: not a regular file (a folder, a pipe or a device)"
+
+
 def file_unreadable(message: str) -> str:
     return f"The file could not be read: {message}"
 
