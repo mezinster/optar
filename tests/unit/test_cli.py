@@ -558,7 +558,78 @@ def test_one_page_lost_from_three_is_not_saved(tmp_path, capsys):
     assert not out.exists()
     err = capsys.readouterr().err
     assert "missing page 2" in err
-    assert "Rescan page" in err and "2" in err and "--force" in err
+    assert (
+        "Rescan page 2 and decode again; --force saves what was recovered, which may be damaged."
+    ) in err
+    summary = next(line for line in err.splitlines() if line.startswith("optar: repaired"))
+    assert "could not be repaired" in summary and "worst codeword" not in summary
+
+
+@pytest.fixture(scope="module")
+def twelve_pages(tmp_path_factory):
+    """A 12-page Large document with Standard protection: (folder, input bytes)."""
+    d = tmp_path_factory.mktemp("twelve")
+    src = _protected_input(d, 12)
+    _encode_v1(d, src, "p", "--dots", "large", "--protect", "standard")
+    return d, src.read_bytes()
+
+
+def _copy_pages(source, tmp_path):
+    for page in sorted(source.glob("p_*.png")):
+        (tmp_path / page.name).write_bytes(page.read_bytes())
+    return tmp_path / "p"
+
+
+@pytest.mark.parametrize("number", [1, 6])
+def test_unreadable_file_counts_as_missing_wherever_it_is(twelve_pages, tmp_path, capsys, number):
+    source, data = twelve_pages
+    base = _copy_pages(source, tmp_path)
+    (tmp_path / f"p_{number:04d}.png").write_text("not an image\n")
+    out = tmp_path / "out.bin"
+    assert main(["decode", str(base), "-o", str(out)]) == 0
+    assert out.read_bytes() == data
+    err = capsys.readouterr().err
+    assert f"optar: p_{number:04d}.png: could not be read (cannot read image" in err
+    assert "counted as a missing page." in err
+    assert f"missing page {number}" in err and "file verified" in err
+
+
+def test_blank_first_scan_counts_as_missing(twelve_pages, tmp_path, capsys):
+    source, data = twelve_pages
+    base = _copy_pages(source, tmp_path)
+    save_scan(tmp_path / "p_0001.png", np.full((1200, 850), 255, np.uint8))
+    out = tmp_path / "out.bin"
+    assert main(["decode", str(base), "-o", str(out)]) == 0
+    assert out.read_bytes() == data
+    err = capsys.readouterr().err
+    assert "optar: p_0001.png: not identified (no page found); counted as a missing page." in err
+    assert "missing page 1" in err
+
+
+def test_unreadable_first_file_of_three_pages_is_not_saved(tmp_path, capsys):
+    src = _protected_input(tmp_path, 3)
+    base = _encode_v1(tmp_path, src, "p", "--dots", "large", "--protect", "standard")
+    capsys.readouterr()
+    (tmp_path / "p_0001.png").write_text("not an image\n")
+    out = tmp_path / "out.bin"
+    assert main(["decode", str(base), "-o", str(out)]) == 1
+    assert not out.exists()
+    err = capsys.readouterr().err
+    assert "p_0001.png: could not be read" in err
+    assert "Rescan page 1 and decode again;" in err
+
+
+def test_three_unreadable_first_files_fall_back_to_the_old_path(twelve_pages, tmp_path, capsys):
+    source, _ = twelve_pages
+    base = _copy_pages(source, tmp_path)
+    for number in (1, 2, 3):
+        (tmp_path / f"p_{number:04d}.png").write_text("not an image\n")
+    assert main(["decode", str(base), "-o", str(tmp_path / "out.bin")]) == 2
+    err = capsys.readouterr().err
+    assert err.splitlines()[-1].startswith("optar: cannot read image")
+    assert "p_0001.png" in err.splitlines()[-1]
+    assert "counted as a missing page" not in err
+    assert not (tmp_path / "out.bin").exists()
 
 
 def test_force_saves_what_was_recovered(tmp_path, capsys):

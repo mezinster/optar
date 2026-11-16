@@ -246,13 +246,22 @@ def _scan_files(base: str) -> list[str]:
     return [os.path.join(folder, n) for _, n in found]
 
 
-def _identify_version1(path: str) -> ScanIdentity | None:
-    """The identity of a scan if it is a version-1 page, else None."""
+# Scans looked at to decide between the version-1 path and the 0.2.0 path.
+PROBE_FILES = 3
+
+
+def _probe(path: str) -> ScanIdentity | str:
+    """The identity of a scan, or in plain words why there is none."""
     try:
-        ident = identify_scan(read_scan(path))
-    except DecodeError:
-        return None
-    return ident if ident.header is not None else None
+        image = read_scan(path)
+    except OptarError as e:
+        return f"could not be read ({e})"
+    try:
+        return identify_scan(image)
+    except IdentifyError as e:
+        return f"not identified ({e.reason})" + _coarse_advice(e.scan_dpi)
+    except DecodeError as e:
+        return f"not identified ({e})"
 
 
 def _document_key(ident: ScanIdentity) -> tuple:
@@ -265,7 +274,7 @@ def _coarse_advice(dpi: float | None) -> str:
     if dpi is None or dpi >= COARSE_DPI:
         return ""
     needs = ", ".join(f"{DOT_NAMES[d]} {get_layout('a4', d).scan_dpi}" for d in DOT_SIZES)
-    return f" It was scanned at about {round(dpi, -1):.0f} dpi; the dot sizes need: {needs}."
+    return f"; it was scanned at about {round(dpi, -1):.0f} dpi, the dot sizes need: {needs}"
 
 
 def _pages(numbers) -> str:
@@ -273,31 +282,21 @@ def _pages(numbers) -> str:
     return f"page{'s' if len(numbers) != 1 else ''} {', '.join(map(str, numbers))}"
 
 
-def _decode_version1(args: argparse.Namespace, files: list[str], first: ScanIdentity) -> int:
-    """Decode version-1 pages: identify every scan, group by header, repair, verify."""
-    if args.debug_images:
-        _eprint("optar: --debug-images is not available for self-identifying pages")
+def _gather(
+    files: list[str], probes: dict[str, ScanIdentity | str], first: ScanIdentity
+) -> dict[int, PagePayload]:
+    """The payload of each page of first's document among the scans, the
+    better scan of a page given twice. Reports each scan on stderr."""
     key = _document_key(first)
-    header, layout = first.header, first.layout
-    assert header is not None and layout is not None
+    total = first.header.total  # type: ignore[union-attr]
     chosen: dict[int, PagePayload] = {}
     ignored: list[str] = []
-    for index, path in enumerate(files):
+    for path in files:
         shown = os.path.basename(path)
-        if index == 0:
-            ident = first
-        else:
-            try:
-                ident = identify_scan(read_scan(path))
-            except IdentifyError as e:
-                _eprint(
-                    f"optar: {shown}: not identified ({e.reason}); counted as a missing page."
-                    + _coarse_advice(e.scan_dpi)
-                )
-                continue
-            except DecodeError as e:
-                _eprint(f"optar: {shown}: not identified ({e}); counted as a missing page.")
-                continue
+        ident = probes[path] if path in probes else _probe(path)
+        if isinstance(ident, str):
+            _eprint(f"optar: {shown}: {ident}; counted as a missing page.")
+            continue
         if ident.header is None or _document_key(ident) != key:
             ignored.append(shown)
             continue
@@ -308,13 +307,13 @@ def _decode_version1(args: argparse.Namespace, files: list[str], first: ScanIden
         if page in chosen:
             better = unreadable < int(np.count_nonzero(chosen[page].erased))
             _eprint(
-                f"{shown}: page {page} of {header.total} again{note}; "
+                f"{shown}: page {page} of {total} again{note}; "
                 f"using the {'better' if better else 'earlier'} scan"
             )
             if not better:
                 continue
         else:
-            _eprint(f"{shown}: page {page} of {header.total}{note}")
+            _eprint(f"{shown}: page {page} of {total}{note}")
         chosen[page] = ident.payload
     if ignored:
         n = len(ignored)
@@ -322,12 +321,29 @@ def _decode_version1(args: argparse.Namespace, files: list[str], first: ScanIden
             f"optar: {_plural(n, 'scan')} from another document "
             f"{'was' if n == 1 else 'were'} ignored: {', '.join(ignored)}"
         )
+    return chosen
 
-    result = unwrap(header, layout.fmt, chosen)
+
+def _decode_version1(
+    args: argparse.Namespace,
+    files: list[str],
+    probes: dict[str, ScanIdentity | str],
+    first: ScanIdentity,
+) -> int:
+    """Decode version-1 pages: identify every scan, group by header, repair, verify."""
+    if args.debug_images:
+        _eprint("optar: --debug-images is not available for self-identifying pages")
+    header, layout = first.header, first.layout
+    assert header is not None and layout is not None
+    result = unwrap(header, layout.fmt, _gather(files, probes, first))
+
     summary = []
     if result.budget:
         summary.append(f"repaired {_plural(result.repaired_bytes, 'byte')}")
-        summary.append(f"worst codeword used {result.worst_used} of {result.budget}")
+        if result.failed:
+            summary.append(f"{_plural(result.failed, 'block')} could not be repaired")
+        else:
+            summary.append(f"worst codeword used {result.worst_used} of {result.budget}")
     summary.append(f"missing {_pages(result.missing)}" if result.missing else "no pages missing")
     _eprint(f"optar: {'; '.join(summary)}")
 
@@ -362,10 +378,17 @@ def _decode_version1(args: argparse.Namespace, files: list[str], first: ScanIden
 
 def _decode(args: argparse.Namespace) -> int:
     if not args.format:
+        # The first of the first PROBE_FILES scans that identifies decides:
+        # a version-1 page takes the whole set down the version-1 path.
         files = _scan_files(args.base)
-        first = _identify_version1(files[0]) if files else None
-        if first is not None:
-            return _decode_version1(args, files, first)
+        probes: dict[str, ScanIdentity | str] = {}
+        for path in files[:PROBE_FILES]:
+            ident = probes[path] = _probe(path)
+            if isinstance(ident, str):
+                continue
+            if ident.header is not None:
+                return _decode_version1(args, files, probes, ident)
+            break
     _, fmt = _resolve_format(args)
     name = os.path.basename(args.base)
     gap = False
