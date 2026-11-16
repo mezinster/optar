@@ -50,11 +50,50 @@ jobs:
         env:
           EXT: ${{ matrix.ext }}
           ASSET: ${{ matrix.asset }}
-        run: mv "dist/optar${EXT}" "dist/optar-${GITHUB_REF_NAME}-${ASSET}${EXT}"
+        run: |
+          mkdir release
+          mv "dist/optar${EXT}" "release/optar-${GITHUB_REF_NAME}-${ASSET}${EXT}"
       - uses: actions/upload-artifact@v7
         with:
           name: optar-${{ matrix.asset }}
-          path: dist/optar-*
+          path: release/optar-*
+          if-no-files-found: error
+      # The desktop application, built after the command line so that the
+      # command-line executable is made without PySide6 installed.
+      - name: Install Qt libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1 libxcb-cursor0
+      - run: pip install -e '.[gui]'
+      - name: Build optar-gui
+        run: |
+          case "$RUNNER_OS" in
+            macOS) pyinstaller --windowed --name optar-gui --collect-data optar packaging/gui_entry.py ;;
+            Windows) pyinstaller --onefile --windowed --name optar-gui --collect-data optar packaging/gui_entry.py ;;
+            *) pyinstaller --onefile --name optar-gui --collect-data optar packaging/gui_entry.py ;;
+          esac
+      - name: Self-test optar-gui
+        run: |
+          case "$RUNNER_OS" in
+            macOS) dist/optar-gui.app/Contents/MacOS/optar-gui --self-test ;;
+            Windows) dist/optar-gui.exe --self-test ;;
+            *) dist/optar-gui --self-test ;;
+          esac
+      - name: Rename optar-gui
+        env:
+          EXT: ${{ matrix.ext }}
+          ASSET: ${{ matrix.asset }}
+        run: |
+          if [ "$RUNNER_OS" = macOS ]; then
+            ditto -c -k --keepParent dist/optar-gui.app "release/optar-gui-${GITHUB_REF_NAME}-${ASSET}.zip"
+          else
+            mv "dist/optar-gui${EXT}" "release/optar-gui-${GITHUB_REF_NAME}-${ASSET}${EXT}"
+          fi
+      - uses: actions/upload-artifact@v7
+        with:
+          name: optar-gui-${{ matrix.asset }}
+          path: release/optar-gui-*
           if-no-files-found: error
 
   publish:
@@ -73,5 +112,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" --generate-notes \
-            --notes "On Linux and macOS, run chmod +x on the downloaded file before first use. The executables are unsigned, so macOS and Windows may warn on first run." \
+            --notes "On Linux and macOS, run chmod +x on the downloaded file before first use. The executables are unsigned, so macOS and Windows may warn on first run. On macOS, unzip optar-gui and open it from Finder with right-click, Open, the first time." \
             release-files/*

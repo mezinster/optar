@@ -35,8 +35,9 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e '.[dev]'
-      # C comparisons and Ghostscript checks run in the oracle job on Linux.
-      - run: pytest -q -m "not oracle and not gs and not slow"
+      # C comparisons and Ghostscript checks run in the oracle job on Linux,
+      # the desktop application's tests in the gui job.
+      - run: pytest -q -m "not oracle and not gs and not slow and not gui"
 
   oracle:
     runs-on: ubuntu-latest
@@ -50,10 +51,35 @@ jobs:
       - name: Run oracle, Ghostscript and slow tests
         run: |
           set -o pipefail
-          pytest -q -rs -m "oracle or gs or slow" | tee pytest.log
+          # tests/gui needs PySide6, which this job does not install; its slow
+          # test runs in the gui job. Ignoring the folder keeps its collection
+          # skips out of the log checked below.
+          pytest -q -rs -m "(oracle or gs or slow) and not gui" --ignore=tests/gui | tee pytest.log
       - name: Fail on skipped tests other than tests/scans
         run: |
           if grep '^SKIPPED' pytest.log | grep -v 'tests/scans'; then
             echo "These oracle/gs/slow tests were skipped (only tests/scans may skip)." >&2
             exit 1
           fi
+
+  gui:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.15"
+      - name: Install Qt libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1
+      - run: pip install -e '.[dev,gui-dev]'
+      # -m gui replaces the default "not slow", so the slow GUI test runs here too.
+      - run: pytest -q -m gui
