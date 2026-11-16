@@ -1,9 +1,11 @@
 # (c) GPL 2007 Karel 'Clock' Kulhavy, Twibright Labs; Python port 2026
 """The version-1 container: page headers, page counts, spreading and wrapping."""
 
+import dataclasses
 import hashlib
 import random
 import time
+import tracemalloc
 
 import numpy as np
 import pytest
@@ -11,11 +13,13 @@ import pytest
 import optar
 from optar import OptarError, PageFormat, decode_page, encode
 from optar.container import (
+    BEST_EFFORT_PAGES,
     PROTECTED_MAX_BYTES,
     Header,
     PagePayload,
     Plan,
     Unwrapped,
+    document_plan,
     fingerprint,
     page_payload,
     pages_promised,
@@ -412,7 +416,7 @@ def test_unwrap_of_empty_file():
     assert out.verified and out.data == b"" and out.name == ""
 
 
-def _covered(p):
+def _under_headers(p):
     covered = np.zeros(p.page_bytes, dtype=bool)
     for c in range(HEADER_COPIES):
         start = c * (p.page_bytes // HEADER_COPIES)
@@ -426,7 +430,7 @@ def _damage(pages, p, fraction, seed, erase):
     Returns (damaged pages, number of corrupted bytes, per-page counts).
     """
     rng = np.random.default_rng(seed)
-    body_index = np.flatnonzero(~_covered(p))
+    body_index = np.flatnonzero(~_under_headers(p))
     out, total, per_page = {}, 0, {}
     for number, page in pages.items():
         data = np.frombuffer(page.data, dtype=np.uint8).copy()
@@ -510,11 +514,131 @@ def test_unwrap_with_another_documents_header():
         _, _, _, other, _ = _document(fmt, 32, total=total, seed=9)
         out = unwrap(other, fmt, pages)
         assert not out.verified
-    # A header that claims a file larger than the document.
-    _, _, p, header, _ = _document(fmt, 32, total=4)
-    big = Header(header.page, header.total, p.data_bytes + 5, header.fingerprint, 32)
-    out = unwrap(big, fmt, pages)
-    assert not out.verified and out.data is None and out.name == ""
+
+
+def _claim(total, size, parity, page=1):
+    return Header(page, total, size, bytes(16), parity)
+
+
+def test_a_header_no_wrap_writes_is_refused():
+    fmt = get_layout("a4", "xlarge").fmt
+    _, _, p, header, pages = _document(fmt, 32, total=4)
+    fewer = plan_for(3, fmt, 32).data_bytes
+    assert document_plan(header, fmt) == p
+    bad = [
+        _claim(4, p.data_bytes, 32),  # no room for the name's length byte
+        _claim(4, p.data_bytes + 5, 32),  # a file larger than the document
+        _claim(4, fewer - 256, 32),  # three pages hold it, whatever its name
+        _claim(MAX_PAGES, 10, 0),  # thousands of pages for ten bytes
+        _claim(MAX_PAGES + 1, plan_for(MAX_PAGES + 1, fmt, 0).data_bytes - 1, 0),
+        _claim(4, -1, 32),
+        _claim(4, 60000, 7),  # no such parity
+        _claim(5, 60000, 32, page=6),
+        _claim(1, 10, 32, page=0),
+    ]
+    for header in bad:
+        assert document_plan(header, fmt) is None, header
+        with pytest.raises(optar.FormatError):
+            unwrap(header, fmt, pages)
+    # The fewest pages depend on the name: both ends of the range are documents.
+    assert document_plan(_claim(4, fewer - 255, 32), fmt) is not None
+    assert document_plan(_claim(4, p.data_bytes - 1, 32), fmt) is not None
+    # With parity, no more than PROTECTED_MAX_BYTES on paper.
+    most = PROTECTED_MAX_BYTES // (A4.net_bits // 8)
+    assert most < MAX_PAGES
+    assert document_plan(_claim(most, plan_for(most, A4, 32).data_bytes - 1, 32), A4)
+    over = _claim(most + 1, plan_for(most + 1, A4, 32).data_bytes - 1, 32)
+    assert document_plan(over, A4) is None
+    assert document_plan(dataclasses.replace(over, parity=0), A4) is None  # not the fewest pages
+    size = plan_for(most + 1, A4, 0).data_bytes - 1
+    assert document_plan(_claim(most + 1, size, 0), A4) is not None
+
+
+def test_a_long_name_that_takes_one_more_page_unwraps():
+    fmt = get_layout("a4", "xlarge").fmt
+    size = plan_for(2, fmt, 32).data_bytes - 100  # two pages, unless the name is long
+    for name, total in (("short", 2), ("n" * 200, 3)):
+        data, _, p, header, pages = _document(fmt, 32, size=size, name=name)
+        assert p.total == total
+        out = unwrap(header, fmt, pages)
+        assert out.verified and out.data == data and out.name == name
+
+
+def _peak_and_seconds(call):
+    tracemalloc.start()
+    started = time.perf_counter()
+    try:
+        out = call()
+        seconds = time.perf_counter() - started
+        peak = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+    return out, peak, seconds
+
+
+@pytest.mark.parametrize("parity", [0, 32, 64])
+def test_one_page_of_a_huge_claimed_document_costs_little(parity):
+    # A single page whose header claims the largest document there is must not
+    # make unwrap() lay that document out: the page may be hostile or damaged.
+    p1 = plan_for(1, A4, parity)
+    total = MAX_PAGES if not parity else PROTECTED_MAX_BYTES // p1.page_bytes
+    header = _claim(total, plan_for(total, A4, parity).data_bytes - 1, parity, page=7)
+    assert document_plan(header, A4) is not None
+    page = PagePayload(bytes(p1.page_bytes), np.zeros(p1.page_bytes, dtype=bool))
+    out, peak, seconds = _peak_and_seconds(lambda: unwrap(header, A4, {7: page}))
+    assert seconds < 1.0, seconds
+    assert peak < 40 * 1024 * 1024, peak
+    assert out.data is None and out.best_effort is None and not out.verified
+    assert out.name == "" and out.repaired_bytes == 0
+    assert out.failed >= 1 and out.worst_used > out.budget == parity
+    assert len(out.missing) == total - 1 and 7 not in out.missing
+    assert set(out.page_damage) == set(out.missing)
+    assert out.page_damage[1] == p1.page_body
+
+
+def test_no_page_at_all_costs_little():
+    header = _claim(MAX_PAGES, plan_for(MAX_PAGES, A4, 0).data_bytes - 1, 0)
+    out, peak, seconds = _peak_and_seconds(lambda: unwrap(header, A4, {}))
+    assert seconds < 1.0 and peak < 40 * 1024 * 1024
+    assert out.data is None and out.best_effort is None and len(out.missing) == MAX_PAGES
+
+
+@pytest.mark.parametrize("parity", [0, 32])
+def test_best_effort_needs_half_of_the_pages(parity):
+    assert BEST_EFFORT_PAGES == 2
+    fmt = get_layout("a4", "xlarge").fmt
+    data, name, p, header, pages = _document(fmt, parity, total=12)
+    half = {n: pages[n] for n in (1, 3, 5, 8, 10, 12)}
+    out = unwrap(header, fmt, half)
+    assert out.data is None and not out.verified
+    assert out.best_effort is not None and len(out.best_effort) == len(data)
+    assert out.failed > 0 and out.missing == (2, 4, 6, 7, 9, 11)
+    del half[8]
+    out = unwrap(header, fmt, half)
+    assert out.data is None and out.best_effort is None and not out.verified
+    assert out.failed >= 1 and out.worst_used > out.budget
+    assert out.missing == (2, 4, 6, 7, 8, 9, 11)
+    assert out.page_damage == {n: p.page_body for n in out.missing}
+
+
+def test_best_effort_is_the_file_itself_when_there_is_one():
+    fmt = get_layout("a4", "xlarge").fmt
+    data, name, p, header, pages = _document(fmt, 32, total=2)
+    out = unwrap(header, fmt, pages)
+    assert out.data == data and out.best_effort is out.data  # not a second copy
+
+
+def test_the_last_page_of_a_document_holds_fewer_codeword_bytes():
+    # page_damage of a page not supplied counts only the bytes codewords use.
+    fmt = get_layout("a4", "xlarge").fmt
+    _, _, p, header, pages = _document(fmt, 0, total=3)
+    unused = p.total * p.page_body - CODEWORD * p.codewords
+    assert unused > 0
+    full = unwrap(header, fmt, {1: pages[1], 2: pages[2]})  # the best effort is built
+    quick = unwrap(header, fmt, {1: pages[1]})  # it is not
+    assert full.best_effort is not None and quick.best_effort is None
+    assert full.page_damage[3] == quick.page_damage[3] == p.page_body - unused
+    assert quick.page_damage[2] == p.page_body
 
 
 def test_unwrap_without_parity_takes_data_as_read():
@@ -535,7 +659,7 @@ def test_unwrap_without_parity_takes_data_as_read():
 
 def _file_byte_places(p, size):
     """(page number, payload index) of each file byte, for parity 0 (k = 255)."""
-    body_index = np.flatnonzero(~_covered(p))
+    body_index = np.flatnonzero(~_under_headers(p))
     pos = positions(p).reshape(-1)[:size]  # with k = 255 the region is positions in order
     return pos // p.page_body + 1, body_index[pos % p.page_body]
 

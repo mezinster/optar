@@ -17,18 +17,17 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from optar.container import Header, PagePayload, page_payload, plan_for, read_header
+from optar.container import Header, PagePayload, document_plan, page_payload, read_header
 from optar.decoder import PageGrid, PageResult, decode_located, locate_page
 from optar.decoder.dirt import remove_border_dirt
 from optar.decoder.geometry import find_corners
 from optar.decoder.levels import analyze_levels
 from optar.decoder.options import DecodeOptions
 from optar.encoder import MAX_PAGES
-from optar.errors import DecodeError, FormatError, IdentifyError
+from optar.errors import DecodeError, IdentifyError
 from optar.format import (
     LAYOUTS,
     PAPERS,
-    PROTECTED_MAX_BYTES,
     Layout,
     PageFormat,
     Paper,
@@ -250,18 +249,9 @@ def _identify_label(grid: PageGrid, rotation: int, paper: Paper) -> ScanIdentity
 
 
 def _header_fits(header: Header, fmt: PageFormat) -> bool:
-    """True if a header describes a document wrap() could have written in fmt:
-    its page within its count, at most MAX_PAGES pages (and the protected
-    size limit), and a data region that holds the file and the name length."""
-    if not 1 <= header.page <= header.total <= MAX_PAGES:
-        return False
-    try:
-        p = plan_for(header.total, fmt, header.parity)
-    except FormatError:
-        return False
-    if p.parity and p.total * p.page_bytes > PROTECTED_MAX_BYTES:
-        return False
-    return header.size + 1 <= p.data_bytes
+    """True if a header describes a document wrap() could have written in fmt
+    (container.document_plan)."""
+    return document_plan(header, fmt) is not None
 
 
 def _identify_header(

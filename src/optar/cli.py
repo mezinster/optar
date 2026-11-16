@@ -15,7 +15,14 @@ import numpy as np
 from PIL import Image
 
 from optar import __version__
-from optar.container import PagePayload, pages_promised, plan, unwrap, wrap
+from optar.container import (
+    BEST_EFFORT_PAGES,
+    PagePayload,
+    pages_promised,
+    plan,
+    unwrap,
+    wrap,
+)
 from optar.decoder import BitPacker, decode_pages
 from optar.encoder import check_encodable, encode
 from optar.errors import DecodeError, FormatError, IdentifyError, OptarError
@@ -282,6 +289,13 @@ def _pages(numbers) -> str:
     return f"page{'s' if len(numbers) != 1 else ''} {', '.join(map(str, numbers))}"
 
 
+def _some(numbers, most: int = 20) -> list:
+    """The first `most` of the numbers, then how many more there are."""
+    numbers = list(numbers)
+    more = len(numbers) - most
+    return numbers if more <= 0 else [*numbers[:most], f"({more} more)"]
+
+
 def _gather(
     files: list[str], probes: dict[str, ScanIdentity | str], first: ScanIdentity
 ) -> dict[int, PagePayload]:
@@ -338,17 +352,31 @@ def _decode_version1(
     result = unwrap(header, layout.fmt, _gather(files, probes, first))
 
     summary = []
-    if result.budget:
+    if result.data is None and result.best_effort is None:
+        summary.append("too many pages are missing to repair the file")
+    elif result.budget:
         summary.append(f"repaired {_plural(result.repaired_bytes, 'byte')}")
         if result.failed:
             summary.append(f"{_plural(result.failed, 'block')} could not be repaired")
         else:
             summary.append(f"worst codeword used {result.worst_used} of {result.budget}")
-    summary.append(f"missing {_pages(result.missing)}" if result.missing else "no pages missing")
+    summary.append(
+        f"missing {_pages(_some(result.missing))}" if result.missing else "no pages missing"
+    )
     _eprint(f"optar: {'; '.join(summary)}")
 
+    out = result.data if result.data is not None else result.best_effort
+    if out is None:
+        # Too few pages to build even a best-effort file (container.unwrap).
+        read = header.total - len(result.missing)
+        _eprint(
+            f"optar: the file could not be repaired and was not saved: only {read} of "
+            f"{_plural(header.total, 'page')} read. Scan {_pages(_some(result.missing))} "
+            f"and decode again; --force saves nothing from fewer than one page in "
+            f"{BEST_EFFORT_PAGES}."
+        )
+        return 1
     if result.verified or args.force:
-        out = result.data if result.data is not None else result.best_effort
         if args.output:
             with replacing(args.output) as temp, open(temp, "wb") as f:
                 f.write(out)
@@ -369,7 +397,7 @@ def _decode_version1(
         (p for p in result.page_damage if p not in result.missing),
         key=lambda p: (-result.page_damage[p], p),
     )[:3]
-    rescan = sorted(set(result.missing) | set(damaged))
+    rescan = _some(sorted(set(result.missing) | set(damaged)))
     force = "--force saves what was recovered, which may be damaged."
     advice = f"Rescan {_pages(rescan)} and decode again; {force}" if rescan else force
     _eprint(f"optar: the file {why} and was not saved. {advice}")

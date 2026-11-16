@@ -28,6 +28,7 @@ Rules:
 - Every page, whatever the dot size or protection, stays an ordinary version-0 optar page. `encode()` is not changed for the self-identifying (version 1) printouts: the container wraps the stream before it and unwraps it after.
 - A valid label tag wins over a header found in the data (a re-printed old stream must stay a 0.2.0 page).
 - Only the fingerprint makes a file "verified"; a repair that reports no failure does not.
+- A page header is untrusted: one scanned page can claim any document. `container.document_plan` is the one check of what a header may claim, and `unwrap()` must keep its memory and time in proportion to the pages supplied, never to the claim.
 - The claims tests (`tests/unit/test_claims.py`, marked `slow`) are the project's claims about simulated scans. Do not loosen them or change the simulator's defaults to make them pass. Run them with `.venv/bin/pytest -q -m slow tests/unit/test_claims.py`.
 - The user's real scans are never copied into the repository, so `tests/scans` stays empty of scans.
 

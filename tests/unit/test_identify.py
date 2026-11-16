@@ -980,14 +980,18 @@ def test_header_must_describe_a_document_that_fits():
     fmt = get_layout("a4", "large").fmt
     room = plan_for(2, fmt, PROTECT).data_bytes
     fits = optar.identify._header_fits
-    assert fits(header_of(size=room - 1), fmt)
+    full = room - 1
+    assert fits(header_of(size=full), fmt)
     assert not fits(header_of(size=room), fmt)  # no room for the name length
-    assert not fits(header_of(page=3), fmt)
-    assert not fits(header_of(page=0), fmt)
-    assert not fits(header_of(total=MAX_PAGES + 1), fmt)
-    assert not fits(header_of(parity=7), fmt)
+    assert not fits(header_of(size=full, page=3), fmt)
+    assert not fits(header_of(size=full, page=0), fmt)
+    assert not fits(header_of(size=full, total=MAX_PAGES + 1), fmt)
+    assert not fits(header_of(size=full, parity=7), fmt)
+    # wrap() takes the fewest pages: two pages are not what a small file is on.
+    assert not fits(header_of(size=1000), fmt)
+    assert fits(header_of(size=1000, total=1), fmt)
     tiny = PageFormat(xcrosses=3, ycrosses=3)
-    assert not fits(header_of(size=0), tiny)  # too small for the container
+    assert not fits(header_of(size=0, total=1), tiny)  # too small for the container
 
 
 @pytest.mark.skipif(not os.environ.get("OPTAR_REAL_SCANS"), reason="OPTAR_REAL_SCANS not set")

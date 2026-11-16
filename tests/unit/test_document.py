@@ -2280,6 +2280,57 @@ def test_version1_too_many_pages_missing_is_incomplete():
     assert doc.salvage_bytes() == result.best_effort and len(result.best_effort) == len(data)
 
 
+def test_fewer_than_half_of_the_pages_leave_nothing_to_save():
+    data, payloads = v1_pages(12)
+    doc, ids = v1_document(payloads, skip=(2, 4, 5, 7, 9, 10, 11))  # five of twelve
+    result = repaired(doc)
+    assert result.data is None and result.best_effort is None
+    s = doc.summary()
+    assert s.state == DocState.INCOMPLETE and s.repair is result
+    assert doc.salvage_bytes() is None and not doc.can_save_anyway
+    with pytest.raises(ValueError):
+        doc.save_chunks()
+    assert doc.repair_job() is None  # the result stands until the pages change
+    add_v1(doc, "p7", payloads[7])  # half of them: what was recovered can be saved
+    result = repaired(doc)
+    assert result.data is None and len(result.best_effort) == len(data)
+    assert doc.can_save_anyway and doc.salvage_bytes() == result.best_effort
+
+
+@pytest.mark.parametrize("parity", [0, 32])
+def test_one_page_claiming_a_huge_document_is_cheap_to_refuse(parity):
+    # A hostile or damaged page: the repair must not lay out the document it claims.
+    from optar.container import Header
+    from optar.encoder import MAX_PAGES
+
+    size = plan_for(MAX_PAGES, XL, parity).data_bytes - 1
+    packed = Header(3, MAX_PAGES, size, bytes(16), parity).pack()
+    raw = bytearray(XL_BYTES)
+    for copy in range(5):
+        start = copy * (XL_BYTES // 5)
+        raw[start : start + len(packed)] = packed
+    payload = PagePayload(bytes(raw), np.zeros(XL_BYTES, dtype=bool))
+    doc = Document()
+    add_v1(doc, "hostile", payload)
+    assert doc.current.total == MAX_PAGES and doc.summary().state == DocState.INCOMPLETE
+    job = doc.repair_job()
+    assert job is not None
+    tracemalloc.start()
+    started = time.perf_counter()
+    try:
+        repair = job()
+        seconds = time.perf_counter() - started
+        peak = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+    assert seconds < 1.0 and peak < 40 * 1024 * 1024, (seconds, peak)
+    doc.accept_repair(repair)
+    s = doc.summary()
+    assert s.state == DocState.INCOMPLETE and s.repair.data is None
+    assert not doc.can_save and not doc.can_save_anyway and doc.salvage_bytes() is None
+    assert doc.repair_job() is None
+
+
 def test_saving_is_offered_for_the_file_or_for_the_best_effort():
     data, payloads = v1_pages(3)
     doc, ids = v1_document(payloads, skip=(2,))

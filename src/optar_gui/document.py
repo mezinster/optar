@@ -1131,7 +1131,8 @@ class Document:
     def salvage_bytes(self) -> bytes | None:
         """A version-1 document's file as far as it was recovered, when the accepted
         repair result could not give the file: it may contain wrong bytes and is
-        only for saving after an explicit warning. None otherwise."""
+        only for saving after an explicit warning. None otherwise, and when too few
+        pages gave data for the repair to build one (``Unwrapped.best_effort``)."""
         repair = self._accepted_repair()
         if repair is None or repair.result.data is not None:
             return None

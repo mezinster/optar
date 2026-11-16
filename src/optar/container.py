@@ -45,11 +45,13 @@ if TYPE_CHECKING:
     from optar.decoder import PageResult
 
 __all__ = [
+    "BEST_EFFORT_PAGES",
     "PROTECTED_MAX_BYTES",
     "Header",
     "PagePayload",
     "Plan",
     "Unwrapped",
+    "document_plan",
     "fingerprint",
     "name_bytes",
     "page_payload",
@@ -319,28 +321,91 @@ def page_payload(result: PageResult, fmt: PageFormat) -> PagePayload:
 
 @dataclass(frozen=True)
 class Unwrapped:
+    """What unwrap() made of a document's pages.
+
+    Only `verified` says the file is the original. `failed == 0` and
+    `worst_used <= budget` do not: a codeword with more wrong bytes than its
+    parity can correct may be "corrected" into another valid codeword, and
+    without parity nothing is checked at all. `name` is outside the
+    fingerprint, which covers the file's bytes only: it is as trustworthy as
+    the codewords it was read from, and is untrusted text even when
+    `verified`.
+    """
+
     data: bytes | None  # the file, cut to size; None if any codeword holding file bytes failed
-    # The file as far as it could be recovered, cut to the header's size (shorter
-    # only if the header claims more than the document holds): corrected
-    # codewords where correction succeeded, bytes as read where it failed or
-    # there is no parity, zeros for unrepaired bytes of missing pages. Equal to
-    # data when data is not None. It MAY CONTAIN WRONG BYTES and is never
+    # The file as far as it could be recovered, cut to the header's size:
+    # corrected codewords where correction succeeded, bytes as read where it
+    # failed or there is no parity, zeros for unrepaired bytes of missing pages.
+    # The same object as data when data is not None. None when it was not
+    # built: data is None and fewer than 1 / BEST_EFFORT_PAGES of the pages
+    # were supplied (see unwrap). It MAY CONTAIN WRONG BYTES and is never
     # verified: it is only for an explicit "save anyway".
-    best_effort: bytes
-    name: str  # "" if unreadable
+    best_effort: bytes | None
+    name: str  # "" if unreadable; not covered by the fingerprint
     verified: bool  # data is not None and its fingerprint equals the header's
     repaired_bytes: int  # bytes parity changed or filled
     # Max over codewords of 2 * errors + erasures; a codeword that failed
     # counts as max(erasures, budget + 1), so worst_used > budget iff failed.
     worst_used: int
     budget: int  # parity bytes per codeword
-    failed: int  # codewords not corrected
+    # Codewords not corrected. When best_effort is None the codewords were
+    # not all looked at and this is only a lower bound (at least 1).
+    failed: int
     page_damage: dict[int, int]  # page -> codeword bytes of it wrong or erased (pages with any)
     missing: tuple[int, ...]  # page numbers not supplied
 
 
 # Codewords gathered, decoded and scattered per step of unwrap().
 _UNWRAP_ROWS = 16384
+# Codewords looked at per step of the search for one beyond repair.
+_SCAN_ROWS = 2048
+# The best-effort file of a document that cannot be recovered is built only
+# when at least one page in this many was supplied.
+BEST_EFFORT_PAGES = 2
+
+
+def document_plan(header: Header, fmt: PageFormat) -> Plan | None:
+    """The plan of the document a header describes, or None if wrap() writes
+    no such document in fmt.
+
+    wrap() writes at most MAX_PAGES pages (and with parity at most
+    PROTECTED_MAX_BYTES), in the fewest pages that hold the file, a name
+    length byte and a name of at most NAME_MAX_BYTES bytes. So the page count
+    is in proportion to the file size the header gives: a header cannot claim
+    many pages for a small file, or a large file in few.
+    """
+    if header.size < 0 or not 1 <= header.page <= header.total <= MAX_PAGES:
+        return None
+    try:
+        p = plan_for(header.total, fmt, header.parity)
+        fewer = plan_for(header.total - 1, fmt, header.parity).data_bytes
+    except FormatError:
+        return None
+    if p.parity and p.total * p.page_bytes > PROTECTED_MAX_BYTES:
+        return None
+    if header.size + 1 > p.data_bytes:
+        return None  # more than the pages hold
+    if header.total > 1 and header.size + 1 + NAME_MAX_BYTES <= fewer:
+        return None  # fewer pages would have held it, whatever its name
+    return p
+
+
+def _beyond_repair(p: Plan, absent: np.ndarray, rows: int) -> tuple[int, int]:
+    """Whether the absent pages alone put a codeword holding the file beyond
+    repair: (codewords found so, the most bytes one of them has on absent
+    pages), or (0, 0) if there is none.
+
+    absent is bool (total,), True for a page not supplied; rows is how many
+    codewords hold the file. The search stops at the first step of
+    _SCAN_ROWS codewords that has one, so the count is a lower bound.
+    """
+    for first in range(0, rows, _SCAN_ROWS):
+        stop = min(rows, first + _SCAN_ROWS)
+        gone = absent[_positions(p, first, stop) // p.page_body].sum(axis=1)
+        over = gone > p.parity
+        if over.any():
+            return int(np.count_nonzero(over)), int(gone.max())
+    return 0, 0
 
 
 def unwrap(header: Header, fmt: PageFormat, pages: Mapping[int, PagePayload]) -> Unwrapped:
@@ -351,20 +416,33 @@ def unwrap(header: Header, fmt: PageFormat, pages: Mapping[int, PagePayload]) ->
     parity 0 nothing is repaired: a codeword is taken as read, and fails if
     any of its bytes is erased. A codeword that cannot be corrected is
     reported, never guessed; only the fingerprint decides `verified`.
-    FormatError if the header describes a document no wrap() writes.
+    FormatError if the header describes a document no wrap() writes
+    (document_plan).
+
+    The header and the pages are untrusted. Memory and time are in
+    proportion to the pages supplied, not to what the header claims: the
+    pages are not laid out in a body of the claimed size, and when the pages
+    not supplied alone put the file beyond repair and fewer than 1 /
+    BEST_EFFORT_PAGES of the pages were supplied, the result says so at once,
+    with `best_effort` None and `failed` a lower bound. With at least that
+    share of the pages the best-effort file is built.
     """
-    p = plan_for(header.total, fmt, header.parity)
-    if p.total > MAX_PAGES or (p.parity and p.total * p.page_bytes > PROTECTED_MAX_BYTES):
-        raise FormatError(f"header describes an impossible document of {p.total} pages")
+    p = document_plan(header, fmt)
+    if p is None:
+        raise FormatError(
+            f"the pages describe a document that cannot exist: {header.total} pages "
+            f"for a file of {header.size} bytes"
+        )
+    k = CODEWORD - p.parity
+    m = p.codewords
+    size = header.size
     keep = ~_covered(p.page_bytes)
-    body = np.zeros(p.total * p.page_body, dtype=np.uint8)
-    lost = np.ones(p.total * p.page_body, dtype=bool)
-    missing = []
-    for number in range(1, p.total + 1):
-        page = pages.get(number)
-        if page is None:
-            missing.append(number)
-            continue
+    # Row 0 stands for every page not supplied: zeros, all erased.
+    stack = [np.zeros(p.page_body, dtype=np.uint8)]
+    gone = [np.ones(p.page_body, dtype=bool)]
+    row_of = np.zeros(p.total, dtype=np.intp)
+    for number in sorted(n for n in pages if 1 <= n <= p.total):
+        page = pages[number]
         data = np.frombuffer(page.data, dtype=np.uint8)
         erased = np.asarray(page.erased, dtype=bool)
         if data.shape != (p.page_bytes,) or erased.shape != data.shape:
@@ -372,21 +450,49 @@ def unwrap(header: Header, fmt: PageFormat, pages: Mapping[int, PagePayload]) ->
                 f"page {number}: payload must be {p.page_bytes} bytes with an erasure "
                 f"mask of the same length"
             )
-        part = slice((number - 1) * p.page_body, number * p.page_body)
-        body[part] = data[keep]
-        lost[part] = erased[keep]
+        row_of[number - 1] = len(stack)
+        stack.append(data[keep])
+        gone.append(erased[keep])
+    absent = row_of == 0
+    missing = tuple(int(n) + 1 for n in np.flatnonzero(absent))
 
-    k = CODEWORD - p.parity
-    m = p.codewords
+    if missing and (p.total - len(missing)) * BEST_EFFORT_PAGES < p.total:
+        hopeless, most = _beyond_repair(p, absent, -(-size // k))
+        if hopeless:
+            # Every codeword byte of a page not supplied counts as damage.
+            starts = np.arange(p.total) * p.page_body
+            held = np.clip(m * CODEWORD - starts, 0, p.page_body)
+            return Unwrapped(
+                data=None,
+                best_effort=None,
+                name="",
+                verified=False,
+                repaired_bytes=0,
+                worst_used=max(most, p.parity + 1),
+                budget=p.parity,
+                failed=hopeless,
+                page_damage={n: int(held[n - 1]) for n in missing if held[n - 1]},
+                missing=missing,
+            )
+
+    body = np.stack(stack)
+    lost = np.stack(gone)
+    del stack, gone
     code = RSCode(p.parity) if p.parity else None
-    region = np.empty((m, k), dtype=np.uint8)
+    # Only the codewords that hold the file and its name are kept.
+    kept = min(m, -(-(size + 1 + NAME_MAX_BYTES) // k))
+    region = np.empty((kept, k), dtype=np.uint8)
     ok = np.empty(m, dtype=bool)
     worst = repaired = 0
     damage = np.zeros(p.total, dtype=np.int64)
     for first in range(0, m, _UNWRAP_ROWS):
         stop = min(m, first + _UNWRAP_ROWS)
         pos = _positions(p, first, stop)
-        received, erased = body[pos], lost[pos]
+        on_page = pos // p.page_body
+        pos -= on_page * p.page_body  # now the byte's place within its page
+        row = row_of[on_page]
+        received, erased = body[row, pos], lost[row, pos]
+        del row
         erasures = erased.sum(axis=1)
         if code is None:
             words, row_ok = received, erasures == 0
@@ -400,30 +506,25 @@ def unwrap(header: Header, fmt: PageFormat, pages: Mapping[int, PagePayload]) ->
         # filled; in a failed one only the erased bytes are known.
         bad = erased | ((words != received) & row_ok[:, None])
         repaired += int(bad[row_ok].sum())
-        damage += np.bincount(pos[bad] // p.page_body, minlength=p.total)
+        damage += np.bincount(on_page[bad], minlength=p.total)
         worst = max(worst, int(used.max(initial=0)))
-        region[first:stop] = words[:, :k]
+        if first < kept:
+            region[first : min(stop, kept)] = words[: kept - first, :k]
         ok[first:stop] = row_ok
     region = region.reshape(-1)
 
-    size = header.size
-    data_out = None
-    name = ""
-    if size + 1 <= p.data_bytes:
-        if ok[: -(-size // k)].all():
-            data_out = region[:size].tobytes()
-        name = _read_name(region, ok, size, k)
+    data_out = region[:size].tobytes() if ok[: -(-size // k)].all() else None
     return Unwrapped(
         data=data_out,
-        best_effort=region[:size].tobytes(),
-        name=name,
+        best_effort=data_out if data_out is not None else region[:size].tobytes(),
+        name=_read_name(region, ok, size, k),
         verified=data_out is not None and fingerprint(data_out) == header.fingerprint,
         repaired_bytes=repaired,
         worst_used=worst,
         budget=p.parity,
         failed=int(np.count_nonzero(~ok)),
         page_damage={int(n) + 1: int(damage[n]) for n in np.flatnonzero(damage)},
-        missing=tuple(missing),
+        missing=missing,
     )
 
 

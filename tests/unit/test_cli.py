@@ -646,6 +646,34 @@ def test_force_saves_what_was_recovered(tmp_path, capsys):
     assert "did not verify" in err and "may be damaged" in err
 
 
+def test_force_saves_nothing_from_fewer_than_half_of_the_pages(twelve_pages, tmp_path, capsys):
+    source, _ = twelve_pages
+    base = _copy_pages(source, tmp_path)
+    for number in range(4, 13):  # three pages of twelve are left
+        (tmp_path / f"p_{number:04d}.png").unlink()
+    out = tmp_path / "out.bin"
+    assert main(["decode", str(base), "-o", str(out), "--force"]) == 1
+    assert not out.exists()
+    err = capsys.readouterr().err
+    assert "too many pages are missing to repair the file" in err
+    assert "missing pages 4, 5, 6, 7, 8, 9, 10, 11, 12" in err
+    assert "only 3 of 12 pages read. Scan pages 4, 5, 6, 7, 8, 9, 10, 11, 12 and decode" in err
+    assert "--force saves nothing from fewer than one page in 2." in err
+    assert "Saved anyway" not in err and "file verified" not in err
+
+
+def test_force_on_an_old_printout_says_it_does_nothing(a4_scan, tmp_path, capsys):
+    base, _ = a4_scan
+    plain, forced = tmp_path / "plain", tmp_path / "forced"
+    assert main(["decode", base, "-o", str(plain)]) == 0
+    assert "--force" not in capsys.readouterr().err
+    assert main(["decode", base, "-o", str(forced), "--force"]) == 0
+    assert "optar: --force has no effect on printouts from 0.2.0 or earlier" in (
+        capsys.readouterr().err
+    )
+    assert forced.read_bytes() == plain.read_bytes()
+
+
 def test_pages_of_another_document_are_ignored(tmp_path, capsys):
     src = _protected_input(tmp_path, 1, dots="xlarge")
     base = _encode_v1(tmp_path, src, "p", "--dots", "xlarge", "--protect", "standard")
