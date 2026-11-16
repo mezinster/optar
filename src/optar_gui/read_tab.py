@@ -18,6 +18,13 @@ Responsiveness.
   in the background, then hands the verdict back with
   ``Document.accept_verdict``. A job that fails is not retried for the same
   pages; the bar says the check failed.
+- A version-1 document is repaired and checked the same way: whenever the
+  document offers a ``RepairJob`` (``Document.repair_job``), the controller runs
+  it in the background, shows ``text.REPAIRING`` meanwhile, and hands the result
+  to ``Document.accept_repair`` (or the error to ``Document.fail_repair``, which
+  stops it being offered again for the same pages). Saving writes the repaired
+  file (``Document.chunks``), or, when the repair could not give the file, what
+  was recovered (``Document.salvage_bytes``) after the warning says so.
 - Saving streams ``Document.chunks()`` (a snapshot taken together with the
   warning, before the user confirms it) through ``optar.fileio.replacing`` in the background,
   so an existing file is untouched by a failed save and a large file never
@@ -95,7 +102,14 @@ from optar_gui.document import (
 )
 from optar_gui.jobs import JobRunner
 from optar_gui.preview import ScanPreview
-from optar_gui.work import Cancelled, ScanWork, native_path, process_scan, process_unlabelled
+from optar_gui.work import (
+    Cancelled,
+    ScanWork,
+    native_path,
+    process_scan,
+    process_unlabelled,
+    too_coarse,
+)
 
 __all__ = ["REFRESH_MS", "SHUTDOWN_MS", "ReadController", "ReadTab"]
 
@@ -107,6 +121,7 @@ SHUTDOWN_MS = 3000
 # Job ids on the controller's second runner (scan jobs use the scan ids).
 _VERDICT_JOB = 1
 _SAVE_JOB = 2
+_REPAIR_JOB = 3
 
 
 def _write_chunks(
@@ -176,6 +191,7 @@ class ReadController(QObject):
         self._summary = self._doc.summary()
         self._verdict_key: tuple | None = None  # what the running verdict job hashes
         self._verdict_error: tuple[tuple, str] | None = None  # (key, message) of a failed job
+        self._repair_key: tuple | None = None  # what the running repair job repairs
         self._save_path: str | None = None  # while a save runs
         self._save_stop = threading.Event()
         self._closed = False
@@ -205,8 +221,9 @@ class ReadController(QObject):
 
     @property
     def checking(self) -> bool:
-        """Whether a fingerprint check is running in the background."""
-        return self._verdict_key is not None
+        """Whether a fingerprint check, or a repair and check, is running in the
+        background."""
+        return self._verdict_key is not None or self._repair_key is not None
 
     @property
     def check_error(self) -> str:
@@ -215,8 +232,11 @@ class ReadController(QObject):
 
     def summary_text(self) -> str:
         """The bottom bar's text."""
-        if self._summary.state == DocState.CHECKING and self.check_error:
+        s = self._summary
+        if s.state == DocState.CHECKING and self.check_error:
             line = text.check_failed(self.check_error)
+        elif self._repair_key is not None and s.repair is None and s.state != DocState.WORKING:
+            line = text.REPAIRING
         else:
             line = text.summary_line(self._summary)
         return text.summary_bar(line, self.note)
@@ -227,7 +247,11 @@ class ReadController(QObject):
 
     @property
     def can_save(self) -> bool:
-        return self._doc.can_save and not self.saving and not self._closed
+        """Whether saving can start: the document has a file to save, or (a
+        version-1 document that could not be repaired) what was recovered."""
+        doc = self._doc
+        savable = doc.can_save or doc.salvage_bytes() is not None
+        return savable and not self.saving and not self._closed
 
     def work_for(self, scan_id: int, format: str | None = None) -> ScanWork | None:
         """The last processing result of a scan (its outcome is in the document): of
@@ -235,6 +259,19 @@ class ReadController(QObject):
         if format is not None and (scan_id, format) in self._works:
             return self._works[(scan_id, format)]
         return self._works.get((scan_id, None))
+
+    def scan_note(self, work: ScanWork | None) -> str | None:
+        """The note on a scan made too coarsely: for an identified page, too coarse
+        for its dots; for a scan found but not identified, too coarse for the
+        finest dots. None otherwise."""
+        if work is None:
+            return None
+        if work.info is not None:
+            if too_coarse(work.scan_dpi, work.layout):
+                return text.coarse_scan(work.scan_dpi, work.layout)
+        elif work.reason and too_coarse(work.scan_dpi, None, unreadable=True):
+            return text.coarse_scan(work.scan_dpi, None)
+        return None
 
     def save_warning(self) -> str | None:
         """What saving must confirm first, from an up-to-date summary."""
@@ -410,8 +447,13 @@ class ReadController(QObject):
     def snapshot(self) -> Iterator[bytes]:
         """The recovered file as it is now, for ``save``; later changes do not affect it.
 
-        Raises ValueError when no page has been decoded.
+        For a version-1 document that could not be repaired it is what was
+        recovered (``Document.salvage_bytes``), which may be wrong in parts: the
+        save warning says so. Raises ValueError when there is nothing to save.
         """
+        salvage = self._doc.salvage_bytes()
+        if salvage is not None:
+            return iter((salvage,))
         return self._doc.chunks()
 
     def save(self, path: str, chunks: Iterator[bytes] | None = None) -> None:
@@ -442,6 +484,7 @@ class ReadController(QObject):
         self._runner.cancel_all()  # every scan stops at its next check from now on
         self._previews.cancel_all()
         self._tasks.cancel(_VERDICT_JOB)  # the save ignores cancelling: see _write_chunks
+        self._tasks.cancel(_REPAIR_JOB)
 
         def left() -> int:
             return max(0, int((deadline - time.monotonic()) * 1000))
@@ -473,7 +516,9 @@ class ReadController(QObject):
             self._timer.start()
 
     def _safe_summary(self) -> Summary:
-        """The summary, never hashing here: a needed check runs in the background."""
+        """The summary, never hashing or repairing here: a needed check or repair
+        runs in the background."""
+        self._start_repair()
         job = self._doc.verdict_job()
         if job is None:
             self._verdict_error = None
@@ -485,6 +530,18 @@ class ReadController(QObject):
             self._verdict_key = job.key
             self._tasks.submit(_VERDICT_JOB, job)
         return self._doc.summary(verify=False)
+
+    def _start_repair(self) -> None:
+        """Runs the repair the document offers, unless it is running already. A
+        repair for other pages still running is cancelled: its result would be
+        ignored. The document offers no repair again once one failed for the same
+        pages, so nothing is retried."""
+        job = self._doc.repair_job()
+        if job is None or job.key == self._repair_key:
+            return
+        self._tasks.cancel(_REPAIR_JOB)
+        self._repair_key = job.key
+        self._tasks.submit(_REPAIR_JOB, job)
 
     # --- Background results ------------------------------------------------------
 
@@ -505,7 +562,8 @@ class ReadController(QObject):
             scan_id, fmt
         ) is None:
             # A decode for a document that failed keeps the preview of what was read.
-            self._works[(scan_id, fmt)] = dataclasses.replace(work, outcome=None)
+            # The page's data is in the document: it is not kept twice.
+            self._works[(scan_id, fmt)] = dataclasses.replace(work, outcome=None, payload=None)
         self._schedule()
         self._reported(scan_id, fmt)
         self._settle_pending(scan_id)
@@ -541,10 +599,15 @@ class ReadController(QObject):
             doc.set_unreadable(scan_id, work.reason)
             return
         doc.set_identified(scan_id, work.info)
-        if work.outcome is not None:
-            doc.set_outcome(scan_id, work.outcome)
-        else:
+        if work.outcome is None:
             doc.set_unreadable(scan_id, work.reason)
+            return
+        if work.header is not None and work.info.tag is None:  # a version-1 page
+            if work.payload is None:
+                doc.set_unreadable(scan_id, work.reason or text.NO_PAGE_DATA)
+                return
+            doc.set_payload(scan_id, work.payload)
+        doc.set_outcome(scan_id, work.outcome)
 
     def _on_failed(self, scan_id: int, message: str) -> None:
         fmt = self._decoding_in.pop(scan_id, None)
@@ -560,6 +623,11 @@ class ReadController(QObject):
         self._settle_pending(scan_id)
 
     def _on_task_finished(self, job: int, result: object) -> None:
+        if job == _REPAIR_JOB:
+            self._repair_key = None
+            self._doc.accept_repair(result)  # ignored unless for the pages in use
+            self._schedule(changed=False)  # a repair does not change the pages
+            return
         if job == _VERDICT_JOB:
             self._verdict_key = None
             self._doc.accept_verdict(result)
@@ -571,6 +639,12 @@ class ReadController(QObject):
         self.save_finished.emit(path, result)
 
     def _on_task_failed(self, job: int, message: str) -> None:
+        if job == _REPAIR_JOB:
+            key, self._repair_key = self._repair_key, None
+            if key is not None:
+                self._doc.fail_repair(key, message)  # not offered again for these pages
+            self._schedule(changed=False)
+            return
         if job == _VERDICT_JOB:
             if self._verdict_key is not None:
                 self._verdict_error = (self._verdict_key, message)  # not retried
@@ -860,16 +934,25 @@ class ReadTab(QWidget):
                     work = self.controller.work_for(page.scan_id, doc.current.format)
                     name = os.path.basename(scan_path)
                 lines = text.detail_text(page, name, len(self._pages))
+                note = self.controller.scan_note(work)
+                if note is not None:
+                    lines = (*lines, note)
             elif kind == Row.SPARE and actions.use_spare is not None:
                 scan_path = doc.scan(key).path
                 work = self.controller.work_for(key, doc.current.format)
                 lines = text.spare_detail(
                     doc.page_with(key), os.path.basename(scan_path), len(self._pages)
                 )
+                note = self.controller.scan_note(work)
+                if note is not None:
+                    lines = (*lines, note)
             elif kind == Row.OTHER:
                 lines = text.other_group_detail(self._others[key])
             elif kind == Row.UNREADABLE:
                 lines = text.unreadable_detail(doc.scan(key))
+                note = self.controller.scan_note(self.controller.work_for(key))
+                if note is not None:
+                    lines = (*lines, note)
         self.detail.setText("\n".join(lines))
         if work is not None:
             self.preview.show_scan(scan_path, work.rotation, work.marks)

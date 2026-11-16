@@ -501,3 +501,127 @@ def test_too_large_gives_the_reason_and_the_limit():
     assert "protect" in protect and "at most 1,343 pages" in protect
     pages = text.too_large(TOO_MANY_PAGES, 9_999)
     assert "protect" not in pages and "at most 9,999 pages" in pages
+
+
+# --- Version-1 documents and coarse scans -----------------------------------------
+
+JARGON = ("parity", "codeword", "container", "header")
+
+
+def unwrapped(**kw):
+    from optar.container import Unwrapped
+
+    fields = dict(
+        data=b"file", best_effort=b"file", name="doc.bin", verified=True,
+        repaired_bytes=1234, worst_used=18, budget=32, failed=0, page_damage={}, missing=(),
+    )
+    fields.update(kw)
+    return Unwrapped(**fields)
+
+
+def plain(message):
+    assert not any(word in message.lower() for word in JARGON), message
+    return message
+
+
+def test_coarse_scan_for_a_known_page():
+    from optar import get_layout
+
+    large = get_layout("a4", "large")
+    message = plain(text.coarse_scan(286.4, large))
+    assert "about 290 dpi" in message and "300 dpi" in message
+    assert plain(text.coarse_scan(196, get_layout("a4"))) == (
+        "Scanned too coarsely for this page: about 200 dpi. Scan it at 600 dpi."
+    )
+
+
+def test_coarse_scan_of_an_unreadable_scan_lists_every_dot_size():
+    message = plain(text.coarse_scan(203.0, None))
+    assert "about 200 dpi" in message
+    for name, dpi in (("Standard", 600), ("Medium", 450), ("Big", 360), ("Large", 300),
+                      ("Extra large", 200)):
+        assert f"{name} dots {dpi}" in message or f"{name} {dpi}" in message, name
+
+
+def test_repair_line_states_bytes_repaired_and_the_worst_use():
+    line = plain(text.repair_line(unwrapped()))
+    assert "1,234 bytes" in line and "18 of 32" in line
+    assert "1 byte " in plain(text.repair_line(unwrapped(repaired_bytes=1)))
+    over = plain(text.repair_line(unwrapped(data=None, verified=False, worst_used=33, failed=4)))
+    assert "33 of 32" in over and "too much" in over
+    # Whatever it says, it never claims the file is right: only the fingerprint does.
+    for u in (unwrapped(), unwrapped(verified=False, failed=0, worst_used=0)):
+        assert "verified" not in text.repair_line(u).lower()
+        assert "correct" not in text.repair_line(u).lower()
+
+
+def test_repair_line_without_protection():
+    line = plain(text.repair_line(unwrapped(budget=0, worst_used=0, repaired_bytes=0)))
+    assert "of 0" not in line and "without protection" in line
+    failed = unwrapped(budget=0, worst_used=1, failed=3, data=None, verified=False)
+    assert "without protection" in plain(text.repair_line(failed))
+
+
+def test_rescan_advice_names_the_most_damaged_pages():
+    u = unwrapped(data=None, verified=False, failed=5, worst_used=40,
+                  page_damage={1: 5, 2: 50, 3: 20, 4: 10, 6: 20})
+    advice = plain(text.rescan_advice(u))
+    assert "pages 2, 3 and 6" in advice  # most damage first, ties by page
+    assert "page 4" not in advice and "page 1" not in advice
+    one = plain(text.rescan_advice(unwrapped(data=None, page_damage={7: 3})))
+    assert "rescan page 7" in one
+
+
+def test_rescan_advice_asks_for_missing_pages_first():
+    u = unwrapped(data=None, verified=False, failed=9, worst_used=99,
+                  page_damage={3: 400, 4: 400, 5: 12}, missing=(3, 4))
+    advice = plain(text.rescan_advice(u))
+    assert "pages 3 and 4" in advice and "rescan page 5" in advice
+    assert advice.index("pages 3 and 4") < advice.index("page 5")
+    assert plain(text.rescan_advice(unwrapped(data=None)))  # nothing to name: still says it
+
+
+def v1_summary(state, repair=None, missing_pages=(), error="", protection=32):
+    return S(state, 3, 0, 0, 0, len(missing_pages), 49119, protection, missing_pages,
+             repair, error)
+
+
+def test_summary_line_of_version1_documents():
+    u = unwrapped()
+    assert text.summary_line(v1_summary(D.VERIFIED, u)) == (
+        f"Verified · 49,119 bytes · {text.repair_line(u)}"
+    )
+    recoverable = plain(text.summary_line(v1_summary(D.RECOVERABLE, u, (3,))))
+    assert recoverable.startswith("Recoverable: page 3 missing")
+    assert text.repair_line(u) in recoverable
+    waiting = plain(text.summary_line(v1_summary(D.RECOVERABLE, None, (3, 7))))
+    assert waiting.startswith("Recoverable: pages 3 and 7 missing")
+    assert "verified" not in waiting.lower()
+    bad = unwrapped(data=None, verified=False, failed=2, worst_used=40, page_damage={2: 9})
+    failed = plain(text.summary_line(v1_summary(D.INCOMPLETE, bad)))
+    assert text.rescan_advice(bad) in failed and "verified" not in failed.lower()
+    mismatch = unwrapped(verified=False)
+    assert text.summary_line(v1_summary(D.MISMATCH, mismatch)).startswith(
+        "Does not match the fingerprint on the paper"
+    )
+    error = text.summary_line(v1_summary(D.INCOMPLETE, None, error="ValueError: <b>x</b>"))
+    assert error == text.repair_failed("ValueError: <b>x</b>")
+    assert "<b>x</b>" in error
+
+
+def test_missing_pages_are_named_in_runs_and_counted_past_ten():
+    line = text.summary_line(v1_summary(D.RECOVERABLE, None, (2, 3, 4, 7, 8, 12)))
+    assert line.startswith("Recoverable: pages 2-4, 7, 8 and 12 missing")
+    many = text.summary_line(v1_summary(D.RECOVERABLE, None, tuple(range(1, 40, 2))))
+    assert "pages 1, 3, 5, 7, 9, 11, 13, 15, 17, 19 and 10 more missing" in many
+
+
+def test_repairing_and_paper_names_of_version1_documents():
+    from optar import get_layout
+
+    plain(text.REPAIRING)
+    assert text.paper_name(get_layout("a4", "large").fmt.to_string()) == "A4, Large dots"
+    assert text.paper_name(get_layout("letter", "xlarge").fmt.to_string()) == (
+        "US Letter, Extra large dots"
+    )
+    assert text.paper_name(A) == "A4"

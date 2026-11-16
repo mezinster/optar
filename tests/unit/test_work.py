@@ -20,9 +20,11 @@ from PIL import Image
 
 import optar.container
 import optar.encoder
+import optar.errors
+import optar.identify
 import optar_gui.work as work
 from optar import DOT_SIZES, PAPERS, PARITY, PageFormat, encode, get_layout
-from optar.container import pages_promised, plan, wrap
+from optar.container import pages_promised, plan, read_header, wrap
 from optar.decoder import PageGrid
 from optar.encoder import page_count
 from optar.errors import DecodeError, OptarError
@@ -39,7 +41,7 @@ from optar_gui.work import (
     process_scan,
     process_unlabelled,
 )
-from tests.helpers import fake_scan, parse_pdf, save_scan, seeded_bytes
+from tests.helpers import fake_scan, parse_pdf, save_scan, seeded_bytes, simulate_scan
 
 A4 = PageFormat.for_paper(PAPERS["a4"])
 NAME = "doc.tar"
@@ -263,6 +265,7 @@ class FakeStages:
 
         class Identity:
             fmt, rotation, page, total, name, tag, grid = A4, 0, 1, 2, NAME, None, object()
+            header = payload = result = layout = scan_dpi = None
 
         return Identity()
 
@@ -305,6 +308,83 @@ def test_process_scan_cancelled_for_real(tmp_path):
     path = write(tmp_path, "p1.png", fake_scan(pages[0].pixels, scale=1))
     with pytest.raises(Cancelled):
         process_scan(path, lambda: True)
+
+
+# --- process_scan of version-1 pages and coarse scans ------------------------------
+
+
+def test_process_scan_version1_page_is_decoded_once(tmp_path, monkeypatch):
+    layout = get_layout("a4", "large")
+    fmt = layout.fmt
+    data = seeded_bytes(31, 30_000)
+    stream = wrap(data, "doc.bin", fmt, PARITY["standard"])
+    (page,) = encode(stream, fmt, "doc.bin")
+    path = write(tmp_path, "large.png", simulate_scan(page.pixels, layout, 300))
+    calls = []
+
+    def counted(real):
+        def decode(*args, **kwargs):
+            calls.append(1)
+            return real(*args, **kwargs)
+
+        return decode
+
+    monkeypatch.setattr(work, "decode_located", counted(work.decode_located))
+    monkeypatch.setattr(
+        optar.identify, "decode_located", counted(optar.identify.decode_located)
+    )
+    w = process_scan(path)
+    assert len(calls) == 1
+    assert w.reason == "" and w.outcome is not None
+    header = read_header(stream[: fmt.net_bits // 8])
+    assert w.header == header and w.info.header == header
+    assert (w.info.page, w.info.total, w.info.tag) == (1, 1, None)
+    assert w.info.format == fmt.to_string()
+    assert w.payload is not None and w.payload.data == w.outcome.data
+    assert len(w.payload.data) == fmt.net_bits // 8
+    assert w.layout is layout
+    assert w.scan_dpi == pytest.approx(300, rel=0.05)
+    assert not work.too_coarse(w.scan_dpi, w.layout)
+
+
+def test_process_scan_of_a_coarse_standard_page_says_so(tmp_path):
+    _, pages = document()
+    std = get_layout("a4")
+    path = write(tmp_path, "coarse.png", simulate_scan(pages[0].pixels, std, 200))
+    w = process_scan(path)
+    assert w.info is None and w.outcome is None
+    assert w.scan_dpi == pytest.approx(200, rel=0.10)
+    assert w.reason == "label unreadable"  # the window adds the note (ReadController)
+    assert work.too_coarse(w.scan_dpi, None, unreadable=True)
+    note = text.coarse_scan(w.scan_dpi, None)
+    assert "200" in note and "600" in note
+    assert w.payload is None and w.header is None
+
+
+def test_too_coarse_is_below_two_scan_pixels_per_dot():
+    large = get_layout("a4", "large")  # printed at 100 dots per inch
+    assert work.too_coarse(199.9, large)
+    assert not work.too_coarse(200, large)
+    assert not work.too_coarse(None, large) and not work.too_coarse(150, None)
+    # Unreadable scans are judged by the finest dots: twice 200 dots per inch.
+    assert work.too_coarse(399, None, unreadable=True)
+    assert not work.too_coarse(400, None, unreadable=True)
+    assert not work.too_coarse(None, None, unreadable=True)
+
+
+def test_process_scan_of_an_unreadable_scan_carries_its_resolution(monkeypatch, tmp_path):
+    def coarse_or_not(dpi):
+        def identify(image):
+            raise optar.errors.IdentifyError("label unreadable", scan_dpi=dpi)
+
+        return identify
+
+    path = write(tmp_path, "blank.png", np.full((40, 30), 255, np.uint8))
+    monkeypatch.setattr(work, "identify_scan", coarse_or_not(600.0))
+    w = process_scan(path)
+    assert (w.reason, w.scan_dpi) == ("label unreadable", 600.0)
+    monkeypatch.setattr(work, "identify_scan", coarse_or_not(None))
+    assert process_scan(path).reason == "label unreadable"
 
 
 def reachable(root):

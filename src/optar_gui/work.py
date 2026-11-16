@@ -37,13 +37,22 @@ import numpy as np
 
 import optar.container
 import optar.encoder
-from optar.container import pages_promised, plan, plan_for, wrap
+from optar.container import Header, PagePayload, pages_promised, plan, plan_for, wrap
 from optar.decoder import PageResult, decode_located, page_to_scan
 from optar.encoder import check_encodable, encode, page_count
 from optar.errors import DecodeError, IdentifyError, OptarError
 from optar.fileio import io_error, replacing
 from optar.font import FIRST_CHAR, GLYPH_CELLS, label_text
-from optar.format import DOT_SIZES, PAPERS, PARITY, PageFormat, get_layout, get_paper
+from optar.format import (
+    DOT_SIZES,
+    LAYOUTS,
+    PAPERS,
+    PARITY,
+    Layout,
+    PageFormat,
+    get_layout,
+    get_paper,
+)
 from optar.identify import decode_unlabelled, identify_scan
 from optar.imageio import read_scan
 from optar.label import printed_label
@@ -58,6 +67,7 @@ __all__ = [
     "LARGE_SCAN_PIXELS",
     "Cancelled",
     "FileFacts",
+    "MIN_PIXELS_PER_DOT",
     "NamePreview",
     "PrintPlan",
     "ScanWork",
@@ -73,6 +83,7 @@ __all__ = [
     "process_unlabelled",
     "regular_file",
     "same_file",
+    "too_coarse",
 ]
 
 # The reason given when a page assigned by hand decodes badly in every rotation.
@@ -170,6 +181,11 @@ class ScanWork:
     (n, 2), pixel centres at integers) of every bit error correction changed,
     on the upright image, or None when the page was not decoded. ``size`` is
     the upright image's (width, height), (0, 0) when it could not be read.
+
+    ``payload`` is a version-1 page's payload (``header`` gives its header,
+    from ``info``); ``scan_dpi`` the scan's estimated resolution, also for a
+    scan that was found but not identified; ``layout`` the identified page's
+    paper and dot size.
     """
 
     info: ScanInfo | None
@@ -178,6 +194,34 @@ class ScanWork:
     rotation: int
     marks: np.ndarray | None
     size: tuple[int, int]
+    payload: PagePayload | None = None
+    scan_dpi: float | None = None
+    layout: Layout | None = None
+
+    @property
+    def header(self) -> Header | None:
+        """The version-1 header the page's data carries, or None."""
+        return self.info.header if self.info is not None else None
+
+
+# A scan with fewer pixels than this per printed dot is too coarse for its page:
+# it is still decoded and used if it reads, but its note says so.
+MIN_PIXELS_PER_DOT = 2
+
+
+def too_coarse(
+    scan_dpi: float | None, layout: Layout | None, *, unreadable: bool = False
+) -> bool:
+    """Whether a scan at ``scan_dpi`` has fewer than ``MIN_PIXELS_PER_DOT`` pixels
+    per dot of ``layout``. An ``unreadable`` scan has no layout: it is judged by
+    the finest dots there are. False when the resolution (or the layout of a
+    readable scan) is not known."""
+    if scan_dpi is None:
+        return False
+    if unreadable:
+        finest = max(float(lay.pixels_per_inch) for lay in LAYOUTS.values())
+        return scan_dpi < MIN_PIXELS_PER_DOT * finest
+    return layout is not None and scan_dpi < MIN_PIXELS_PER_DOT * float(layout.pixels_per_inch)
 
 
 def _upright_size(image: np.ndarray, rotation: int) -> tuple[int, int]:
@@ -210,8 +254,11 @@ def process_scan(path: str, cancelled: Callable[[], bool] = _never) -> ScanWork:
 
     An unreadable file comes back with ``info=None`` and the reading error as
     the reason; a scan that is not identified with ``info=None`` and the
-    reason "no page found" or "label unreadable"; an identified scan that
-    does not decode with its ``info``, no outcome and the decoder's message.
+    reason "no page found" or "label unreadable", with its ``scan_dpi`` when a
+    page outline gave one (see ``too_coarse``); an identified scan that does
+    not decode with its ``info``, no outcome and the decoder's message. A
+    version-1 page was decoded while it was identified: that decode is used,
+    not repeated, and its payload kept.
     Checks ``cancelled`` after loading, after identifying and after decoding, and
     while a large scan waits for its turn.
     """
@@ -227,35 +274,43 @@ def process_scan(path: str, cancelled: Callable[[], bool] = _never) -> ScanWork:
         try:
             identity = identify_scan(image)
         except IdentifyError as e:
-            return ScanWork(None, e.reason, None, 0, None, _upright_size(image, 0))
+            size = _upright_size(image, 0)
+            return ScanWork(None, e.reason, None, 0, None, size, scan_dpi=e.scan_dpi)
         except DecodeError as e:
             return ScanWork(None, str(e), None, 0, None, _upright_size(image, 0))
         rotation = identity.rotation
         size = _upright_size(image, rotation)
         del image
+        header, payload = identity.header, identity.payload
+        found = {"scan_dpi": identity.scan_dpi, "layout": identity.layout}
         info = ScanInfo(
             format=identity.fmt.to_string(),
             total=identity.total,
             page=identity.page,
             name=identity.name,
             tag=identity.tag,
+            header=header,
         )
-        grid = identity.grid
+        grid, result = identity.grid, identity.result
         del identity
         _check(cancelled)
-        try:
-            result = decode_located(grid, detail=True)
-        except DecodeError as e:
-            return ScanWork(info, str(e), None, rotation, None, size)
-        finally:
-            del grid
+        if header is None or payload is None or result is None:
+            payload = result = None
+            try:
+                result = decode_located(grid, detail=True)
+            except DecodeError as e:
+                return ScanWork(info, str(e), None, rotation, None, size, **found)
+            finally:
+                del grid
+        else:
+            del grid  # decoded already: identifying found the header in its data
     finally:
         if turn:
             _LARGE_SCAN_TURN.release()
     outcome, marks = _outcome(result)
     del result
     _check(cancelled)
-    return ScanWork(info, "", outcome, rotation, marks, size)
+    return ScanWork(info, "", outcome, rotation, marks, size, payload=payload, **found)
 
 
 def process_unlabelled(
