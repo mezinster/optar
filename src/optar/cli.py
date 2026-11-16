@@ -77,14 +77,17 @@ def _build_parser() -> argparse.ArgumentParser:
         "--dots",
         type=str.lower,
         choices=list(DOT_SIZES),
-        help="dot size; any but standard makes self-identifying pages (default: standard)",
+        help="dot size (default: standard). Any size but standard makes self-identifying "
+        "pages, protected at the standard level unless --protect says otherwise",
     )
     enc.add_argument(
         "--protect",
         type=str.lower,
         choices=list(PARITY),
-        help="parity spread over the whole document; makes self-identifying pages "
-        "(default: none, compatible pages)",
+        help="repair data spread over the whole document; makes self-identifying pages, "
+        "with standard dots unless --dots says otherwise. Use 'none' for self-identifying "
+        "pages without protection. Without --dots and --protect the pages are compatible "
+        "and unprotected",
     )
     enc.add_argument(
         "--compatible",
@@ -181,7 +184,8 @@ def _encode_protected(args: argparse.Namespace) -> int:
     """Version-1 pages: the file wrapped with page headers and parity."""
     layout = get_layout(args.paper, args.dots or "standard")
     fmt = layout.fmt
-    parity = PARITY[args.protect or "none"]
+    protection = args.protect or "standard"  # the window's default
+    parity = PARITY[protection]
     stored_name = os.path.basename(args.input)
     try:
         size = os.path.getsize(args.input)
@@ -215,15 +219,14 @@ def _encode_protected(args: argparse.Namespace) -> int:
     for item in written:
         _eprint(f"wrote {item}")
     _after_encoding(layout)
-    if parity:
-        lose = pages_promised(document)
-        if lose:
-            _eprint(
-                f"Protection: can lose {_plural(lose, 'page')} of {document.total} "
-                "and still recover the file."
-            )
-        else:
-            _eprint("Protection: repairs damage within pages; it cannot make up for a lost page.")
+    lose = pages_promised(document)
+    if not parity:
+        effect = "nothing is repaired; a lost or damaged page loses part of the file."
+    elif lose:
+        effect = f"can lose {_plural(lose, 'page')} of {document.total} and still recover the file."
+    else:
+        effect = "repairs damage within pages; it cannot make up for a lost page."
+    _eprint(f"Protection {protection}: {effect}")
     return 0
 
 

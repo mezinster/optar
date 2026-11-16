@@ -640,6 +640,50 @@ def test_dots_alone_selects_the_container_and_pdf_uses_its_scale(tmp_path, infil
         assert im.info["dpi"][0] == pytest.approx(float(layout.pixels_per_inch), abs=0.01)
 
 
+def _written_document(tmp_path, base):
+    """(page files, header of page 1, layout) of PNG pages written as BASE_NNNN.png."""
+    from optar.identify import identify_scan
+    from optar.imageio import read_scan
+
+    files = sorted(tmp_path.glob(f"{base}_*.png"))
+    ident = identify_scan(read_scan(files[0]))
+    assert ident.header is not None
+    return files, ident.header, ident.layout
+
+
+@pytest.mark.parametrize(
+    "extra,parity", [([], 32), (["--protect", "none"], 0), (["--protect", "high"], 64)]
+)
+def test_dot_size_alone_protects_at_standard(tmp_path, capsys, extra, parity):
+    from optar.container import plan
+    from optar.format import get_layout
+
+    # Fills two pages without parity, so parity needs more pages.
+    src = _protected_input(tmp_path, 2, dots="large", parity="none")
+    _encode_v1(tmp_path, src, "p", "--dots", "large", *extra)
+    files, header, layout = _written_document(tmp_path, "p")
+    fmt = get_layout("a4", "large").fmt
+    assert layout.dots.name == "large"
+    assert header.parity == parity
+    assert len(files) == header.total == plan(src.stat().st_size, src.name, fmt, parity).total
+    assert (header.total == 2) == (parity == 0)
+    name = {0: "none", 32: "standard", 64: "high"}[parity]
+    assert f"Protection {name}:" in capsys.readouterr().err
+
+
+def test_protect_alone_uses_standard_dots(tmp_path, infile, capsys):
+    from optar.format import get_layout
+
+    _encode_v1(tmp_path, infile, "p", "--protect", "high")
+    files, header, layout = _written_document(tmp_path, "p")
+    standard = get_layout("a4", "standard")
+    assert layout == standard and header.parity == 64 and len(files) == 1
+    with Image.open(files[0]) as im:
+        assert im.size == (standard.fmt.width, standard.fmt.height)
+    err = capsys.readouterr().err
+    assert "Scan at 600 dpi" in err and "Protection high:" in err
+
+
 def test_compatible_and_dots_standard_are_the_default(tmp_path, infile):
     runs = {"a": [], "b": ["--compatible"], "c": ["--dots", "standard"]}
     for folder, extra in runs.items():
