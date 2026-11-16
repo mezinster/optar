@@ -229,6 +229,8 @@ def test_create_pdf_round_trips_through_the_reading_tab(qtbot, make_tab, tmp_pat
     try:
         controller.add_paths(paths)
         assert controller.runner.wait_idle(DECODE_TIMEOUT)
+        controller.refresh()  # starts the fingerprint check in the background
+        qtbot.waitUntil(lambda: not controller.checking, timeout=TIMEOUT)
         controller.refresh()
         assert controller.summary.state == DocState.VERIFIED
         assert controller.document.assemble() == data

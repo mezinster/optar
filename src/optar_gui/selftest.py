@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import os
 import tempfile
+import time
 
 import numpy as np
 
@@ -58,6 +59,23 @@ def _report(name: str, ok: bool) -> bool:
     return ok
 
 
+def _wait_checked(controller, deadline: float) -> bool:
+    """Process events until the controller's fingerprint check has delivered.
+
+    The check runs in the background; False if it is still running at
+    ``deadline`` (a ``time.monotonic()`` value).
+    """
+    from PySide6.QtCore import QCoreApplication, QEventLoop
+
+    while controller.checking:
+        if time.monotonic() >= deadline:
+            return False
+        QCoreApplication.processEvents(QEventLoop.ProcessEventsFlag.AllEvents, 50)
+        time.sleep(0.01)
+    QCoreApplication.processEvents()
+    return True
+
+
 def _checks(folder: str) -> bool:
     from optar_gui.read_tab import ReadController
 
@@ -77,8 +95,12 @@ def _checks(folder: str) -> bool:
     controller = ReadController()
     try:
         controller.add_paths(paths)
+        deadline = time.monotonic() + SELF_TEST_TIMEOUT_MS / 1000
         idle = controller.runner.wait_idle(SELF_TEST_TIMEOUT_MS)
+        controller.refresh()  # starts the fingerprint check of a complete document
+        checked = _wait_checked(controller, deadline)
         controller.refresh()
+        results.append(_report("checked the fingerprint", checked))
         doc = controller.document
         pages = doc.pages()
         good = idle and len(pages) == len(paths) and all(p.health == Health.GOOD for p in pages)
