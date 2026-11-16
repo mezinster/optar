@@ -23,7 +23,7 @@ Rules:
 - The decoder mirrors the C algorithm and its constants. Do not retune it without real scans.
 - Tests write only under pytest's `tmp_path`.
 - Runtime dependencies are numpy and Pillow only. No JPEG output.
-- GUI build (`optar-gui`, as in `.github/workflows/release.yml`; macOS uses `--windowed` without `--onefile`): `.venv/bin/pyinstaller --onefile --name optar-gui --collect-data optar packaging/gui_entry.py`.
+- GUI build (`optar-gui`, as in `.github/workflows/build.yml`, which the release workflow calls; macOS uses `--windowed` without `--onefile`): `.venv/bin/pyinstaller --onefile --name optar-gui --collect-data optar packaging/gui_entry.py`.
 - A `.py` edit is linted by the PostToolUse hook with `.venv/bin/ruff`.
 - Every page, whatever the dot size or protection, stays an ordinary version-0 optar page. `encode()` is not changed for the self-identifying (version 1) printouts: the container wraps the stream before it and unwraps it after.
 - A valid label tag wins over a header found in the data (a re-printed old stream must stay a 0.2.0 page).
