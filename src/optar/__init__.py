@@ -20,7 +20,19 @@ from optar.decoder import (  # noqa: E402
 from optar.encoder import Page, encode  # noqa: E402
 from optar.errors import DecodeError, FormatError, IdentifyError, OptarError  # noqa: E402
 from optar.fileio import replacing  # noqa: E402
-from optar.format import PAPERS, PageFormat, Paper, get_paper  # noqa: E402
+from optar.format import (  # noqa: E402
+    DOT_SIZES,
+    LAYOUTS,
+    PAPERS,
+    PARITY,
+    DotSize,
+    Layout,
+    PageFormat,
+    Paper,
+    get_layout,
+    get_paper,
+    layout_for_format,
+)
 from optar.identify import ScanIdentity, decode_unlabelled, identify_scan  # noqa: E402
 from optar.imageio import read_scan, write_pgm, write_png  # noqa: E402
 from optar.label import (  # noqa: E402
@@ -39,6 +51,13 @@ __all__ = [
     "Paper",
     "PAPERS",
     "get_paper",
+    "DotSize",
+    "DOT_SIZES",
+    "Layout",
+    "LAYOUTS",
+    "PARITY",
+    "get_layout",
+    "layout_for_format",
     "encode",
     "Page",
     "decode",
