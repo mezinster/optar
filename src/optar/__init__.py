@@ -3,6 +3,18 @@
 
 __version__ = "0.2.0"
 
+from optar.container import (  # noqa: E402
+    PROTECTED_MAX_BYTES,
+    Header,
+    Plan,
+    fingerprint,
+    pages_promised,
+    plan,
+    plan_for,
+    positions,
+    read_header,
+    wrap,
+)
 from optar.decoder import (  # noqa: E402
     BitPacker,
     DecodeOptions,
@@ -94,4 +106,14 @@ __all__ = [
     "decode_unlabelled",
     "ScanIdentity",
     "replacing",
+    "PROTECTED_MAX_BYTES",
+    "Header",
+    "Plan",
+    "fingerprint",
+    "pages_promised",
+    "plan",
+    "plan_for",
+    "positions",
+    "read_header",
+    "wrap",
 ]

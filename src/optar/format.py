@@ -237,10 +237,19 @@ DOT_SIZES: dict[str, DotSize] = {
 
 # Reed-Solomon parity bytes per codeword, and the container's fixed numbers.
 PARITY: dict[str, int] = {"none": 0, "standard": 32, "high": 64}
+HEADER_MAGIC = b"oPt1"
+CONTAINER_VERSION = 1
 HEADER_SIZE = 38
 HEADER_COPIES = 5
+FINGERPRINT_SIZE = 16
 SPREAD_STEP = 7919
 CODEWORD = 255
+NAME_MAX_BYTES = 255
+# Largest stream (pages times page bytes) of a document with parity.
+PROTECTED_MAX_BYTES = 256 * 1024 * 1024
+# The window promises a page can be lost only while it takes at most this
+# share of the parity bytes of a codeword.
+PROMISE_NUM, PROMISE_DEN = 3, 4
 
 # One printer device dot at 600 dpi, in points.
 _DEVICE_DOT_PT = POINTS_PER_INCH / 600

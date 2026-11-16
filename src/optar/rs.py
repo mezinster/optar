@@ -16,8 +16,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-# The codeword length; format.CODEWORD is the home of this number.
-_N = 255
+from optar.format import CODEWORD as _N
 
 # exp[k] = alpha^k for 0 <= k < 510; log[0] is a sentinel so that any sum of
 # logs involving zero lands in the zero tail of exp.
