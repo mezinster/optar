@@ -7,6 +7,7 @@ each file's result remembered by path. The tests about responsiveness, closing
 and removing while working use ``process_scan`` itself.
 """
 
+import dataclasses
 import os
 import shutil
 import threading
@@ -433,6 +434,86 @@ def test_save_writes_what_the_warning_described(qtbot, make_tab, printouts, tmp_
     assert target.read_bytes() == before  # not the damaged page shown since
 
 
+def test_save_untagged_document_confirms_and_pads(qtbot, make_tab, printouts, tmp_path):
+    data, paths = printouts["untagged"]
+    tab = make_tab()
+    tab.controller.add_paths(paths)
+    wait_settled(qtbot, tab)
+    target = tmp_path / "old.tar"
+    asked = []
+    tab.ask_save_path = lambda suggested: asked.append(suggested) or str(target)
+    tab.show_error = lambda message: pytest.fail(message)
+    warnings = []
+    tab.confirm = lambda message: warnings.append(message) or True
+    tab.save_button.click()
+    assert warnings == [
+        "These pages carry no tag, so the file cannot be verified and will be "
+        "padded with zeros to a whole page."
+    ]
+    assert asked == ["old.tar"]
+    qtbot.waitUntil(lambda: not tab.controller.saving, timeout=TIMEOUT)
+    saved = target.read_bytes()
+    page = tab.controller.document.page_bytes
+    assert len(saved) == 2 * page > len(data)  # padded to whole pages
+    assert saved[: len(data)] == data and saved[len(data):] == bytes(2 * page - len(data))
+
+
+def test_save_document_that_does_not_match_confirms(qtbot, make_tab, printouts, tmp_path):
+    data, paths = printouts["two"]
+    wrong = make_tag(seeded_bytes(99, len(data)))  # same size, another fingerprint
+
+    def mislabelled(path, cancelled=lambda: False):
+        work = cached_process(path, cancelled)
+        return dataclasses.replace(work, info=dataclasses.replace(work.info, tag=wrong))
+
+    tab = make_tab(process=mislabelled)
+    tab.controller.add_paths(paths)
+    wait_settled(qtbot, tab)
+    assert tab.controller.summary.state == DocState.MISMATCH
+    target = tmp_path / "doc.tar"
+    tab.ask_save_path = lambda suggested: str(target)
+    tab.show_error = lambda message: pytest.fail(message)
+    warnings = []
+    tab.confirm = lambda message: warnings.append(message) or False
+    tab.save_button.click()
+    assert warnings == [
+        "The recovered file does not match the fingerprint printed on the paper: "
+        "some data was decoded wrongly, so this is not the original file."
+    ]
+    assert not target.exists() and not tab.controller.saving
+    tab.confirm = lambda message: warnings.append(message) or True
+    tab.save_button.click()
+    qtbot.waitUntil(lambda: not tab.controller.saving, timeout=TIMEOUT)
+    assert len(warnings) == 2 and target.read_bytes() == data
+
+
+def test_a_save_still_running_when_closing_runs_out_of_time_leaves_no_file(
+    qtbot, make_tab, printouts, tmp_path, monkeypatch
+):
+    _, paths = printouts["two"]
+    tab = make_tab()
+    tab.controller.add_paths(paths)
+    wait_settled(qtbot, tab)
+    target = tmp_path / "doc.tar"
+    target.write_bytes(b"precious")
+    real_chunks = Document.chunks
+    gate = threading.Event()
+
+    def stuck_chunks(self):
+        chunks = real_chunks(self)
+        yield next(chunks)  # written; the next one is late
+        gate.wait(TIMEOUT / 1000)
+        yield from chunks
+
+    monkeypatch.setattr(Document, "chunks", stuck_chunks)
+    tab.controller.save(str(target))
+    qtbot.waitUntil(lambda: len(list(tmp_path.iterdir())) == 2, timeout=TIMEOUT)  # temp file
+    assert not tab.controller.shutdown(300)  # the budget runs out: the save is told to stop
+    gate.set()
+    qtbot.waitUntil(lambda: [p.name for p in tmp_path.iterdir()] == ["doc.tar"], timeout=TIMEOUT)
+    assert target.read_bytes() == b"precious"
+
+
 @pytest.mark.skipif(os.name != "posix" or os.geteuid() == 0, reason="needs file permissions")
 def test_save_failure_shows_error_and_keeps_existing_file(
     qtbot, make_tab, printouts, tmp_path
@@ -631,11 +712,17 @@ def test_closing_while_working_stops_cleanly(qtbot, printouts, monkeypatch):
         assert dialogs == []
         assert not [w for w in QApplication.topLevelWidgets()
                     if isinstance(w, QMessageBox) and w.isVisible()]
-        refreshes = controller.refreshes
+        results = []
+        controller.runner.finished.connect(lambda *args: results.append(args))
+        controller.runner.failed.connect(lambda *args: results.append(args))
+        states = [(s.id, s.state, s.info, s.outcome) for s in controller.document.scans()]
         # The running decodes really stop: each checks ``cancelled`` between its
         # stages, so all of them return within one stage's time.
         assert controller.shutdown(30_000)
-        assert controller.refreshes == refreshes  # nothing arrived after closing
+        qtbot.wait(200)  # a result delivered late would arrive now
+        assert results == []  # nothing arrived after closing
+        assert [(s.id, s.state, s.info, s.outcome)
+                for s in controller.document.scans()] == states  # fmt: skip
     finally:
         controller.shutdown(TIMEOUT)
 
