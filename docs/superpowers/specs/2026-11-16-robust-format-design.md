@@ -139,7 +139,7 @@ The body is the file, followed by a short record with the file's name, followed 
 | Standard | 14% | up to 6% in any codeword | 12.5% |
 | High | 34% | up to 12.5% in any codeword | 25% |
 
-Those limits leave nothing for scan errors, so the window promises less. It states that pages can be lost ("can lose 1 page of 12") only when the lost pages take at most three quarters of the known-places budget (24 of 32 bytes, 48 of 64): one page is promised from 11 pages up with Standard and from 6 pages up with High. Below that the window says only that damage within pages is repaired. A document may still recover beyond the promise; the promise is what the window states in advance.
+Those limits leave nothing for scan errors, so the window promises less. It states that pages can be lost ("can lose 1 page of 12") only when the lost pages take at most three quarters of the known-places budget (24 of 32 bytes, 48 of 64): one page is promised from 12 pages up with Standard and from 6 pages up with High (one byte of the budget is kept for a page that straddles slice boundaries). Below that the window says only that damage within pages is repaired. A document may still recover beyond the promise; the promise is what the window states in advance.
 
 **Protection None** still uses the container (header, true size, fingerprint, name) with no parity. It is the only way a larger-dot page can identify itself.
 
@@ -226,7 +226,7 @@ What the owner's scanner app produces is not known beyond the first three scans 
 - **Medium dots, Standard protection,** at 300 dpi: must pass; at 200 dpi the result is recorded.
 - **A lost page:** a document of 12 pages or more with one page left out shows Verified.
 
-Scans that fail go into `tests/scans/`, and the work is not done until they read or the claim is withdrawn.
+Scans that fail are kept by the owner outside the repository (owner's decision: real scans are not committed); they are measured in place, and the work is not done until they read or the claim is withdrawn.
 
 ## Risks
 
