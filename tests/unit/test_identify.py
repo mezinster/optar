@@ -1,4 +1,6 @@
 # (c) GPL 2007 Karel 'Clock' Kulhavy, Twibright Labs; Python port 2026
+import os
+import pathlib
 import re
 from functools import cache
 from unittest import mock
@@ -7,7 +9,8 @@ import numpy as np
 import pytest
 
 import optar.identify
-from optar import PAPERS, PageFormat, encode
+from optar import DOT_SIZES, LAYOUTS, PAPERS, PARITY, PageFormat, encode, get_layout
+from optar.container import Header, plan_for, read_header, wrap
 from optar.decoder import DecodeOptions, PageResult, PageStats, locate_page
 from optar.encoder import MAX_PAGES, blank_page
 from optar.errors import DecodeError, IdentifyError
@@ -17,6 +20,7 @@ from optar.identify import (
     candidate_rotations,
     decode_unlabelled,
     identify_scan,
+    scan_dpi,
 )
 from optar.imageio import read_scan
 from optar.label import (
@@ -28,7 +32,7 @@ from optar.label import (
     read_label,
 )
 from optar.tag import Tag, damaged_tag, make_tag, split_label, tagged_label
-from tests.helpers import DEGRADED, fake_scan, save_scan, seeded_bytes
+from tests.helpers import DEGRADED, fake_scan, save_scan, seeded_bytes, simulate_scan
 from tests.unit import test_label as label_tests
 
 
@@ -725,3 +729,227 @@ def test_decode_unlabelled_reraises_the_last_error(monkeypatch):
         decode_unlabelled(marked, PageFormat.for_paper(PAPERS["a4"]))
     # A fresh error: nothing chains back to the caught one and its traceback.
     assert e.value.__cause__ is None and e.value.__context__ is None
+
+
+# ---- version-1 pages: identified from the header in their data -----------------
+
+PROTECT = PARITY["standard"]
+
+
+@cache
+def wrapped(paper, dots, pages=2):
+    """A version-1 document of `pages` pages: (layout, data, stream, page images)."""
+    layout = get_layout(paper, dots)
+    fmt = layout.fmt
+    one = plan_for(1, fmt, PROTECT).data_bytes
+    data = seeded_bytes(11, (pages - 1) * one + one // 2)
+    stream = wrap(data, "doc.bin", fmt, PROTECT)
+    images = tuple(p.pixels for p in encode(stream, fmt, "doc.bin"))
+    assert len(images) == pages
+    return layout, data, stream, images
+
+
+@cache
+def simulated(paper, dots, dpi, turns, page=2, blur=1.0):
+    layout, _, _, images = wrapped(paper, dots)
+    img = simulate_scan(images[page - 1], layout, dpi, blur=blur, quarter_turns=turns, seed=page)
+    img.flags.writeable = False
+    return img
+
+
+def check_version1(ident, paper, dots, turns, dpi, page=2, total=2):
+    layout, data, _, _ = wrapped(paper, dots)
+    assert isinstance(ident, ScanIdentity)
+    assert ident.layout is layout and ident.layout.dots.name == dots
+    assert ident.paper is PAPERS[paper] and ident.fmt == layout.fmt
+    assert ident.rotation == turns
+    assert (ident.page, ident.total, ident.tag) == (page, total, None)
+    assert ident.header is not None
+    assert (ident.header.page, ident.header.total) == (page, total)
+    assert ident.header.size == len(data) and ident.header.parity == PROTECT
+    assert ident.payload is not None and len(ident.payload.data) == layout.fmt.net_bits // 8
+    assert read_header(ident.payload.data) == ident.header
+    assert ident.result is not None and ident.result.lost_symbols is not None
+    assert ident.grid is ident.result.grid
+    assert ident.scan_dpi == pytest.approx(dpi, rel=0.05)
+
+
+DEFAULT_V1 = {("large", 0), ("large", 3), ("xlarge", 1), ("xlarge", 2)}
+V1_CASES = {"large": ("a4", 300), "xlarge": ("letter", 200)}
+
+
+@pytest.mark.parametrize("dots,turns", [
+    pytest.param(d, t, marks=() if (d, t) in DEFAULT_V1 else pytest.mark.slow)
+    for d in V1_CASES for t in range(4)
+])
+def test_identifies_version1_page_from_its_header(dots, turns):
+    paper, dpi = V1_CASES[dots]
+    ident = identify_scan(simulated(paper, dots, dpi, turns))
+    check_version1(ident, paper, dots, turns, dpi)
+
+
+def test_version1_name_is_the_labels_free_text():
+    ident = identify_scan(simulated("a4", "large", 300, 0))
+    assert ident.name == "doc.bin"
+    # An extra-large label cannot hold its format string, so it never parses.
+    assert identify_scan(simulated("letter", "xlarge", 200, 1)).name == ""
+
+
+def test_standard_version1_page():
+    layout, data, _, images = wrapped("a4", "standard")
+    ident = identify_scan(simulate_scan(images[1], layout, 600, seed=3))
+    check_version1(ident, "a4", "standard", 0, 600)
+
+
+@pytest.mark.parametrize("turns", [0, 2])
+def test_tagged_page_has_no_header(turns):
+    ident, _ = identified("a4", turns)
+    check_identity(ident, "a4", turns)
+    assert ident.header is None and ident.payload is None and ident.result is None
+    assert ident.layout is get_layout("a4", "standard")
+    # fake_scan's scale 2 is two scan pixels per page pixel: 400 dpi.
+    assert ident.scan_dpi == pytest.approx(400, rel=0.02)
+
+
+def test_untagged_page_has_no_header():
+    fmt = PageFormat.for_paper(PAPERS["letter"])
+    ident = identify_scan(fake_scan(next(encode(b"abc", fmt, "x.tar")).pixels, scale=1, margin=40))
+    assert (ident.tag, ident.name, ident.header) == (None, "x.tar", None)
+    assert ident.layout is get_layout("letter", "standard")
+
+
+def test_reprinted_stream_is_identified_by_its_tag():
+    # The stream of a version-1 document, saved by an old tool and printed
+    # again as a 0.2.0 page: its data starts with a valid header.
+    layout, _, stream, _ = wrapped("a4", "standard")
+    fmt = layout.fmt
+    assert read_header(stream[: fmt.net_bits // 8]) is not None
+    tag = make_tag(stream)
+    pages = list(encode(stream, fmt, lambda p, t: tagged_label(tag, "old.bin", p, t)))
+    ident = identify_scan(fake_scan(pages[0].pixels, scale=2, margin=50))
+    assert (ident.page, ident.total, ident.tag, ident.name) == (1, len(pages), tag, "old.bin")
+    assert ident.header is None and ident.payload is None
+
+
+def header_candidates(img, layout, rotations=(0, 2)):
+    """_identify_header for `layout` in each rotation of an upright scan."""
+    out = []
+    for rotation in rotations:
+        upright_img = np.ascontiguousarray(np.rot90(img, rotation))
+        out.append(optar.identify._identify_header(upright_img, rotation, layout, None))
+    return out
+
+
+@pytest.mark.parametrize("dots,other,dpi", [("large", "xlarge", 300), ("medium", "big", 300),
+                                            ("big", "medium", 200)])
+def test_page_is_never_identified_as_another_layout(dots, other, dpi):
+    img = simulate_scan(wrapped("a4", dots)[3][0], get_layout("a4", dots), dpi, blur=1.8)
+    assert header_candidates(img, get_layout("a4", other)) == [None, None]
+    # The header is the guard, not the grid check: a wrong grid that the
+    # check let through still yields no header.
+    with mock.patch.object(optar.identify, "_regular", lambda grid: True):
+        assert header_candidates(img, get_layout("a4", other)) == [None, None]
+    assert header_candidates(img, get_layout("a4", dots), (0,))[0] is not None
+    assert identify_scan(img).layout is get_layout("a4", dots)
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("dots", list(DOT_SIZES))
+def test_no_other_layout_gives_a_header(dots):
+    layout = get_layout("a4", dots)
+    img = simulate_scan(wrapped("a4", dots)[3][0], layout, layout.scan_dpi)
+    with mock.patch.object(optar.identify, "_regular", lambda grid: True):
+        for other in LAYOUTS.values():
+            if other is not layout:
+                assert header_candidates(img, other) == [None, None], other
+
+
+def test_regular_grid_check():
+    big = get_layout("a4", "big")
+    img = simulate_scan(wrapped("a4", "big")[3][0], big, 200, blur=1.8)
+    assert optar.identify._regular(locate_page(img, big.fmt))
+    for dots in ("standard", "medium", "large"):
+        assert not optar.identify._regular(locate_page(img, get_layout("a4", dots).fmt))
+
+
+@pytest.mark.parametrize("paper,dots", [("a4", "large"), ("letter", "xlarge")])
+def test_only_layouts_of_the_outlines_shape_are_decoded(paper, dots):
+    # Every dot size of the page's paper is near its outline's shape, so none
+    # is ruled out by shape alone; no layout of the other paper is.
+    corners = optar.identify._outline(simulated(paper, dots, V1_CASES[dots][1], 0))
+    near = optar.identify._layouts_by_shape(corners, PAPERS[paper])
+    assert {lay.dots.name for lay in near} == set(DOT_SIZES)
+    other = next(p for p in PAPERS.values() if p is not PAPERS[paper])
+    assert optar.identify._layouts_by_shape(corners, other) == []
+
+
+def test_scan_dpi_of_a_grid():
+    img = simulated("a4", "large", 300, 0)
+    layout = get_layout("a4", "large")
+    assert scan_dpi(locate_page(img, layout.fmt), layout) == pytest.approx(300, rel=0.02)
+    std = get_layout("a4", "standard")
+    _, img = scan_of("a4", scale=3)
+    assert scan_dpi(locate_page(img, std.fmt), std) == pytest.approx(600, rel=0.02)
+
+
+def test_coarse_standard_page_reports_its_resolution():
+    std = get_layout("a4", "standard")
+    _, _, pages = document("a4")
+    with pytest.raises(IdentifyError) as e:
+        identify_scan(simulate_scan(pages[0].pixels, std, 200))
+    assert e.value.reason == "label unreadable"
+    assert e.value.scan_dpi == pytest.approx(200, rel=0.10)
+
+
+def test_no_page_has_no_resolution():
+    with pytest.raises(IdentifyError) as e:
+        identify_scan(np.full((900, 700), 255, np.uint8))
+    assert e.value.scan_dpi is None
+    assert IdentifyError("label unreadable").scan_dpi is None
+    assert IdentifyError("label unreadable", scan_dpi=212.5).scan_dpi == 212.5
+
+
+def photo_like(seed=2, shape=(2400, 1700)):
+    """Smooth blobs of every grey, more like a photograph than like noise."""
+    from PIL import Image, ImageFilter
+
+    rng = np.random.default_rng(seed)
+    small = Image.fromarray(rng.integers(0, 256, (shape[0] // 40, shape[1] // 40), np.uint8))
+    big = small.resize((shape[1], shape[0]), Image.Resampling.BICUBIC)
+    return np.asarray(big.filter(ImageFilter.GaussianBlur(6)), np.uint8).copy()
+
+
+def test_photo_like_image_is_not_a_page():
+    with pytest.raises(IdentifyError) as e:
+        identify_scan(photo_like())
+    assert e.value.reason in ("no page found", "label unreadable")
+
+
+def header_of(page=1, total=2, size=1000, parity=PROTECT):
+    return Header(page=page, total=total, size=size, fingerprint=bytes(16), parity=parity)
+
+
+def test_header_must_describe_a_document_that_fits():
+    fmt = get_layout("a4", "large").fmt
+    room = plan_for(2, fmt, PROTECT).data_bytes
+    fits = optar.identify._header_fits
+    assert fits(header_of(size=room - 1), fmt)
+    assert not fits(header_of(size=room), fmt)  # no room for the name length
+    assert not fits(header_of(page=3), fmt)
+    assert not fits(header_of(page=0), fmt)
+    assert not fits(header_of(total=MAX_PAGES + 1), fmt)
+    assert not fits(header_of(parity=7), fmt)
+    tiny = PageFormat(xcrosses=3, ycrosses=3)
+    assert not fits(header_of(size=0), tiny)  # too small for the container
+
+
+@pytest.mark.skipif(not os.environ.get("OPTAR_REAL_SCANS"), reason="OPTAR_REAL_SCANS not set")
+def test_real_coarse_scans_report_their_resolution():
+    # A local check against scans kept outside the repository: Standard-dot
+    # pages scanned at 300 dpi, which do not decode.
+    scans = sorted(pathlib.Path(os.environ["OPTAR_REAL_SCANS"]).glob("*.png"))
+    assert scans
+    for path in scans:
+        with pytest.raises(IdentifyError) as e:
+            identify_scan(read_scan(path))
+        assert 270 <= e.value.scan_dpi <= 330

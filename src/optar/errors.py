@@ -25,9 +25,14 @@ class IdentifyError(DecodeError):
 
     `reason` is "no page found" (no page outline in any orientation) or
     "label unreadable" (a page was found, but no orientation and paper gave
-    a label that reads, parses and agrees with itself).
+    a label that reads, parses and agrees with itself, nor a version-1
+    header in its data).
+
+    `scan_dpi` is the scan's resolution estimated from the page outline, or
+    None when no outline was found.
     """
 
-    def __init__(self, reason: str) -> None:
+    def __init__(self, reason: str, scan_dpi: float | None = None) -> None:
         super().__init__(reason)
         self.reason = reason
+        self.scan_dpi = scan_dpi
