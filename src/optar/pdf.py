@@ -1,5 +1,9 @@
 # (c) GPL 2007 Karel 'Clock' Kulhavy, Twibright Labs; Python port 2026
-"""Print-ready PDF writer: one 1-bit Flate image per page at 200 pixels per inch."""
+"""Print-ready PDF writer: one 1-bit Flate image per page.
+
+The image is placed at the dot size of its layout: 200 pixels per inch for a
+Paper (standard dots), the Layout's own pixels_per_inch otherwise.
+"""
 
 import contextlib
 import os
@@ -9,29 +13,46 @@ from collections.abc import Iterable
 import numpy as np
 
 from optar.errors import FormatError, OptarError
-from optar.format import MIN_MARGIN_PT, PIXELS_PER_INCH, POINTS_PER_INCH, Paper
+from optar.format import MIN_MARGIN_PT, PIXELS_PER_INCH, POINTS_PER_INCH, Layout, Paper
 
 _CATALOG = 1
 _PAGES = 2
 
 
-def _check_page(image, paper: Paper) -> np.ndarray:
+def _placement(target: Paper | Layout) -> tuple[Paper, float, float, float]:
+    """The paper, the image offsets in points and the pixels per inch for a target."""
+    if isinstance(target, Layout):
+        return target.paper, target.offset_x_pt, target.offset_y_pt, float(target.pixels_per_inch)
+    return target, target.offset_x_pt, target.offset_y_pt, PIXELS_PER_INCH
+
+
+def _check_page(image, target: Paper | Layout) -> np.ndarray:
     if not isinstance(image, np.ndarray) or image.dtype != np.uint8:
         kind = f"dtype {image.dtype}" if isinstance(image, np.ndarray) else type(image).__name__
         raise TypeError(f"page must be a uint8 numpy array, got {kind}")
     if image.ndim != 2 or image.size == 0:
         raise ValueError(f"page must be a non-empty 2-D image, got shape {image.shape}")
     height, width = image.shape
-    if not paper.fits_image(width, height):
+    if isinstance(target, Layout):
+        fmt = target.fmt
+        if (width, height) != (fmt.width, fmt.height):
+            raise FormatError(
+                f"a {width} x {height} pixel page is not the {fmt.width} x {fmt.height} "
+                f"pixel page of the {target.dots.name} dot layout on {target.paper.name} paper"
+            )
+    elif not target.fits_image(width, height):
         raise FormatError(
             f"a {width} x {height} pixel page leaves less than the {MIN_MARGIN_PT:g} pt "
-            f"margin on {paper.name} paper and would be clipped by the printer"
+            f"margin on {target.name} paper and would be clipped by the printer"
         )
     return image
 
 
-def write_pdf(path, pages: Iterable[np.ndarray], paper: Paper) -> int:
+def write_pdf(path, pages: Iterable[np.ndarray], paper: Paper | Layout) -> int:
     """Write each page image (0 black / 255 white) as one PDF page; return the count.
+
+    A Paper means its standard layout at 200 pixels per inch; a Layout places
+    the page at its own offsets and dot size and refuses any other image size.
 
     Pages are consumed lazily and written as they arrive. The file is created
     only once the first page has arrived and passed its checks, and it is
@@ -39,8 +60,9 @@ def write_pdf(path, pages: Iterable[np.ndarray], paper: Paper) -> int:
 
     Raises OptarError if there are no pages, TypeError for a page that is not
     a uint8 numpy array, ValueError for one that is not a non-empty 2-D image,
-    and FormatError (a ValueError) for one that would leave less than
-    MIN_MARGIN_PT on any side of the paper.
+    and FormatError (a ValueError) for one that, with a Paper, would leave
+    less than MIN_MARGIN_PT on any side of the paper or, with a Layout, is not
+    exactly the size of the layout's page.
     """
     pages = iter(pages)
     first = next(pages, None)
@@ -57,14 +79,15 @@ def write_pdf(path, pages: Iterable[np.ndarray], paper: Paper) -> int:
         raise
 
 
-def _write(f, first: np.ndarray, rest, paper: Paper) -> int:
+def _write(f, first: np.ndarray, rest, target: Paper | Layout) -> int:
+    paper, x, y, ppi = _placement(target)
     offsets: dict[int, int] = {}
     kids: list[int] = []
 
     def all_pages():
         yield first
         for image in rest:
-            yield _check_page(image, paper)
+            yield _check_page(image, target)
 
     def emit(num: int, body: bytes) -> None:
         offsets[num] = f.tell()
@@ -81,9 +104,8 @@ def _write(f, first: np.ndarray, rest, paper: Paper) -> int:
     for image in all_pages():
         height, width = image.shape
         page_n, content_n, image_n = 3 + 3 * count, 4 + 3 * count, 5 + 3 * count
-        w = width * POINTS_PER_INCH / PIXELS_PER_INCH
-        h = height * POINTS_PER_INCH / PIXELS_PER_INCH
-        x, y = paper.offset_x_pt, paper.offset_y_pt
+        w = width * POINTS_PER_INCH / ppi
+        h = height * POINTS_PER_INCH / ppi
         content = f"q {w:.2f} 0 0 {h:.2f} {x:.2f} {y:.2f} cm /Im0 Do Q".encode()
         packed = np.packbits(image > 127, axis=1).tobytes()
         emit(

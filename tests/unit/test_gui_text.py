@@ -477,3 +477,209 @@ def test_replace_rejected_never_gives_an_empty_reason():
         message = text.replace_rejected(2, fit, ScanView(4, "/x/new.png", "done", None, None, ""))
         assert ". ." not in message and not message.endswith(": .")
         assert "could not be read" in message
+
+
+def test_putting_on_paper_choices_and_summary():
+    assert text.dot_size_label("xlarge", 200) == "Extra large (scan at 200 dpi)"
+    assert text.dot_size_label("standard", 600) == "Standard (scan at 600 dpi)"
+    assert [text.protection_label(p) for p in ("none", "standard", "high")] == [
+        "None", "Standard", "High"]
+    assert text.print_summary(12, 2_000_000, 1, True) == (
+        "12 pages · 2,000,000 bytes · can lose 1 page of 12")
+    assert text.print_summary(40, 9_000_000, 3, True).endswith(" · can lose 3 pages of 40")
+    assert text.print_summary(1, 10, 0, True) == f"1 page · 10 bytes · {text.DAMAGE_REPAIRED}"
+    assert text.DAMAGE_REPAIRED.endswith("losing a whole page loses the file")
+    assert "C tool" not in text.COMPATIBLE and "0.2" in text.COMPATIBLE
+    assert text.print_summary(0, 0, 0, False) == "1 page · 0 bytes"
+    for words in (text.DOTS_FIELD, text.PROTECT_FIELD, text.COMPATIBLE, text.DAMAGE_REPAIRED,
+                  text.print_summary(12, 1, 1, True)):
+        assert "parity" not in words.lower() and "container" not in words.lower()
+
+
+def test_too_large_gives_the_reason_and_the_limit():
+    from optar_gui.work import TOO_LARGE_TO_PROTECT, TOO_MANY_PAGES
+
+    protect = text.too_large(TOO_LARGE_TO_PROTECT, 1_343)
+    assert "protect" in protect and "at most 1,343 pages" in protect
+    pages = text.too_large(TOO_MANY_PAGES, 9_999)
+    assert "protect" not in pages and "at most 9,999 pages" in pages
+    assert "It fits" not in protect and "It fits" not in pages  # nothing else would take it
+    assert (TOO_MANY_PAGES, TOO_LARGE_TO_PROTECT) == (
+        text.TOO_MANY_PAGES, text.TOO_LARGE_TO_PROTECT)
+
+
+def test_too_large_names_the_choices_that_would_take_the_file():
+    base = text.too_large(text.TOO_LARGE_TO_PROTECT, 1_343)
+    assert text.too_large(text.TOO_LARGE_TO_PROTECT, 1_343, True) == (
+        f"{base} It fits without protection.")
+    pages = text.too_large(text.TOO_MANY_PAGES, 9_999)
+    assert text.too_large(text.TOO_MANY_PAGES, 9_999, False, "big") == (
+        f"{pages} It fits with Big dots.")
+    assert text.too_large(text.TOO_MANY_PAGES, 9_999, True, "medium") == (
+        f"{pages} It fits without protection, or with Medium dots.")
+
+
+def test_name_warning_of_pages_that_identify_themselves():
+    old = text.name_warning("é", True)
+    assert old == (
+        "These characters are not in the label font and are not printed: é. The name is "
+        "too long for the page and is cut. The printed name is what identifies the pages later."
+    )
+    new = text.name_warning("é", True, stored=True)
+    assert new.startswith(old[: old.index(" The printed name")])
+    assert new.endswith("The pages do not need it: the full name is kept with the file.")
+    assert "identifies" not in new
+    none = text.name_warning("é", True, stored=True, printed=False)
+    assert none == (
+        "The label of this dot size has no room for the name, so it is not printed. "
+        "The pages do not need it: the full name is kept with the file."
+    )
+    assert text.name_warning("", False, stored=True) is None
+    assert text.name_warning("", False, stored=True, printed=False) is None
+    # A name of characters the font lacks prints nothing either, for that reason.
+    assert text.name_warning("от", False, stored=True, printed=False) == (
+        "These characters are not in the label font and are not printed: о т. "
+        "The pages do not need it: the full name is kept with the file."
+    )
+
+
+# --- Version-1 documents and coarse scans -----------------------------------------
+
+JARGON = ("parity", "codeword", "container", "header")
+
+
+def unwrapped(**kw):
+    from optar.container import Unwrapped
+
+    fields = dict(
+        data=b"file", best_effort=b"file", name="doc.bin", verified=True,
+        repaired_bytes=1234, worst_used=18, budget=32, failed=0, page_damage={}, missing=(),
+    )
+    fields.update(kw)
+    return Unwrapped(**fields)
+
+
+def plain(message):
+    assert not any(word in message.lower() for word in JARGON), message
+    return message
+
+
+def test_coarse_scan_for_a_known_page():
+    from optar import get_layout
+
+    large = get_layout("a4", "large")
+    message = plain(text.coarse_scan(286.4, large))
+    assert "about 290 dpi" in message and "300 dpi" in message
+    assert plain(text.coarse_scan(196, get_layout("a4"))) == (
+        "Scanned too coarsely for this page: about 200 dpi. Scan it at 600 dpi."
+    )
+
+
+def test_coarse_scan_of_an_unreadable_scan_lists_every_dot_size():
+    message = plain(text.coarse_scan(203.0, None))
+    assert message == (
+        "Scanned at about 200 dpi, which is too coarse to read. Scan at 600 dpi for "
+        "Standard dots, 450 Medium, 360 Big, 300 Large, 200 Extra large."
+    )
+    assert "page" not in message  # any image with an outline gets an estimate
+
+
+def test_repair_line_states_bytes_repaired_and_the_worst_use():
+    line = plain(text.repair_line(unwrapped()))
+    assert "1,234 bytes" in line and "18 of 32" in line
+    assert "1 byte " in plain(text.repair_line(unwrapped(repaired_bytes=1)))
+    over = plain(text.repair_line(unwrapped(data=None, verified=False, worst_used=33, failed=4)))
+    assert "33 of 32" in over and "too much" in over
+    # Whatever it says, it never claims the file is right: only the fingerprint does.
+    for u in (unwrapped(), unwrapped(verified=False, failed=0, worst_used=0)):
+        assert "verified" not in text.repair_line(u).lower()
+        assert "correct" not in text.repair_line(u).lower()
+
+
+def test_repair_line_without_protection():
+    line = plain(text.repair_line(unwrapped(budget=0, worst_used=0, repaired_bytes=0)))
+    assert "of 0" not in line and "without protection" in line
+    failed = unwrapped(budget=0, worst_used=1, failed=3, data=None, verified=False)
+    assert "without protection" in plain(text.repair_line(failed))
+
+
+def test_rescan_advice_names_the_most_damaged_pages():
+    u = unwrapped(data=None, verified=False, failed=5, worst_used=40,
+                  page_damage={1: 5, 2: 50, 3: 20, 4: 10, 6: 20})
+    advice = plain(text.rescan_advice(u))
+    assert "pages 2, 3 and 6" in advice  # most damage first, ties by page
+    assert "page 4" not in advice and "page 1" not in advice
+    one = plain(text.rescan_advice(unwrapped(data=None, page_damage={7: 3})))
+    assert "rescan page 7" in one
+
+
+def test_rescan_advice_asks_for_missing_pages_first():
+    u = unwrapped(data=None, verified=False, failed=9, worst_used=99,
+                  page_damage={3: 400, 4: 400, 5: 12}, missing=(3, 4))
+    advice = plain(text.rescan_advice(u))
+    assert "pages 3 and 4" in advice and "rescan page 5" in advice
+    assert advice.index("pages 3 and 4") < advice.index("page 5")
+    assert plain(text.rescan_advice(unwrapped(data=None)))  # nothing to name: still says it
+
+
+def v1_summary(state, repair=None, missing_pages=(), error="", protection=32):
+    return S(state, 3, 0, 0, 0, len(missing_pages), 49119, protection, missing_pages,
+             repair, error)
+
+
+def test_summary_line_of_version1_documents():
+    u = unwrapped()
+    assert text.summary_line(v1_summary(D.VERIFIED, u)) == (
+        f"Verified · 49,119 bytes · {text.repair_line(u)}"
+    )
+    recoverable = plain(text.summary_line(v1_summary(D.RECOVERABLE, u, (3,))))
+    assert recoverable.startswith("Recoverable: page 3 missing")
+    assert text.repair_line(u) in recoverable
+    waiting = plain(text.summary_line(v1_summary(D.RECOVERABLE, None, (3, 7))))
+    assert waiting.startswith("Recoverable: pages 3 and 7 missing")
+    assert "verified" not in waiting.lower()
+    bad = unwrapped(data=None, verified=False, failed=2, worst_used=40, page_damage={2: 9})
+    failed = plain(text.summary_line(v1_summary(D.INCOMPLETE, bad)))
+    assert text.rescan_advice(bad) in failed and "verified" not in failed.lower()
+    mismatch = unwrapped(verified=False)
+    assert text.summary_line(v1_summary(D.MISMATCH, mismatch)).startswith(
+        "Does not match the fingerprint on the paper"
+    )
+    error = text.summary_line(v1_summary(D.INCOMPLETE, None, error="ValueError: <b>x</b>"))
+    assert error == text.repair_failed("ValueError: <b>x</b>")
+    assert "<b>x</b>" in error
+
+
+def test_save_warning_of_a_version1_document_is_about_what_its_repair_gave():
+    # A further scan may be being read (the state is then WORKING) while the
+    # result for the pages in use stands: saving writes that result.
+    doc = Document()
+    bad = unwrapped(data=None, verified=False, failed=2, worst_used=40, page_damage={2: 9})
+    for state in (D.INCOMPLETE, D.WORKING):
+        warning = text.save_warning(doc, v1_summary(state, bad))
+        assert warning.startswith(text.rescan_advice(bad))
+        assert "could not be fully repaired" in warning
+        assert warning.endswith("may contain wrong parts.")
+    for state in (D.VERIFIED, D.RECOVERABLE, D.WORKING):
+        assert text.save_warning(doc, v1_summary(state, unwrapped())) is None
+    for state in (D.MISMATCH, D.WORKING):
+        warning = text.save_warning(doc, v1_summary(state, unwrapped(verified=False)))
+        assert warning.startswith("The recovered file does not match the fingerprint")
+
+
+def test_missing_pages_are_named_in_runs_and_counted_past_ten():
+    line = text.summary_line(v1_summary(D.RECOVERABLE, None, (2, 3, 4, 7, 8, 12)))
+    assert line.startswith("Recoverable: pages 2-4, 7, 8 and 12 missing")
+    many = text.summary_line(v1_summary(D.RECOVERABLE, None, tuple(range(1, 40, 2))))
+    assert "pages 1, 3, 5, 7, 9, 11, 13, 15, 17, 19 and 10 more missing" in many
+
+
+def test_repairing_and_paper_names_of_version1_documents():
+    from optar import get_layout
+
+    plain(text.REPAIRING)
+    assert text.paper_name(get_layout("a4", "large").fmt.to_string()) == "A4, Large dots"
+    assert text.paper_name(get_layout("letter", "xlarge").fmt.to_string()) == (
+        "US Letter, Extra large dots"
+    )
+    assert text.paper_name(A) == "A4"

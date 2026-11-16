@@ -13,8 +13,11 @@ import sys
 import time
 import tracemalloc
 
+import numpy as np
 import pytest
 
+from optar.container import PagePayload, plan, plan_for, read_header, wrap
+from optar.format import get_layout
 from optar.tag import Tag, make_tag
 from optar_gui.document import (
     FORMAT_MISMATCH,
@@ -2114,3 +2117,488 @@ def test_page_in_current():
     assert (doc.page_in_current(a), doc.page_in_current(bad)) == (1, None)
     doc.assign_page(bad, 3)
     assert doc.page_in_current(bad) == 3
+
+
+# --- Version-1 documents ----------------------------------------------------------
+
+XL = get_layout("a4", "xlarge").fmt  # small pages keep these tests fast
+XL_FORMAT = XL.to_string()
+XL_BYTES = XL.net_bits // 8
+
+
+def v1_pages(pages=None, parity=32, name="v1.bin", size=None, seed=0):
+    """(file, payload by page) of a file wrapped with ``wrap``; with ``pages`` and no
+    ``size``, the largest file that takes exactly that many pages."""
+    if size is None:
+        size = plan_for(pages, XL, parity).data_bytes - 1 - len(name.encode())
+    data = random.Random(f"v1-{seed}-{size}").randbytes(size)
+    stream = wrap(data, name, XL, parity)
+    total = plan(len(data), name, XL, parity).total
+    assert pages is None or total == pages
+    bits = np.unpackbits(np.frombuffer(stream, dtype=np.uint8))
+    payloads = {}
+    for n in range(1, total + 1):
+        start = (n - 1) * XL.net_bits
+        raw = np.packbits(bits[start : start + XL_BYTES * 8]).tobytes()
+        payloads[n] = PagePayload(raw, np.zeros(XL_BYTES, dtype=bool))
+    return data, payloads
+
+
+def erased(payload, count, start=1000):
+    """The payload with ``count`` bytes from ``start`` marked erased (data kept)."""
+    mask = np.zeros(len(payload.data), dtype=bool)
+    mask[start : start + count] = True
+    return PagePayload(payload.data, mask)
+
+
+def v1_info(payload, label_name="v1.bin"):
+    header = read_header(payload.data)
+    assert header is not None
+    return ScanInfo(XL_FORMAT, header.total, header.page, label_name, None, header=header)
+
+
+def add_v1(doc, n, payload, corrected=0, label_name="v1.bin"):
+    """Adds, identifies and decodes a version-1 scan; returns its id."""
+    scan_id = add(doc, n)
+    doc.set_identified(scan_id, v1_info(payload, label_name))
+    doc.set_payload(scan_id, payload)
+    lost = int(np.count_nonzero(payload.erased))
+    doc.set_outcome(scan_id, PageOutcome(payload.data, (1000, corrected, 0, 0), lost))
+    return scan_id
+
+
+def v1_document(payloads, skip=(), label_name="v1.bin"):
+    doc = Document()
+    ids = {
+        n: add_v1(doc, f"p{n}", p, label_name=label_name)
+        for n, p in payloads.items()
+        if n not in skip
+    }
+    return doc, ids
+
+
+def repaired(doc):
+    """Runs the offered repair job and accepts its result; returns the result."""
+    job = doc.repair_job()
+    assert job is not None
+    repair = job()
+    doc.accept_repair(repair)
+    return repair.result
+
+
+def test_version1_pages_in_any_order_make_a_document_that_verifies():
+    data, payloads = v1_pages(3)
+    doc = Document()
+    p3 = add_v1(doc, "c", payloads[3])
+    p1 = add_v1(doc, "a", payloads[1])
+    assert doc.summary().state == DocState.INCOMPLETE
+    assert doc.summary().missing_pages == (2,)
+    p2 = add_v1(doc, "b", payloads[2])
+    assert [s.scan_id for s in doc.slots()] == [p1, p2, p3]
+    assert doc.current.total == 3 and doc.current.format == XL_FORMAT
+    assert doc.current.tag is None and doc.current.header is not None
+    s = doc.summary()
+    assert s.state == DocState.CHECKING  # complete, repair not run yet
+    assert (s.protection, s.missing_pages, s.repair, s.size) == (32, (), None, len(data))
+    assert not doc.can_save and doc.save_bytes() is None
+    assert doc.verdict_job() is None
+    result = repaired(doc)
+    assert result.verified
+    s = doc.summary()
+    assert s.state == DocState.VERIFIED and s.repair is result
+    assert counts(s) == (3, 0, 0, 0, 0)
+    assert doc.can_save and doc.save_bytes() == data
+    assert doc.salvage_bytes() is None
+    assert doc.assemble() == data
+    assert doc.repair_job() is None  # nothing changed since
+
+
+def test_version1_page_count_and_number_come_from_the_header():
+    data, payloads = v1_pages(3)
+    doc = Document()
+    scan_id = add(doc, "x")
+    label = v1_info(payloads[2])
+    doc.set_identified(scan_id, ScanInfo(XL_FORMAT, 0, 0, "", None, header=label.header))
+    assert doc.scan(scan_id).info.page == 2 and doc.scan(scan_id).info.total == 3
+    assert doc.slots()[1].scan_id == scan_id
+
+
+def test_version1_scan_is_working_until_it_has_its_payload_and_its_outcome():
+    data, payloads = v1_pages(1)
+    doc = Document()
+    a = add(doc, "a")
+    doc.set_identified(a, v1_info(payloads[1]))
+    doc.set_outcome(a, PageOutcome(payloads[1].data, (1000, 0, 0, 0), 0))
+    assert doc.scan(a).state == ScanState.WORKING
+    assert doc.summary().state == DocState.WORKING and doc.repair_job() is None
+    doc.set_payload(a, payloads[1])
+    assert doc.scan(a).state == ScanState.DONE
+    b = add(doc, "b")
+    doc.set_identified(b, v1_info(payloads[1]))
+    doc.set_payload(b, payloads[1])
+    assert doc.scan(b).state == ScanState.WORKING
+
+
+def test_version1_lost_page_within_the_promise_is_recoverable():
+    data, payloads = v1_pages(12)
+    doc, _ = v1_document(payloads, skip=(7,))
+    s = doc.summary()
+    assert s.state == DocState.RECOVERABLE
+    assert s.missing_pages == (7,) and s.missing == 1 and s.repair is None
+    assert not doc.can_save
+    result = repaired(doc)
+    assert result.verified and result.missing == (7,)
+    s = doc.summary()
+    assert s.state == DocState.RECOVERABLE and s.repair.verified
+    assert doc.can_save and doc.save_bytes() == data
+
+
+def test_version1_recoverable_document_whose_repair_fails_is_incomplete():
+    data, payloads = v1_pages(12)
+    payloads[8] = erased(payloads[8], XL_BYTES, start=0)  # read, but every byte erased
+    doc, _ = v1_document(payloads, skip=(7,))
+    assert doc.summary().state == DocState.RECOVERABLE
+    result = repaired(doc)
+    assert not result.verified and result.data is None
+    s = doc.summary()
+    assert s.state == DocState.INCOMPLETE and s.missing_pages == (7,)
+    assert not doc.can_save and doc.save_bytes() is None
+    assert doc.salvage_bytes() == result.best_effort
+
+
+def test_version1_too_many_pages_missing_is_incomplete():
+    data, payloads = v1_pages(3)
+    doc, _ = v1_document(payloads, skip=(2,))
+    assert doc.summary().state == DocState.INCOMPLETE
+    assert doc.repair_job() is not None  # a page is present: repairing is offered
+    result = repaired(doc)
+    assert not result.verified
+    s = doc.summary()
+    assert s.state == DocState.INCOMPLETE
+    assert s.repair is result and s.repair.page_damage
+    assert not doc.can_save and doc.save_bytes() is None
+    assert doc.salvage_bytes() == result.best_effort and len(result.best_effort) == len(data)
+
+
+def test_fewer_than_half_of_the_pages_leave_nothing_to_save():
+    data, payloads = v1_pages(12)
+    doc, ids = v1_document(payloads, skip=(2, 4, 5, 7, 9, 10, 11))  # five of twelve
+    result = repaired(doc)
+    assert result.data is None and result.best_effort is None
+    s = doc.summary()
+    assert s.state == DocState.INCOMPLETE and s.repair is result
+    assert doc.salvage_bytes() is None and not doc.can_save_anyway
+    with pytest.raises(ValueError):
+        doc.save_chunks()
+    assert doc.repair_job() is None  # the result stands until the pages change
+    add_v1(doc, "p7", payloads[7])  # half of them: what was recovered can be saved
+    result = repaired(doc)
+    assert result.data is None and len(result.best_effort) == len(data)
+    assert doc.can_save_anyway and doc.salvage_bytes() == result.best_effort
+
+
+@pytest.mark.parametrize("parity", [0, 32])
+def test_one_page_claiming_a_huge_document_is_cheap_to_refuse(parity):
+    # A hostile or damaged page: the repair must not lay out the document it claims.
+    from optar.container import Header
+    from optar.encoder import MAX_PAGES
+
+    size = plan_for(MAX_PAGES, XL, parity).data_bytes - 1
+    packed = Header(3, MAX_PAGES, size, bytes(16), parity).pack()
+    raw = bytearray(XL_BYTES)
+    for copy in range(5):
+        start = copy * (XL_BYTES // 5)
+        raw[start : start + len(packed)] = packed
+    payload = PagePayload(bytes(raw), np.zeros(XL_BYTES, dtype=bool))
+    doc = Document()
+    add_v1(doc, "hostile", payload)
+    assert doc.current.total == MAX_PAGES and doc.summary().state == DocState.INCOMPLETE
+    job = doc.repair_job()
+    assert job is not None
+    tracemalloc.start()
+    started = time.perf_counter()
+    try:
+        repair = job()
+        seconds = time.perf_counter() - started
+        peak = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+    assert seconds < 1.0 and peak < 40 * 1024 * 1024, (seconds, peak)
+    doc.accept_repair(repair)
+    s = doc.summary()
+    assert s.state == DocState.INCOMPLETE and s.repair.data is None
+    assert not doc.can_save and not doc.can_save_anyway and doc.salvage_bytes() is None
+    assert doc.repair_job() is None
+
+
+def test_saving_is_offered_for_the_file_or_for_the_best_effort():
+    data, payloads = v1_pages(3)
+    doc, ids = v1_document(payloads, skip=(2,))
+    assert not doc.can_save_anyway  # not repaired yet: nothing to save
+    with pytest.raises(ValueError):
+        doc.save_chunks()
+    result = repaired(doc)
+    assert result.data is None and not doc.can_save
+    assert doc.can_save_anyway  # the best effort, after a warning
+    assert b"".join(doc.save_chunks()) == result.best_effort
+    doc.remove_scan(ids[1])  # other pages: that result no longer counts
+    assert not doc.can_save_anyway
+    full, _ = v1_document(payloads)
+    repaired(full)
+    assert full.can_save and full.can_save_anyway
+    assert b"".join(full.save_chunks()) == data
+    tagged = Document()
+    scan_id = tagged.add_scan("/scans/1.png")
+    tagged.set_identified(scan_id, ScanInfo("0-65-93-24-3-1-2-24", 1, 1, "x", None))
+    assert not tagged.can_save_anyway
+    tagged.set_outcome(scan_id, PageOutcome(b"abc", (10, 0, 0, 0), 0))
+    assert tagged.can_save_anyway and b"".join(tagged.save_chunks()) == b"abc"
+
+
+def test_version1_failed_repair_of_a_complete_document_reports_damage():
+    data, payloads = v1_pages(2, parity=0)
+    payloads[1] = erased(payloads[1], 40)
+    doc, _ = v1_document(payloads)
+    assert doc.summary().state == DocState.CHECKING
+    repaired(doc)
+    s = doc.summary()
+    assert s.state == DocState.INCOMPLETE and s.protection == 0
+    assert s.repair.page_damage.get(1, 0) > 0 and not s.repair.verified
+    assert not doc.can_save
+
+
+def test_version1_unverified_file_does_not_match():
+    from dataclasses import replace
+
+    data, payloads = v1_pages(2)
+    doc, _ = v1_document(payloads)
+    repair = doc.repair_job()()
+    # Stands in for a codeword miscorrected without being flagged.
+    wrong = replace(repair.result, data=b"wrong", best_effort=b"wrong", verified=False)
+    doc.accept_repair(replace(repair, result=wrong))
+    assert doc.summary().state == DocState.MISMATCH
+    assert doc.can_save and doc.save_bytes() == b"wrong"  # after the usual warning
+
+
+def test_version1_documents_of_two_protections_are_separate():
+    data, strong = v1_pages(parity=64, size=30000)
+    same, standard = v1_pages(parity=32, size=30000)
+    assert same == data
+    doc = Document()
+    s_ids = [add_v1(doc, f"s{n}", p) for n, p in standard.items()]
+    h_ids = [add_v1(doc, f"h{n}", p) for n, p in strong.items()]
+    assert doc.current.scan_ids == tuple(s_ids)
+    assert [s.scan_id for s in doc.slots()] == s_ids
+    assert [g.scan_ids for g in doc.others()] == [tuple(h_ids)]
+    assert doc.save_bytes() is None and repaired(doc).verified
+    assert doc.save_bytes() == data
+    doc.switch_to(doc.others()[0].key)
+    assert [s.scan_id for s in doc.slots()] == h_ids
+    assert doc.summary().protection == 64 and doc.summary().repair is None
+    assert repaired(doc).verified and doc.save_bytes() == data
+
+
+def test_version1_documents_of_two_dot_sizes_are_separate():
+    data, payloads = v1_pages(1)
+    doc = Document()
+    a = add_v1(doc, "a", payloads[1])
+    b = add(doc, "b")
+    i = v1_info(payloads[1])
+    doc.set_identified(b, ScanInfo("0-23-29-24-3-1-2-24", 1, 1, "v1.bin", None, header=i.header))
+    assert doc.current.scan_ids == (a,)
+    assert [g.scan_ids for g in doc.others()] == [(b,)]
+
+
+def test_tagged_and_version1_scans_of_one_file_are_separate():
+    data, payloads = v1_pages(1)
+    doc = Document()
+    tagged = add(doc, "t")
+    doc.set_identified(tagged, ScanInfo(XL_FORMAT, 1, 1, "v1.bin", make_tag(data)))
+    untagged = add(doc, "u")
+    doc.set_identified(untagged, ScanInfo(XL_FORMAT, 1, 1, "v1.bin", None))
+    v1 = add_v1(doc, "v", payloads[1])
+    assert doc.current.scan_ids == (tagged,)
+    assert [g.scan_ids for g in doc.others()] == [(untagged,), (v1,)]
+
+
+def test_version1_scan_with_fewer_erased_bytes_is_used_and_replacing_drops_the_result():
+    data, payloads = v1_pages(3)
+    doc = Document()
+    worse = add_v1(doc, "worse", erased(payloads[1], 50), corrected=0)
+    for n in (2, 3):
+        add_v1(doc, f"p{n}", payloads[n])
+    assert repaired(doc).verified and doc.summary().state == DocState.VERIFIED
+    # Fewer erased bytes beats fewer corrected bits.
+    better = add_v1(doc, "better", payloads[1], corrected=30)
+    assert doc.slots()[0] == PageSlot(1, better, (worse,))
+    assert doc.summary().repair is None and doc.summary().state == DocState.CHECKING
+    assert not doc.can_save
+    assert repaired(doc).verified
+    # On equal erasures, fewer corrected bits wins.
+    best = add_v1(doc, "best", payloads[1], corrected=3)
+    assert doc.slots()[0] == PageSlot(1, best, (better, worse))
+    assert doc.repair_job() is not None
+    # Choosing a spare by hand works as for tagged documents.
+    doc.use_scan(worse)
+    assert doc.slots()[0].scan_id == worse
+
+
+def test_version1_result_is_dropped_when_a_scan_in_use_is_removed():
+    data, payloads = v1_pages(3)
+    doc, ids = v1_document(payloads)
+    spare = add_v1(doc, "spare", erased(payloads[2], 10))
+    repaired(doc)
+    doc.remove_scan(spare)  # not in use: the result still stands
+    assert doc.summary().state == DocState.VERIFIED
+    doc.remove_scan(ids[3])
+    s = doc.summary()
+    assert s.repair is None and s.state == DocState.INCOMPLETE
+    assert doc.save_bytes() is None and doc.salvage_bytes() is None
+
+
+@pytest.mark.parametrize("read_between", [False, True])
+def test_version1_result_counts_again_when_its_pages_are_back_whether_or_not_read(
+    read_between,
+):
+    data, payloads = v1_pages(2)
+    doc, ids = v1_document({1: erased(payloads[1], 5), 2: payloads[2]})
+    result = repaired(doc)
+    better = add_v1(doc, "better", payloads[1])  # now page 1's scan in use
+    if read_between:
+        assert doc.summary().repair is None and doc.repair_job() is not None
+    doc.remove_scan(better)  # the payloads in use are what they were
+    assert doc.summary().repair is result and doc.repair_job() is None
+    assert doc.summary().state == DocState.VERIFIED
+
+
+def test_version1_new_payload_of_the_scan_in_use_drops_the_result():
+    data, payloads = v1_pages(2)
+    doc, ids = v1_document(payloads)
+    repaired(doc)
+    doc.set_payload(ids[1], payloads[1])  # same bytes, but a new reading
+    assert doc.summary().repair is None and doc.summary().state == DocState.CHECKING
+    assert doc.repair_job() is not None
+
+
+def test_version1_result_kept_when_switching_away_and_back():
+    data, payloads = v1_pages(2)
+    doc, ids = v1_document(payloads)
+    result = repaired(doc)
+    other = add(doc, "other")
+    doc.set_identified(other, info(1, total=1, name="other.tar"))
+    doc.switch_to(other)
+    assert doc.summary().repair is None and doc.save_bytes() is None
+    doc.switch_to(ids[1])
+    assert doc.summary().repair is result and doc.repair_job() is None
+    assert doc.save_bytes() == data
+
+
+def test_version1_failed_repair_job_is_not_offered_again_until_the_pages_change():
+    data, payloads = v1_pages(2)
+    doc, ids = v1_document(payloads)
+    job = doc.repair_job()
+    doc.fail_repair(("not", "these", "pages"), "stale")  # ignored
+    assert doc.summary().repair_error == "" and doc.repair_job() is not None
+    doc.fail_repair(job.key, "header describes an impossible document")
+    s = doc.summary()
+    assert s.state == DocState.INCOMPLETE
+    assert s.repair_error == "header describes an impossible document"
+    assert s.repair is None and doc.repair_job() is None and not doc.can_save
+    assert doc.summary(verify=False).state == DocState.INCOMPLETE
+    again = add_v1(doc, "again", payloads[2], corrected=0)  # a spare: same pages
+    assert doc.repair_job() is None
+    doc.use_scan(again)  # the pages in use change: the failure counts no longer
+    assert doc.summary().repair_error == "" and doc.summary().state == DocState.CHECKING
+    assert doc.repair_job() is not None
+
+
+def test_holding_a_repair_result_keeps_background_results_cheap():
+    # Measured on the development machine: about 0.03 s either way; 10 s before
+    # the key was compared only when read.
+    def run(hold):
+        data, payloads = v1_pages(1)
+        doc, ids = v1_document(payloads)
+        if hold:
+            repaired(doc)
+        start = time.perf_counter()
+        for n in range(3000):
+            scan_id = doc.add_scan(f"/scans/other-{n}.png")
+            doc.set_identified(scan_id, info(1, total=1, name=f"other-{n}", tag=None))
+        elapsed = time.perf_counter() - start
+        assert (doc.summary().repair is not None) == hold
+        return elapsed
+
+    without, held = run(False), run(True)
+    assert held < 2.0 and held < 5 * without + 0.5
+
+
+def test_version1_stale_or_cancelled_repair_is_not_accepted():
+    data, payloads = v1_pages(3)
+    doc, ids = v1_document(payloads)
+    job = doc.repair_job()
+    assert job(lambda: True) is None
+    doc.accept_repair(None)  # ignored
+    stale = job()
+    add_v1(doc, "later", payloads[2])  # same quality, added later: a spare
+    assert doc.repair_job().key == stale.key
+    doc.remove_scan(ids[2])  # the later scan is now page 2: the scans in use changed
+    doc.accept_repair(stale)
+    assert doc.summary().repair is None and doc.repair_job() is not None
+
+
+def test_version1_documents_take_no_pages_by_hand():
+    data, payloads = v1_pages(2)
+    doc, ids = v1_document(payloads)
+    bad = add(doc, "bad")
+    doc.set_unreadable(bad, "label unreadable")
+    assert doc.actions(Row.UNREADABLE, bad) == Actions(remove=bad)
+    assert not doc.can_assign(bad, 1)
+    with pytest.raises(ValueError):
+        doc.assign_page(bad, 1)
+    # Nor is a version-1 page put into another document by hand.
+    doc2, (t,) = build(info(1))
+    v1 = add_v1(doc2, "v", payloads[1])
+    key = doc2.others()[0].key
+    assert doc2.actions(Row.OTHER, key) == Actions(switch=key)
+    assert not doc2.can_assign(v1, 1)
+    with pytest.raises(ValueError):
+        doc2.assign_page(v1, 1)
+    doc2.set_unreadable(v1, "could not be decoded")
+    assert doc2.actions(Row.UNREADABLE, v1) == Actions(remove=v1)
+    assert not doc2.can_assign(v1, 1)
+    with pytest.raises(ValueError):
+        doc2.assign_page(v1, 1)
+    # A scan that can be: only for a page the document has, and while it is there.
+    bad2 = add(doc2, "bad2")
+    doc2.set_unreadable(bad2, "label unreadable")
+    assert doc2.can_assign(bad2, 1) and not doc2.can_assign(bad2, 0)
+    assert not doc2.can_assign(bad2 + 100, 1) and not Document().can_assign(1, 1)
+    doc2.assign_page(bad2, 1)
+    # Its scans still replace a page as tagged scans do.
+    again = add_v1(doc, "again", payloads[2])
+    assert doc.replacement_fit(again, 2) == Fit.THIS_PAGE
+    assert doc.replacement_fit(again, 1) == Fit.OTHER_PAGE
+
+
+def test_version1_suggested_name_comes_from_the_label_then_the_repaired_name():
+    data, payloads = v1_pages(2, name="report.txt")
+    doc, _ = v1_document(payloads, label_name="")
+    assert doc.suggested_name == "recovered.bin"
+    repaired(doc)
+    assert doc.suggested_name == "report.txt"
+    data, payloads = v1_pages(1, name="../x/evil.txt")
+    doc, _ = v1_document(payloads, label_name="label.txt")
+    assert doc.suggested_name == "label.txt"
+    repaired(doc)
+    assert doc.suggested_name == "evil.txt"
+
+
+def test_version1_choice_follows_its_identity():
+    data, payloads = v1_pages(2)
+    doc, (t,) = build(info(1))
+    first = add_v1(doc, "v1", payloads[1])
+    doc.switch_to(doc.others()[0].key)
+    assert doc.current.scan_ids == (first,)
+    doc.set_unreadable(first, "could not be decoded")  # the choice keeps its identity
+    second = add_v1(doc, "v2", payloads[2])  # another page of the same document
+    assert doc.current.scan_ids == (second,)

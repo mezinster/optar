@@ -14,19 +14,21 @@ import shutil
 import threading
 import time
 
+import numpy as np
 import pytest
 from PySide6.QtCore import QMimeData, QPointF, Qt, QTimer, QUrl
 from PySide6.QtGui import QDropEvent
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 import optar_gui.document as document_module
-from optar import PAPERS, PageFormat, encode
+from optar import PAPERS, PARITY, PageFormat, encode, get_layout
+from optar.container import plan_for, wrap
 from optar.tag import make_tag, tagged_label
 from optar_gui import text
-from optar_gui.document import DocState, Document, PageOutcome, ScanInfo, ScanState
+from optar_gui.document import DocState, Document, PageOutcome, Row, ScanInfo, ScanState
 from optar_gui.main_window import MainWindow
 from optar_gui.read_tab import ReadController, ReadTab
-from optar_gui.work import process_scan
+from optar_gui.work import ScanWork, process_scan
 from tests.helpers import fake_scan, save_scan, seeded_bytes
 
 TIMEOUT = 120_000  # ms: decoding is slow on a loaded machine
@@ -785,3 +787,262 @@ def test_large_document_refreshes_quickly(qtbot, make_tab):
     assert tab.detail.text().startswith("Page 1,000 of 2,000 · 1000.png\n")
     print(f"2,000 pages: first refresh {first * 1000:.0f} ms, next {again * 1000:.0f} ms")
     assert first < 2.0 and again < 2.0
+
+
+# --- Version-1 documents ---------------------------------------------------------------
+
+XLARGE = get_layout("a4", "xlarge")  # small pages keep these tests fast
+V1_NAME = "v1.bin"
+
+
+def _v1_printout(folder, pages, parity, seed):
+    """A version-1 printout of exactly ``pages`` pages as exact PNG scans."""
+    fmt = XLARGE.fmt
+    size = plan_for(pages, fmt, parity).data_bytes - 1 - len(V1_NAME)
+    data = seeded_bytes(seed, size)
+    folder.mkdir()
+    paths = []
+    for page in encode(wrap(data, V1_NAME, fmt, parity), fmt, V1_NAME):
+        path = folder / f"page-{page.number}.png"
+        save_scan(path, fake_scan(page.pixels, scale=2, margin=40))
+        paths.append(str(path))
+    assert len(paths) == pages
+    return data, paths
+
+
+@pytest.fixture(scope="module")
+def v1_printouts(tmp_path_factory):
+    root = tmp_path_factory.mktemp("v1")
+    return {
+        "three": _v1_printout(root / "three", 3, PARITY["standard"], 11),
+        "twelve": _v1_printout(root / "twelve", 12, PARITY["standard"], 12),
+    }
+
+
+def all_plain(tab):
+    """Every label of the tab shows plain text, never rich text."""
+    for label in (tab.summary, tab.detail, tab.caution):
+        assert label.textFormat() == Qt.TextFormat.PlainText
+
+
+def test_three_version1_scans_are_verified_and_saved(qtbot, make_tab, v1_printouts, tmp_path):
+    data, paths = v1_printouts["three"]
+    tab = make_tab()
+    states = []
+    tab.controller.changed.connect(lambda: states.append(tab.summary.text()))
+    tab.controller.add_paths(list(reversed(paths)))
+    wait_settled(qtbot, tab)
+    summary = tab.controller.summary
+    assert summary.state == DocState.VERIFIED and summary.repair.verified
+    assert tab.summary.text() == (
+        f"Verified · {len(data):,} bytes · {text.repair_line(summary.repair)}"
+    )
+    assert text.REPAIRING in states  # shown while the repair ran
+    assert tab.rows()[1:] == ["Page 1 · Good", "Page 2 · Good", "Page 3 · Good"]
+    assert not tab.caution.isVisible()
+    assert all(w not in tab.summary.text().lower() for w in ("parity", "codeword", "header"))
+    all_plain(tab)
+    asked = []
+    tab.confirm = never_confirm
+    tab.ask_save_path = lambda suggested: asked.append(suggested) or str(tmp_path / suggested)
+    tab.show_error = lambda message: pytest.fail(message)
+    assert tab.save_button.isEnabled()
+    tab.save_button.click()
+    qtbot.waitUntil(lambda: not tab.controller.saving, timeout=TIMEOUT)
+    assert asked == [V1_NAME]
+    assert (tmp_path / V1_NAME).read_bytes() == data
+    assert sorted(p.name for p in tmp_path.iterdir()) == [V1_NAME]
+
+
+def test_a_version1_scan_is_decoded_once_and_keeps_no_payload(qtbot, make_tab, v1_printouts):
+    _, paths = v1_printouts["three"]
+    tab = make_tab()
+    tab.controller.add_paths(paths[:1])
+    wait_settled(qtbot, tab)
+    doc = tab.controller.document
+    (scan,) = doc.scans()
+    assert scan.info.header is not None and scan.info.header.page == 1
+    work = tab.controller.work_for(scan.id)
+    assert work.scan_dpi == pytest.approx(2 * float(XLARGE.pixels_per_inch), rel=0.02)
+    assert work.outcome is None and work.payload is None  # the document holds them
+    assert tab.controller.scan_note(work) is None  # two pixels per dot: not too coarse
+
+
+def test_assigning_into_a_version1_document_is_refused_not_raised(
+    qtbot, make_tab, v1_printouts, tmp_path
+):
+    # The page dialog can be open while the document under it becomes one that
+    # takes no pages by hand: the choice is then dropped, without an error.
+    _, paths = v1_printouts["three"]
+    blank = tmp_path / "blank.png"
+    save_scan(blank, np.full((600, 400), 255, np.uint8))
+    tab = make_tab()
+    tab.controller.add_paths([paths[0], str(blank)])
+    wait_settled(qtbot, tab)
+    doc = tab.controller.document
+    unreadable = doc.scan_id_of(str(blank))
+    assert doc.actions(Row.UNREADABLE, unreadable).assign is None
+    before = doc.slots()
+    assert tab.controller.assign(unreadable, 2) is False
+    assert tab.controller.assign(unreadable + 50, 1) is False  # removed meanwhile
+    assert doc.slots() == before
+
+
+def test_one_page_of_twelve_missing_is_recoverable_and_saves_the_original(
+    qtbot, make_tab, v1_printouts, tmp_path
+):
+    data, paths = v1_printouts["twelve"]
+    tab = make_tab()
+    tab.controller.add_paths(paths[:4] + paths[5:])  # page 5 missing
+    wait_settled(qtbot, tab, DECODE_TIMEOUT)
+    summary = tab.controller.summary
+    assert summary.state == DocState.RECOVERABLE and summary.missing_pages == (5,)
+    assert tab.summary.text().startswith("Recoverable: page 5 missing")
+    assert "Page 5 · Missing" in tab.rows()
+    assert tab.save_button.isEnabled()
+    all_plain(tab)
+    target = tmp_path / "out.bin"
+    tab.confirm = never_confirm  # the fingerprint matched: nothing to confirm
+    tab.ask_save_path = lambda suggested: str(target)
+    tab.show_error = lambda message: pytest.fail(message)
+    tab.save_button.click()
+    qtbot.waitUntil(lambda: not tab.controller.saving, timeout=TIMEOUT)
+    assert target.read_bytes() == data
+
+
+def test_a_failed_repair_advises_rescanning_and_saves_only_after_a_warning(
+    qtbot, make_tab, v1_printouts, tmp_path
+):
+    data, paths = v1_printouts["twelve"]
+    tab = make_tab()
+    tab.controller.add_paths(paths[:2] + paths[5:])  # pages 3, 4 and 5 missing
+    wait_settled(qtbot, tab, DECODE_TIMEOUT)
+    summary = tab.controller.summary
+    assert summary.state == DocState.INCOMPLETE
+    assert summary.repair is not None and summary.repair.data is None
+    shown = tab.summary.text()
+    assert text.rescan_advice(summary.repair) in shown
+    assert "pages 3-5" in shown or "pages 3, 4 and 5" in shown
+    assert "verified" not in shown.lower()
+    all_plain(tab)
+    assert tab.save_button.isEnabled()  # the best effort, after a warning
+    target = tmp_path / "out.bin"
+    tab.ask_save_path = lambda suggested: str(target)
+    tab.show_error = lambda message: pytest.fail(message)
+    warnings = []
+    tab.confirm = lambda message: warnings.append(message) or False
+    tab.save_button.click()
+    assert len(warnings) == 1 and "could not be fully repaired" in warnings[0]
+    assert "verified" not in warnings[0].lower()
+    assert not target.exists()
+    tab.confirm = lambda message: True
+    tab.save_button.click()
+    qtbot.waitUntil(lambda: not tab.controller.saving, timeout=TIMEOUT)
+    saved = target.read_bytes()
+    assert saved == summary.repair.best_effort and len(saved) == len(data)
+    assert "verified" not in tab.summary.text().lower()
+
+
+def test_a_repair_that_raises_is_shown_as_plain_text_and_not_retried(
+    qtbot, make_tab, v1_printouts, monkeypatch
+):
+    calls = []
+
+    def broken(self, cancelled=lambda: False):
+        calls.append(1)
+        raise ValueError("<b>boom</b>")
+
+    monkeypatch.setattr(document_module.RepairJob, "__call__", broken)
+    tab = make_tab()
+    tab.controller.add_paths(v1_printouts["three"][1])
+    wait_settled(qtbot, tab)
+    assert tab.controller.summary.state == DocState.INCOMPLETE
+    assert tab.summary.text() == text.repair_failed("ValueError: <b>boom</b>")
+    all_plain(tab)
+    assert not tab.save_button.isEnabled()
+    for _ in range(3):
+        tab.controller.refresh()
+    qtbot.wait(300)
+    assert len(calls) == 1 and not tab.controller.checking
+
+
+def test_closing_or_removing_while_repairing_stops_cleanly(
+    qtbot, make_tab, v1_printouts, monkeypatch
+):
+    started, release = threading.Event(), threading.Event()
+    ended = []  # (pages repaired, whether cancelled) of every repair that returned
+    real = document_module.RepairJob.__call__
+
+    def slow(self, cancelled=lambda: False):
+        started.set()
+        while not cancelled() and not release.wait(0.01):
+            pass
+        ended.append((tuple(sorted(self._pages)), cancelled()))
+        return real(self, cancelled)
+
+    monkeypatch.setattr(document_module.RepairJob, "__call__", slow)
+    dialogs = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: dialogs.append(a))
+    _, paths = v1_printouts["three"]
+    tab = make_tab()
+    controller = tab.controller
+    controller.add_paths(paths)
+    qtbot.waitUntil(started.is_set, timeout=TIMEOUT)
+    assert controller.checking and tab.summary.text() == text.REPAIRING
+    # Removing a page while the repair runs: that repair stops, one for the pages
+    # left starts, and only its result counts.
+    started.clear()
+    controller.remove(controller.document.pages()[2].scan_id)
+    qtbot.waitUntil(started.is_set, timeout=TIMEOUT)
+    qtbot.waitUntil(lambda: len(ended) == 1, timeout=TIMEOUT)
+    assert ended == [((1, 2, 3), True)]
+    release.set()
+    qtbot.waitUntil(lambda: not controller.checking, timeout=TIMEOUT)
+    controller.refresh()
+    assert ended[1] == ((1, 2), False)
+    summary = controller.summary
+    assert summary.missing_pages == (3,) and summary.state != DocState.VERIFIED
+    assert summary.repair is not None and summary.repair.missing == (3,)
+    # Closing while a repair runs: it stops at once and nothing is reported.
+    release.clear()
+    started.clear()
+    controller.add_paths(paths[2:])
+    qtbot.waitUntil(started.is_set, timeout=TIMEOUT)
+    start = time.perf_counter()
+    assert controller.shutdown(10_000)
+    assert time.perf_counter() - start < 5
+    assert ended[2] == ((1, 2, 3), True)
+    assert dialogs == []
+
+
+def test_a_coarse_scan_is_noted_on_its_page_and_when_unreadable(qtbot, make_tab):
+    std = get_layout("a4")
+    data = b"x" * 100
+    tag = make_tag(data)
+    works = {
+        "page.png": ScanWork(
+            ScanInfo(A4.to_string(), 1, 1, "doc", tag), "",
+            PageOutcome(data.ljust(16, b"\0"), (100, 0, 0, 0), 0), 0, None, (10, 10),
+            scan_dpi=296.0, layout=std,
+        ),
+        "coarse.png": ScanWork(
+            None, text.coarse_scan(203.0, None), None, 0, None, (10, 10), scan_dpi=203.0
+        ),
+        "photo.png": ScanWork(
+            None, "label unreadable", None, 0, None, (10, 10), scan_dpi=600.0
+        ),
+    }
+    tab = make_tab(process=lambda path, cancelled=lambda: False: works[os.path.basename(path)])
+    tab.controller.add_paths(["/scans/page.png", "/scans/coarse.png", "/scans/photo.png"])
+    wait_settled(qtbot, tab)
+    def starting(prefix):
+        return next(i for i, row in enumerate(tab.rows()) if row.startswith(prefix))
+
+    tab.select_row(starting("Page 1 "))
+    assert text.coarse_scan(296.0, std) in tab.detail.text().splitlines()
+    tab.select_row(starting("coarse.png"))
+    assert tab.detail.text().splitlines() == ["coarse.png", text.coarse_scan(203.0, None)]
+    assert f"coarse.png · {text.coarse_scan(203.0, None)}" in tab.rows()
+    tab.select_row(starting("photo.png"))
+    assert text.coarse_scan(600.0, None) not in tab.detail.text()
+    assert "dpi" not in tab.detail.text()

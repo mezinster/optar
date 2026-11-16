@@ -36,11 +36,11 @@ def write_pgm(path, pixels: np.ndarray) -> None:
         f.write(pgm_bytes(pixels))
 
 
-def write_png(path, pixels: np.ndarray) -> None:
+def write_png(path, pixels: np.ndarray, pixels_per_inch=PIXELS_PER_INCH) -> None:
     """Write a page (values 0 and 255 only) as a lossless 1-bit PNG."""
     im = Image.fromarray(np.ascontiguousarray(pixels, dtype=np.uint8) != 0)
     im = im.convert("1")
-    dpi = (PIXELS_PER_INCH, PIXELS_PER_INCH)
+    dpi = (float(pixels_per_inch), float(pixels_per_inch))
     im.save(path, format="PNG", dpi=dpi)
 
 

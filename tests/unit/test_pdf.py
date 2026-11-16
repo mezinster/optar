@@ -4,7 +4,7 @@ import pytest
 
 from optar.encoder import encode
 from optar.errors import FormatError, OptarError
-from optar.format import PAPERS, PageFormat
+from optar.format import PAPERS, PageFormat, get_layout
 from optar.pdf import write_pdf
 from tests.helpers import parse_pdf, seeded_bytes
 
@@ -76,3 +76,28 @@ def test_write_pdf_rejects_bad_pages(tmp_path, page, error):
     with pytest.raises(error):
         write_pdf(tmp_path / "second.pdf", iter([good, page]), PAPERS["a4"])
     assert not (tmp_path / "second.pdf").exists()
+
+
+@pytest.mark.parametrize("dots,printer_dots", [("large", 6), ("medium", 4)])
+def test_pdf_places_page_at_its_layout(tmp_path, dots, printer_dots):
+    layout = get_layout("a4", dots)
+    fmt = layout.fmt
+    page = np.full((fmt.height, fmt.width), 255, np.uint8)
+    page[::7, ::5] = 0
+    assert write_pdf(tmp_path / "o.pdf", iter([page]), layout) == 1
+    (got,) = parse_pdf(tmp_path / "o.pdf")
+    a4 = PAPERS["a4"]
+    assert got["mediabox"] == pytest.approx((0, 0, a4.width_pt, a4.height_pt), abs=0.01)
+    w = fmt.width * 72 * printer_dots / 600
+    h = fmt.height * 72 * printer_dots / 600
+    want = (w, 0, 0, h, layout.offset_x_pt, layout.offset_y_pt)
+    assert got["cm"] == pytest.approx(want, abs=0.01)
+    assert np.array_equal(got["pixels"], page)
+
+
+def test_write_pdf_refuses_image_that_is_not_the_layout_page(tmp_path):
+    layout = get_layout("a4", "large")
+    page = np.full((layout.fmt.height, layout.fmt.width + 1), 255, np.uint8)
+    with pytest.raises(FormatError, match="layout"):
+        write_pdf(tmp_path / "o.pdf", iter([page]), layout)
+    assert not (tmp_path / "o.pdf").exists()

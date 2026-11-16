@@ -35,12 +35,24 @@ from dataclasses import dataclass
 
 import numpy as np
 
+import optar.container
+import optar.encoder
+from optar.container import Header, PagePayload, pages_promised, plan, plan_for, wrap
 from optar.decoder import PageResult, decode_located, page_to_scan
 from optar.encoder import check_encodable, encode, page_count
 from optar.errors import DecodeError, IdentifyError, OptarError
 from optar.fileio import io_error, replacing
 from optar.font import FIRST_CHAR, GLYPH_CELLS, label_text
-from optar.format import PAPERS, PageFormat, get_paper
+from optar.format import (
+    DOT_SIZES,
+    LAYOUTS,
+    PAPERS,
+    PARITY,
+    Layout,
+    PageFormat,
+    get_layout,
+    get_paper,
+)
 from optar.identify import decode_unlabelled, identify_scan
 from optar.imageio import read_scan
 from optar.label import printed_label
@@ -55,15 +67,23 @@ __all__ = [
     "LARGE_SCAN_PIXELS",
     "Cancelled",
     "FileFacts",
+    "MIN_PIXELS_PER_DOT",
     "NamePreview",
+    "PrintPlan",
     "ScanWork",
+    "TOO_LARGE_TO_PROTECT",
+    "TOO_MANY_PAGES",
+    "dot_choices",
     "encode_to_pdf",
+    "name_only_preview",
     "name_preview",
     "prepare_file",
+    "print_plan",
     "process_scan",
     "process_unlabelled",
     "regular_file",
     "same_file",
+    "too_coarse",
 ]
 
 # The reason given when a page assigned by hand decodes badly in every rotation.
@@ -161,6 +181,11 @@ class ScanWork:
     (n, 2), pixel centres at integers) of every bit error correction changed,
     on the upright image, or None when the page was not decoded. ``size`` is
     the upright image's (width, height), (0, 0) when it could not be read.
+
+    ``payload`` is a version-1 page's payload (``header`` gives its header,
+    from ``info``); ``scan_dpi`` the scan's estimated resolution, also for a
+    scan that was found but not identified; ``layout`` the identified page's
+    paper and dot size.
     """
 
     info: ScanInfo | None
@@ -169,6 +194,34 @@ class ScanWork:
     rotation: int
     marks: np.ndarray | None
     size: tuple[int, int]
+    payload: PagePayload | None = None
+    scan_dpi: float | None = None
+    layout: Layout | None = None
+
+    @property
+    def header(self) -> Header | None:
+        """The version-1 header the page's data carries, or None."""
+        return self.info.header if self.info is not None else None
+
+
+# A scan with fewer pixels than this per printed dot is too coarse for its page:
+# it is still decoded and used if it reads, but its note says so.
+MIN_PIXELS_PER_DOT = 2
+
+
+def too_coarse(
+    scan_dpi: float | None, layout: Layout | None, *, unreadable: bool = False
+) -> bool:
+    """Whether a scan at ``scan_dpi`` has fewer than ``MIN_PIXELS_PER_DOT`` pixels
+    per dot of ``layout``. An ``unreadable`` scan has no layout: it is judged by
+    the finest dots there are. False when the resolution (or the layout of a
+    readable scan) is not known."""
+    if scan_dpi is None:
+        return False
+    if unreadable:
+        finest = max(float(lay.pixels_per_inch) for lay in LAYOUTS.values())
+        return scan_dpi < MIN_PIXELS_PER_DOT * finest
+    return layout is not None and scan_dpi < MIN_PIXELS_PER_DOT * float(layout.pixels_per_inch)
 
 
 def _upright_size(image: np.ndarray, rotation: int) -> tuple[int, int]:
@@ -201,8 +254,12 @@ def process_scan(path: str, cancelled: Callable[[], bool] = _never) -> ScanWork:
 
     An unreadable file comes back with ``info=None`` and the reading error as
     the reason; a scan that is not identified with ``info=None`` and the
-    reason "no page found" or "label unreadable"; an identified scan that
-    does not decode with its ``info``, no outcome and the decoder's message.
+    reason "no page found" or "label unreadable" (``text.coarse_scan`` instead
+    when the resolution a page outline gave is ``too_coarse`` for any dots), with
+    its ``scan_dpi`` when known; an identified scan that does
+    not decode with its ``info``, no outcome and the decoder's message. A
+    version-1 page was decoded while it was identified: that decode is used,
+    not repeated, and its payload kept.
     Checks ``cancelled`` after loading, after identifying and after decoding, and
     while a large scan waits for its turn.
     """
@@ -218,35 +275,47 @@ def process_scan(path: str, cancelled: Callable[[], bool] = _never) -> ScanWork:
         try:
             identity = identify_scan(image)
         except IdentifyError as e:
-            return ScanWork(None, e.reason, None, 0, None, _upright_size(image, 0))
+            reason = e.reason
+            if too_coarse(e.scan_dpi, None, unreadable=True):
+                reason = text.coarse_scan(e.scan_dpi, None)
+            size = _upright_size(image, 0)
+            return ScanWork(None, reason, None, 0, None, size, scan_dpi=e.scan_dpi)
         except DecodeError as e:
             return ScanWork(None, str(e), None, 0, None, _upright_size(image, 0))
         rotation = identity.rotation
         size = _upright_size(image, rotation)
         del image
+        header, payload = identity.header, identity.payload
+        found = {"scan_dpi": identity.scan_dpi, "layout": identity.layout}
         info = ScanInfo(
             format=identity.fmt.to_string(),
             total=identity.total,
             page=identity.page,
             name=identity.name,
             tag=identity.tag,
+            header=header,
+            scan_dpi=identity.scan_dpi,
         )
-        grid = identity.grid
+        grid, result = identity.grid, identity.result
         del identity
         _check(cancelled)
-        try:
-            result = decode_located(grid, detail=True)
-        except DecodeError as e:
-            return ScanWork(info, str(e), None, rotation, None, size)
-        finally:
-            del grid
+        if header is None or payload is None or result is None:
+            payload = result = None
+            try:
+                result = decode_located(grid, detail=True)
+            except DecodeError as e:
+                return ScanWork(info, str(e), None, rotation, None, size, **found)
+            finally:
+                del grid
+        else:
+            del grid  # decoded already: identifying found the header in its data
     finally:
         if turn:
             _LARGE_SCAN_TURN.release()
     outcome, marks = _outcome(result)
     del result
     _check(cancelled)
-    return ScanWork(info, "", outcome, rotation, marks, size)
+    return ScanWork(info, "", outcome, rotation, marks, size, payload=payload, **found)
 
 
 def process_unlabelled(
@@ -295,17 +364,28 @@ def encode_to_pdf(
     paper_name: str,
     name: str,
     cancelled: Callable[[], bool] = _never,
+    *,
+    dots: str = "standard",
+    protect: str = "standard",
+    compatible: bool = False,
 ) -> int:
     """Encode the file ``src`` as a print-ready PDF at ``dest``; return the page count.
 
-    Every page's label is the document tag (with that page's check) followed
-    by ``name``. The PDF is written through a temporary file: on failure or
-    cancellation an existing ``dest`` is left untouched and nothing is left
-    behind. Checks ``cancelled`` before each page. Raises OptarError on
-    failure, and before reading anything when ``dest`` is ``src`` itself.
+    With ``compatible`` the printout is optar 0.2.0's (Standard dots, no
+    protection; ``dots`` and ``protect`` are ignored): every page's label is
+    the document tag (with that page's check) followed by ``name``. Otherwise
+    the file and ``name`` are wrapped with page headers and ``protect``'s
+    parity (``optar.container.wrap``) and printed at the dot size ``dots``;
+    each label is ``name`` alone. The PDF is written through a temporary
+    file: on failure or cancellation an existing ``dest`` is left untouched
+    and nothing is left behind. Checks ``cancelled`` before each page.
+    Raises OptarError on failure, before reading anything when ``dest`` is
+    ``src`` itself, and before reading the file when it is too large.
     """
     if same_file(src, dest):
         raise OptarError(text.DEST_IS_SOURCE)
+    if not compatible:
+        return _encode_wrapped(src, dest, paper_name, name, cancelled, dots, protect)
     paper = get_paper(paper_name)
     fmt = PageFormat.for_paper(paper)
     with _open_regular(src) as f:
@@ -328,6 +408,139 @@ def encode_to_pdf(
 
     with replacing(dest) as temp:
         return write_pdf(temp, pages(), paper)
+
+
+def _encode_wrapped(
+    src: str,
+    dest: str,
+    paper_name: str,
+    name: str,
+    cancelled: Callable[[], bool],
+    dots: str,
+    protect: str,
+) -> int:
+    """encode_to_pdf of a version-1 printout."""
+    layout = get_layout(paper_name, dots)
+    fmt = layout.fmt
+    parity = _parity(protect)
+    with _open_regular(src) as f:
+        try:
+            plan(os.fstat(f.fileno()).st_size, name, fmt, parity)  # before reading it
+            data = f.read()
+        except OSError as e:
+            raise io_error("read", src, e) from e
+    stream = wrap(data, name, fmt, parity)  # plans again: the file may have grown
+    del data
+    _check(cancelled)
+
+    def pages():
+        pending = encode(stream, fmt, name)
+        while True:
+            _check(cancelled)
+            page = next(pending, None)
+            if page is None:
+                return
+            yield page.pixels
+
+    with replacing(dest) as temp:
+        return write_pdf(temp, pages(), layout)
+
+
+def _parity(protect: str) -> int:
+    try:
+        return PARITY[protect]
+    except KeyError:
+        raise OptarError(
+            f"unknown protection {protect!r}; known: {', '.join(PARITY)}"
+        ) from None
+
+
+# Why a file cannot be put on paper with the chosen dot size and protection.
+TOO_MANY_PAGES = text.TOO_MANY_PAGES
+TOO_LARGE_TO_PROTECT = text.TOO_LARGE_TO_PROTECT
+
+
+@dataclass(frozen=True)
+class PrintPlan:
+    """How a file of a given size prints with the chosen paper, dot size and protection.
+
+    ``total`` is the page count (0 for an empty file printed compatibly: its
+    one page is labelled 1/0; 0 too when the file is too large). ``promised``
+    is how many pages may be lost, from ``optar.container.pages_promised``;
+    ``protected`` is whether damage within pages is repaired. ``too_large``
+    is None, ``TOO_MANY_PAGES`` or ``TOO_LARGE_TO_PROTECT``, and ``limit``
+    then the most pages a printout of that kind may have. For a file too
+    large, ``unprotected_fits`` is whether it fits at the same dot size without
+    protection, and ``smaller_dots`` the largest smaller dot size at which it
+    fits with the same protection, or None.
+    """
+
+    total: int
+    promised: int = 0
+    protected: bool = False
+    too_large: str | None = None
+    limit: int = 0
+    unprotected_fits: bool = False
+    smaller_dots: str | None = None
+
+
+def print_plan(
+    size: int,
+    name: str,
+    paper_name: str,
+    dots: str = "standard",
+    protect: str = "standard",
+    compatible: bool = False,
+) -> PrintPlan:
+    """What ``encode_to_pdf`` makes of a file of ``size`` bytes named ``name``.
+
+    Reads nothing and builds nothing: cheap enough for the interface thread.
+    A compatible printout ignores ``dots`` and ``protect``.
+    """
+    if compatible:
+        fmt = PageFormat.for_paper(get_paper(paper_name))
+        try:
+            return PrintPlan(check_encodable(size, fmt))
+        except OptarError:
+            return PrintPlan(0, too_large=TOO_MANY_PAGES, limit=optar.encoder.MAX_PAGES)
+    fmt = get_layout(paper_name, dots).fmt
+    parity = _parity(protect)
+    try:
+        p = plan(size, name, fmt, parity)
+    except OptarError:
+        # What would take the file: no protection, or the next smaller dots that do.
+        smaller = [d for d in DOT_SIZES if DOT_SIZES[d].scale < DOT_SIZES[dots].scale]
+        other = {
+            "unprotected_fits": parity > 0 and _fits(size, name, fmt, 0),
+            "smaller_dots": next(
+                (d for d in reversed(smaller)
+                 if _fits(size, name, get_layout(paper_name, d).fmt, parity)),
+                None,
+            ),
+        }
+        # The tighter of the two limits is the one the file is over.
+        limit = optar.container.MAX_PAGES
+        if parity:
+            page_bytes = plan_for(1, fmt, parity).page_bytes
+            protected = optar.container.PROTECTED_MAX_BYTES // page_bytes
+            if protected < limit:
+                return PrintPlan(0, too_large=TOO_LARGE_TO_PROTECT, limit=protected, **other)
+        return PrintPlan(0, too_large=TOO_MANY_PAGES, limit=limit, **other)
+    return PrintPlan(p.total, pages_promised(p), parity > 0)
+
+
+def _fits(size: int, name: str, fmt: PageFormat, parity: int) -> bool:
+    """Whether a file of ``size`` bytes can be put on pages of ``fmt``."""
+    try:
+        plan(size, name, fmt, parity)
+    except OptarError:
+        return False
+    return True
+
+
+def dot_choices() -> list[tuple[str, int]]:
+    """Each dot size, in order, with the scan resolution advised for it (dpi)."""
+    return [(name, dots.scan_dpi) for name, dots in DOT_SIZES.items()]
 
 
 def native_path(path: str) -> str:
@@ -409,6 +622,11 @@ class NamePreview:
     dropped: str
     cut: bool
 
+    @property
+    def shown(self) -> bool:
+        """Whether the pages print any of the name at all."""
+        return bool(self.printed.strip())
+
 
 def _drawable(ch: str) -> bool:
     return FIRST_CHAR <= ord(ch) <= FIRST_CHAR + GLYPH_CELLS
@@ -416,7 +634,12 @@ def _drawable(ch: str) -> bool:
 
 def _free_text(fmt: PageFormat, tag: Tag, name: str, page: int, total: int) -> str:
     """What page ``page`` of ``total`` prints after its format string and page number."""
-    printed = printed_label(fmt, label_text(fmt, page, total, tagged_label(tag, name, page, total)))
+    return _printed_free_text(fmt, tagged_label(tag, name, page, total), page, total)
+
+
+def _printed_free_text(fmt: PageFormat, free: str, page: int, total: int) -> str:
+    """What page ``page`` of ``total`` prints of the free text ``free``."""
+    printed = printed_label(fmt, label_text(fmt, page, total, free))
     prefix = f"  {fmt.to_string()} {page}/{total} "
     return printed[len(prefix):] if printed.startswith(prefix) else ""
 
@@ -432,3 +655,14 @@ def name_preview(paper_name: str, tag: Tag, name: str) -> NamePreview:
     wanted = "".join(ch for ch in tagged_label(tag, name, last, total) if _drawable(ch))
     cut = len(_free_text(fmt, tag, name, last, total)) < len(wanted.rstrip(" "))
     return NamePreview(total, _free_text(fmt, tag, name, 1, total), dropped, cut)
+
+
+def name_only_preview(paper_name: str, dots: str, name: str, total: int) -> NamePreview:
+    """What the ``total`` pages of a wrapped printout at dot size ``dots`` print
+    for ``name``: the name alone, as much as the layout's label holds."""
+    fmt = get_layout(paper_name, dots).fmt
+    dropped = "".join(dict.fromkeys(ch for ch in name if not _drawable(ch)))
+    last = max(total, 1)
+    wanted = "".join(ch for ch in name if _drawable(ch))
+    cut = len(_printed_free_text(fmt, name, last, total)) < len(wanted.rstrip(" "))
+    return NamePreview(total, _printed_free_text(fmt, name, 1, total), dropped, cut)

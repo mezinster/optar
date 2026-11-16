@@ -207,3 +207,50 @@ DEGRADED = {
     "flips": dict(scale=3, flips=200),
     "combined": dict(scale=3, margin=120, rotate=0.2, blur=0.8, noise=8, specks=20, flips=100),
 }
+
+
+def simulate_scan(
+    pixels,
+    layout,
+    dpi,
+    *,
+    rotate_deg=0.4,
+    blur=1.0,
+    noise=6.0,
+    seed=1,
+    quarter_turns=0,
+):
+    """A grey scan of a printed page (uint8, 2-D, 0 black, 255 white).
+
+    Order: 600 dpi print (each page pixel is layout.dots.printer_dots printer
+    dots wide, nearest neighbour), Gaussian blur (sigma blur, in 600 dpi dots),
+    rotation by rotate_deg degrees (bicubic, expanded, white fill), a white
+    border of 0.2 inch, box resampling to dpi, noise, then np.rot90(-quarter_turns)
+    so that np.rot90(scan, quarter_turns) is upright. Deterministic for a seed.
+
+    The default blur of 1.0 is the mild blur behind the project's evidence; Standard
+    (3-dot) pages stop decoding at about 2.0.
+    """
+    import numpy as np
+    from PIL import Image, ImageFilter
+
+    d = layout.dots.printer_dots
+    border = 120
+    rng = np.random.default_rng(seed)
+    im = Image.fromarray(np.asarray(pixels, np.uint8))
+    big = im.resize((im.width * d, im.height * d), Image.Resampling.NEAREST)
+    if blur:
+        big = big.filter(ImageFilter.GaussianBlur(blur))
+    if rotate_deg:
+        big = big.rotate(
+            rotate_deg, resample=Image.Resampling.BICUBIC, expand=True, fillcolor=255
+        )
+    pad = Image.new("L", (big.width + 2 * border, big.height + 2 * border), 255)
+    pad.paste(big, (border, border))
+    size = (round(pad.width * dpi / 600), round(pad.height * dpi / 600))
+    out = pad.resize(size, Image.Resampling.BOX)
+    a = np.asarray(out).astype(np.float32)
+    if noise:
+        a = a + rng.normal(0.0, noise, a.shape)
+    a = np.clip(a, 0, 255).astype(np.uint8)
+    return np.ascontiguousarray(np.rot90(a, -quarter_turns))

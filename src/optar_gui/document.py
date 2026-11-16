@@ -8,7 +8,8 @@ states), of the ordered user operations (``switch_to``, ``start_by_hand``,
 ``assign_page``, ``use_scan``, ``remove_scan``) and of which background results
 were known when each user operation was made. It does not depend on the order in
 which background results (``set_working``, ``set_identified``, ``set_outcome``,
-``set_unreadable``, ``set_decoding``) arrive between user operations: everything shown is
+``set_unreadable``, ``set_decoding``, ``set_payload``) arrive between user operations
+(nor on when the state is read): everything shown is
 recomputed from that information after every change, and a user's choice is
 never lost or changed by a passing intermediate state.
 
@@ -26,6 +27,9 @@ unreadable with the reason ``"page count out of range"``, so no document ever ha
 more pages than a real printout can. ``set_unreadable`` is final and keeps
 the identity for display.
 
+- A version-1 scan (``ScanInfo.header`` set, no tag) belongs to the group of its
+  ``(fingerprint, size, total, parity, format)``, all but the format from the
+  header; see "Version-1 documents" below.
 - A tagged scan belongs to the group of its ``(format, total, tag)``.
 - Untagged scans are taken in add order. Each joins the first existing untagged
   group with the same format and total whose every member's name is
@@ -34,19 +38,20 @@ the identity for display.
   transitive (``a`` matches ``ab`` and ``ac``, which do not match each other), so
   this order is what makes the grouping deterministic. A later-added scan never
   changes the group of an earlier one.
-- A tagged and an untagged scan are never in the same group.
+- A tagged and an untagged scan are never in the same group, nor is a version-1
+  scan with either.
 - A group's key is the id of its earliest-added scan; ``switch_to(key)`` switches
   to the group that now contains that scan, so an old key keeps working.
 - A group's title comes from the names of the grouped scans it shows ("" if
   none), trailing spaces ignored; a scan assigned by hand into another document
-  does not count. A tagged group takes the most common name (on a tie, the
-  longest): its labels are accepted on a plausible reading, so one misread name
+  does not count. A tagged or version-1 group takes the most common name (on a
+  tie, the longest): its labels are accepted on a plausible reading, so one misread name
   must not rename it. An untagged group takes the longest name; its names are
   prefixes of one another by construction.
 
 Remembering a document. User operations remember a document as a *reference*:
 the set of scans in its group at the moment of the operation, plus, for a tagged
-document, its identity ``(format, total, tag)``. A reference *resolves* to the
+or version-1 document, its identity (its grouping key). A reference *resolves* to the
 group holding its earliest-added grouped scan; if none of its scans is grouped
 and it has a tagged identity, to the group with exactly that identity, if there
 is one (a later page of the same printout, since a tag names one printout);
@@ -147,7 +152,8 @@ while any page is waiting or working; ``VERIFIED`` or ``MISMATCH`` when every pa
 is good or repaired and the document has a tag, by assembling the file and
 checking it against the tag; ``UNVERIFIABLE`` when every page is good or repaired
 and there is no tag; otherwise ``INCOMPLETE``. The verdict is cached until the
-scans in use, their outcomes or the tag change.
+scans in use, their outcomes or the tag change. A version-1 document has its own
+rules, below.
 
 Checking off the interface thread. Hashing a large file takes seconds, so the
 window does not let ``summary()`` hash a large document. ``summary(verify=False)``
@@ -195,6 +201,58 @@ with that scan in use, so a spare's health can be shown. ``suggested_page``
 offers a page to assign a scan to: the page its own label names if the document
 has it, else the first page with no scan, else page 1.
 
+Version-1 documents. A version-1 page carries a header in its data (document
+fingerprint, size, page, page count, parity) and is assembled and repaired by
+``optar.container.unwrap``. The header, not the label, gives a version-1 scan's
+page and page count (``set_identified`` stores them from it). Besides its outcome
+(for its health) the scan needs its payload (``set_payload``); until it has both it
+is ``WORKING``. Grouping, page slots, duplicates, ``use_scan``, ``switch_to`` and
+replacing work as for tagged documents, except that within a page the better scan
+is the one with fewer erased payload bytes, then fewer corrected bits (each
+corrected symbol counts its bits), then the earlier added. Nothing is done by hand:
+no scan is assigned into a version-1 document, no version-1 scan into another
+document (``assign_page`` raises ValueError and ``actions`` offers neither), and an
+assignment never applies while a version-1 document is current.
+
+The pages *lacking* are those whose slot gives no data (missing or unreadable).
+``summary()`` of a version-1 document never repairs anything; ``repair_job()``
+returns a ``RepairJob``, a snapshot of the payloads of the pages with data, to run
+off the interface thread, and ``accept_repair`` keeps its ``Repair`` only when it
+was made for the pages now in use (the scan in use of every page and its payload),
+so a result for an older set of scans is never shown. The latest accepted result
+is kept with its key and counts whenever exactly those payloads are in use again
+(after switching away and back, or a change that leaves the payloads in use as
+they were); the key is compared only when the state is read, as for the tagged
+verdict. A job that raised is reported with ``fail_repair(job.key, reason)``: for
+those pages the job is not offered again, the state is ``INCOMPLETE`` and
+``Summary.repair_error`` gives the reason, until the pages in use change. The job
+(``RepairJob.key`` names its pages) is offered when no page is waiting or
+working, at least one page has data and neither a result nor a failure is
+recorded for the pages in use. The state:
+
+- ``WORKING`` while a page is waiting or working;
+- ``INCOMPLETE`` when the repair job failed for the pages in use;
+- with an accepted result: ``VERIFIED`` when it is verified (its fingerprint
+  matches) and no page is lacking, ``RECOVERABLE`` when it is verified and pages
+  are lacking, ``MISMATCH`` when it has the file but the fingerprint does not
+  match, else (codewords holding the file could not be corrected) ``INCOMPLETE``;
+- without one: ``CHECKING`` when no page is lacking; ``RECOVERABLE`` when the
+  document has parity, some page has data and the pages lacking are no more than
+  ``optar.container.pages_promised`` allows; else ``INCOMPLETE``.
+
+Only ``verified`` makes a file "Verified": a result with no failed codeword is not
+proof. ``Summary`` gives the parity (``protection``), the pages lacking
+(``missing_pages``) and the accepted result (``repair``, with its page damage).
+``save_bytes()`` is the file of an accepted result that has it (verified or not;
+``can_save`` and ``chunks()`` follow it); ``salvage_bytes()`` is the result's
+best-effort file when it has none, which may contain wrong bytes and is only for
+saving after an explicit warning. ``can_save_anyway`` says whether either can be
+saved and ``save_chunks()`` gives what saving writes: the window offers saving by
+them, and warns first unless the file is verified. ``suggested_name`` is the name an accepted
+result read, when it has one, else the label's as for other documents. The page
+format is part of the identity, so one file printed at two dot sizes, or with two
+protections, makes two documents.
+
 Scan files. ``expand_paths`` turns the paths a user drops or picks into scans to
 add: a folder gives the files directly inside it with a ``SCAN_EXTENSIONS``
 extension (any case), sorted by name, without recursing; any other path is kept.
@@ -206,16 +264,18 @@ untagged scans), when it is next read.
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import os
 from collections import Counter
 from collections.abc import Callable, Iterable, Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     # Only for annotations: importing the optar package at run time loads numpy, and
-    # tags are only compared and hashed here.
+    # tags, headers and payloads are only compared, kept and passed on here.
+    from optar.container import Header, PagePayload, Unwrapped
     from optar.tag import Tag
 
 OUT_OF_RANGE = "page number out of range"
@@ -266,13 +326,20 @@ def expand_paths(paths: Iterable[str]) -> list[str]:
 
 @dataclass(frozen=True)
 class ScanInfo:
-    """What a scan's label says it is."""
+    """What a scan's label says it is.
+
+    ``header`` is the version-1 page header found in its data, if any (only without
+    a tag: a valid tag wins); then the header, not the label, gives the page and
+    page count. ``scan_dpi`` is the resolution the scan was made at, if known.
+    """
 
     format: str
     total: int
     page: int
     name: str
     tag: Tag | None
+    header: Header | None = None
+    scan_dpi: float | None = None
 
 
 @dataclass(frozen=True)
@@ -320,6 +387,7 @@ class GroupView:
     format: str
     tag: Tag | None
     scan_ids: tuple[int, ...]
+    header: Header | None = None  # a version-1 document: the header of its first scan
 
 
 @dataclass(frozen=True)
@@ -362,7 +430,10 @@ class DocState:
     UNVERIFIABLE = "unverifiable"
     VERIFIED = "verified"
     MISMATCH = "mismatch"
-    CHECKING = "checking"  # summary(verify=False) only: complete, verdict not known yet
+    # summary(verify=False), or any summary of a version-1 document: complete, verdict
+    # not known yet
+    CHECKING = "checking"
+    RECOVERABLE = "recoverable"  # version 1: pages lacking, repaired (or repairable) from the rest
 
 
 class Row:
@@ -407,7 +478,11 @@ class Summary:
     damaged: int
     unreadable: int
     missing: int
-    size: int | None  # the tag's size, or None without a tag
+    size: int | None  # the tag's or the version-1 header's size; else None
+    protection: int = 0  # version 1: parity bytes per codeword; else 0
+    missing_pages: tuple[int, ...] = ()  # version 1: pages giving no data
+    repair: Unwrapped | None = None  # version 1: the accepted repair result, if any
+    repair_error: str = ""  # version 1: why the repair job for these pages raised
 
 
 @dataclass(frozen=True)
@@ -452,6 +527,75 @@ def _matches(
     return produced == tag.size and fingerprint == tag.fingerprint
 
 
+@dataclass(frozen=True)
+class Repair:
+    """What repairing the pages identified by ``key`` gave."""
+
+    key: tuple
+    result: Unwrapped
+
+
+class RepairJob:
+    """Assembles, repairs and checks a version-1 document from a snapshot of its pages
+    in use; see ``Document.repair_job``.
+
+    Calling it returns a ``Repair``, or None once ``cancelled()`` is true (checked
+    before and after the repair, which itself runs to its end). It holds only the
+    pages' immutable payloads, so it may run on any thread while the document
+    changes. ``size`` is the file size the header gives.
+    """
+
+    def __init__(
+        self, key: tuple, header: Header, format: str, pages: dict[int, PagePayload]
+    ) -> None:
+        self.key = key
+        self.size = header.size
+        self._header = header
+        self._format = format
+        self._pages = pages
+
+    def __call__(self, cancelled: Callable[[], bool] = lambda: False) -> Repair | None:
+        if cancelled():
+            return None
+        # Imported here: loading the optar package loads numpy, which importing this
+        # module must not.
+        from optar.container import unwrap
+        from optar.format import PageFormat
+
+        result = unwrap(self._header, PageFormat.parse(self._format), self._pages)
+        if cancelled():
+            return None
+        return Repair(self.key, result)
+
+
+def _v1_header(info: ScanInfo | None) -> Header | None:
+    """The version-1 header of a scan identified by ``info``; None for a tagged or
+    untagged scan (a valid tag wins over a header)."""
+    if info is None or info.tag is not None:
+        return None
+    return info.header
+
+
+def _v1_key(info: ScanInfo) -> tuple:
+    """A version-1 scan's document identity."""
+    h = info.header
+    return (h.fingerprint, h.size, h.total, h.parity, info.format)
+
+
+@functools.lru_cache(maxsize=64)
+def _pages_promised(total: int, format: str, parity: int) -> int:
+    """Whole pages a version-1 document may lack and still be promised its repair."""
+    # Imported here: loading the optar package loads numpy.
+    from optar.container import pages_promised, plan_for
+    from optar.errors import OptarError
+    from optar.format import PageFormat
+
+    try:
+        return pages_promised(plan_for(total, PageFormat.parse(format), parity))
+    except OptarError:
+        return 0  # a format no version-1 page is printed in
+
+
 @dataclass
 class _Scan:
     id: int
@@ -467,6 +611,11 @@ class _Scan:
     failed: dict[str, str] = field(default_factory=dict)
     decoding: set[str] = field(default_factory=set)  # formats being decoded in
     unreadable_reason: str | None = None
+    # Version 1: the page's payload, its number of erased bytes, and a serial that
+    # changes with every payload, for the repair result.
+    payload: PagePayload | None = None
+    erased: int = 0
+    payload_serial: int = 0
 
 
 @dataclass
@@ -479,6 +628,9 @@ class _Group:
     # prefix-compatible, so all are prefixes of it, and a name is compatible with every
     # member exactly when it is compatible with this one.
     longest: str = ""
+    # Version 1: the document identity (see ``_v1_key``) and its first scan's header.
+    v1: tuple | None = None
+    header: Header | None = None
 
 
 @dataclass(frozen=True)
@@ -504,7 +656,9 @@ class _Choice:
     """A document remembered by its scans and, if tagged, by its identity."""
 
     members: frozenset[int]
-    identity: tuple | None  # (format, total, tag) of a tagged document, else None
+    # (format, total, tag) of a tagged document, ("version 1", *key) of a version-1
+    # document, else None
+    identity: tuple | None
 
 
 # Which document a user operation was made in.
@@ -512,6 +666,8 @@ _Anchor = _HandDocument | _Choice
 
 
 def _identity(g: _Group) -> tuple | None:
+    if g.v1 is not None:
+        return ("version 1", *g.v1)
     return (g.format, g.total, g.tag) if g.tag is not None else None
 
 
@@ -577,6 +733,8 @@ class Document:
         self._serial = 0
         self._outcomes = 0  # outcomes recorded so far
         self._verdict: tuple[tuple, bool] | None = None  # (what was assembled, matches)
+        self._repair: Repair | None = None  # version 1: the latest accepted repair result
+        self._repair_failure: tuple[tuple, str] | None = None  # (key, reason) of a job that raised
         self._reals: dict[str, int] = {}  # resolved path -> scan
         self._lay = _Layout()
         self._dirty = False  # the layout is recomputed when next read
@@ -610,8 +768,26 @@ class Document:
         information replaces the first, but the guarantees about choices and
         assignments resolving to the same document assume the identity does not
         change.
+
+        For a version-1 scan (a ``header`` and no tag) the header gives the page and
+        the page count: they are stored, and shown, from the header.
         """
+        header = _v1_header(info)
+        if header is not None:
+            info = replace(info, page=header.page, total=header.total)
         self._get(scan_id).info = info
+        self._changed()
+
+    def set_payload(self, scan_id: int, payload: PagePayload) -> None:
+        """Records a version-1 scan's page payload (its data and erased bytes). A
+        version-1 scan gives its page once it has both its outcome and its payload; one
+        whose payload cannot be produced must be reported with ``set_unreadable``, or
+        it stays ``WORKING``."""
+        s = self._get(scan_id)
+        self._outcomes += 1
+        s.payload = payload
+        s.erased = int(payload.erased.sum())
+        s.payload_serial = self._outcomes
         self._changed()
 
     def set_outcome(
@@ -690,9 +866,27 @@ class Document:
             self._preferred.clear()
         self._changed()
 
+    def can_assign(self, scan_id: int, page: int) -> bool:
+        """Whether ``assign_page`` would take the scan for that page now: there is a
+        document with that page, and neither it nor the scan is version 1. The
+        window asks again when the user has chosen a page: the scan may have been
+        read, or removed, meanwhile."""
+        s = self._scans.get(scan_id)
+        current = self._layout.current
+        if s is None or current is None or current.v1 is not None:
+            return False
+        return _v1_header(s.info) is None and 1 <= page <= _pages(current.total)
+
     def assign_page(self, scan_id: int, page: int) -> None:
-        self._get(scan_id)
+        """Puts the scan into a page of the current document by hand. Raises
+        ValueError for a version-1 document or a version-1 scan: their pages
+        identify themselves."""
+        s = self._get(scan_id)
         current = self._require_current()
+        if current.v1 is not None:
+            raise ValueError("a version-1 document takes no pages by hand")
+        if _v1_header(s.info) is not None:
+            raise ValueError(f"scan {scan_id} is a page of a version-1 document")
         if not 1 <= page <= _pages(current.total):
             raise ValueError(f"page {page} is outside 1..{_pages(current.total)}")
         self._pin()
@@ -798,13 +992,16 @@ class Document:
         For a complete tagged document this hashes the whole recovered file, once per
         change (the verdict is cached). That takes seconds for a very large document;
         with ``verify=False`` nothing is hashed and an unknown verdict is ``CHECKING``
-        (see ``verdict_job``).
+        (see ``verdict_job``). A version-1 document is never repaired here, whatever
+        ``verify`` says (see ``repair_job``).
         """
         cur = self._layout.current
         if cur is None:
             return Summary(DocState.EMPTY, 0, 0, 0, 0, 0, None)
         healths = [p.health for p in self.pages()]
         tally = {h: healths.count(h) for h in set(healths)}
+        if cur.v1 is not None:
+            return self._v1_summary(cur, tally)
         if tally.get(Health.WAITING) or tally.get(Health.WORKING):
             state = DocState.WORKING
         elif all(h in _SOUND for h in healths):
@@ -827,6 +1024,130 @@ class Document:
             tally.get(Health.MISSING, 0),
             cur.tag.size if cur.tag is not None else None,
         )
+
+    def _v1_summary(self, cur: _Group, tally: dict[str, int]) -> Summary:
+        """The summary of a version-1 document; never repairs (see ``repair_job``)."""
+        table = self._table()
+        lacking = tuple(
+            p.number for p in table.views if p.health in (Health.MISSING, Health.UNREADABLE)
+        )
+        key = self._repair_key()
+        repair = self._repair if self._repair is not None and self._repair.key == key else None
+        result = repair.result if repair is not None else None
+        failure = self._repair_failure
+        error = failure[1] if failure is not None and failure[0] == key else ""
+        if tally.get(Health.WAITING) or tally.get(Health.WORKING):
+            state = DocState.WORKING
+        elif error and result is None:
+            state = DocState.INCOMPLETE  # the repair failed for these pages
+        elif result is not None:
+            if result.verified:
+                state = DocState.RECOVERABLE if lacking else DocState.VERIFIED
+            elif result.data is not None:
+                state = DocState.MISMATCH
+            else:
+                state = DocState.INCOMPLETE
+        elif not lacking:
+            state = DocState.CHECKING
+        elif (
+            cur.header.parity
+            and len(lacking) < len(table.usable)
+            and len(lacking) <= _pages_promised(cur.total, cur.format, cur.header.parity)
+        ):
+            state = DocState.RECOVERABLE
+        else:
+            state = DocState.INCOMPLETE
+        return Summary(
+            state,
+            tally.get(Health.GOOD, 0),
+            tally.get(Health.REPAIRED, 0),
+            tally.get(Health.DAMAGED, 0),
+            tally.get(Health.UNREADABLE, 0),
+            tally.get(Health.MISSING, 0),
+            cur.header.size,
+            cur.header.parity,
+            lacking,
+            result,
+            error,
+        )
+
+    def _repair_key(self) -> tuple | None:
+        """Identifies the payloads a version-1 document's repair uses: its identity
+        and, per page, the scan in use and its payload serial (None: no data)."""
+        lay = self._layout
+        if lay.current is None or lay.current.v1 is None:
+            return None
+        table = self._table()
+        pages = tuple(
+            None if o is None else (slot.scan_id, self._scans[slot.scan_id].payload_serial)
+            for slot, o in zip(self.slots(), table.usable, strict=True)
+        )
+        return (_identity(lay.current), pages)
+
+    def _accepted_repair(self) -> Repair | None:
+        """The accepted repair result if it is for the pages now in use, else None. A
+        result for other pages is kept (only the latest accepted one): it counts
+        again whenever exactly the payloads it came from are in use again."""
+        if self._repair is None:
+            return None
+        return self._repair if self._repair.key == self._repair_key() else None
+
+    def _failed_here(self) -> bool:
+        """Whether the repair failed for the pages now in use."""
+        failure = self._repair_failure
+        return failure is not None and failure[0] == self._repair_key()
+
+    def repair_job(self) -> RepairJob | None:
+        """A job that assembles, repairs and checks the current version-1 document, or
+        None: no version-1 document, a page still waiting or being read, no page with
+        data, or a result already accepted, or a failure reported, for the pages in
+        use."""
+        cur = self._layout.current
+        if cur is None or cur.v1 is None:
+            return None
+        if any(p.health in (Health.WAITING, Health.WORKING) for p in self.pages()):
+            return None
+        if self._accepted_repair() is not None or self._failed_here():
+            return None
+        table = self._table()
+        pages = {
+            slot.number: self._scans[slot.scan_id].payload
+            for slot, o in zip(self.slots(), table.usable, strict=True)
+            if o is not None
+        }
+        if not pages:
+            return None
+        return RepairJob(self._repair_key(), cur.header, cur.format, pages)
+
+    def accept_repair(self, repair: Repair | None) -> None:
+        """Keeps a ``RepairJob``'s result when it is for the pages now in use; a result
+        for other pages, or None (cancelled), is ignored."""
+        if repair is not None and repair.key == self._repair_key():
+            self._repair = repair
+
+    def fail_repair(self, key: tuple, reason: str) -> None:
+        """Records that the ``RepairJob`` with ``key`` raised, with a plain ``reason``.
+        For the pages it was made for the job is not offered again, the state is
+        ``INCOMPLETE`` and ``Summary.repair_error`` is the reason; it counts no longer
+        once the pages in use change. A key for other pages is ignored."""
+        if key == self._repair_key():
+            self._repair_failure = (key, reason)
+
+    def save_bytes(self) -> bytes | None:
+        """A version-1 document's file, once an accepted repair result has it (verified
+        or not: see ``summary``); None otherwise."""
+        repair = self._accepted_repair()
+        return repair.result.data if repair is not None else None
+
+    def salvage_bytes(self) -> bytes | None:
+        """A version-1 document's file as far as it was recovered, when the accepted
+        repair result could not give the file: it may contain wrong bytes and is
+        only for saving after an explicit warning. None otherwise, and when too few
+        pages gave data for the repair to build one (``Unwrapped.best_effort``)."""
+        repair = self._accepted_repair()
+        if repair is None or repair.result.data is not None:
+            return None
+        return repair.result.best_effort
 
     def verdict_job(self) -> VerdictJob | None:
         """A job that checks the file against the tag, or None when ``summary()``
@@ -857,8 +1178,15 @@ class Document:
         """The recovered file, page by page; cut to the tag's size with a tag.
 
         Checks before anything is produced: raises ``ValueError`` when no page has
-        usable data.
+        usable data. For a version-1 document the file is ``save_bytes()``, and
+        ``ValueError`` is raised while there is none.
         """
+        cur = self._layout.current
+        if cur is not None and cur.v1 is not None:
+            data = self.save_bytes()
+            if data is None:
+                raise ValueError("the document has not been repaired")
+            return iter((data,))
         table = self._table()
         if not any(o is not None for o in table.usable):
             raise ValueError("no page has been decoded")
@@ -887,11 +1215,35 @@ class Document:
 
     @property
     def can_save(self) -> bool:
+        """Any page has usable data; for a version-1 document, ``save_bytes()`` has
+        the file."""
+        cur = self._layout.current
+        if cur is not None and cur.v1 is not None:
+            return self.save_bytes() is not None
         return any(o is not None for o in self._table().usable)
 
     @property
+    def can_save_anyway(self) -> bool:
+        """Whether saving is offered at all: the file can be saved (``can_save``), or a
+        version-1 document's best effort can (``salvage_bytes``), which may contain
+        wrong bytes and is only saved after an explicit warning."""
+        return self.can_save or self.salvage_bytes() is not None
+
+    def save_chunks(self) -> Iterator[bytes]:
+        """What saving writes, when ``can_save_anyway``: ``chunks()``, or the best
+        effort when only that can be saved. Raises ValueError when nothing can."""
+        salvage = self.salvage_bytes()
+        if salvage is not None:
+            return iter((salvage,))
+        return self.chunks()
+
+    @property
     def suggested_name(self) -> str:
-        """A plain file name made from the label, which is untrusted text."""
+        """A plain file name made from the label, or from the name an accepted repair
+        result of a version-1 document read; both are untrusted text."""
+        repair = self._accepted_repair()
+        if repair is not None and repair.result.name:
+            return _safe_file_name(repair.result.name)
         cur = self.current
         return _safe_file_name(cur.title if cur is not None else "")
 
@@ -916,12 +1268,16 @@ class Document:
                 return NO_ACTIONS
             return Actions(remove=key, use_spare=key)
         if kind == Row.OTHER:
-            shown = next((shown for _, shown in lay.others if shown[0] == key), None)
-            if shown is None:
+            other = next((item for item in lay.others if item[1][0] == key), None)
+            if other is None:
                 return NO_ACTIONS
-            return Actions(switch=key, assign=shown[0] if len(shown) == 1 else None)
+            group, shown = other
+            # Version-1 pages identify themselves: none is put in or out by hand.
+            by_hand = len(shown) == 1 and lay.current.v1 is None and group.v1 is None
+            return Actions(switch=key, assign=shown[0] if by_hand else None)
         if kind == Row.UNREADABLE and self._listed_unreadable(key):
-            return Actions(remove=key, assign=key)
+            by_hand = lay.current.v1 is None and _v1_header(self._scans[key].info) is None
+            return Actions(remove=key, assign=key if by_hand else None)
         return NO_ACTIONS
 
     def _listed_unreadable(self, scan_id: object) -> bool:
@@ -1085,9 +1441,14 @@ class Document:
     def _rank(self, scan_id: int) -> tuple:
         """Sort key within a page: best outcome (in the document's format) first, no
         outcome last, then add order."""
-        o = self._status(self._scans[scan_id])[1]
+        s = self._scans[scan_id]
+        o = self._status(s)[1]
         if o is None:
             return (1, 0, 0, scan_id)
+        if _v1_header(s.info) is not None and s.id not in self._layout.assigned:
+            # Version 1: fewest erased bytes, then fewest corrected bits.
+            h = o.histogram
+            return (0, s.erased, h[1] + 2 * h[2] + 3 * h[3], scan_id)
         return (0, o.lost, o.repaired, scan_id)
 
     def _state(self, s: _Scan) -> str:
@@ -1118,6 +1479,8 @@ class Document:
                 return ScanState.WORKING, None, 0, ""
             return ScanState.WAITING, None, 0, ""
         if s.outcome is not None and s.info is not None and own_reason is None:
+            if s.payload is None and _v1_header(s.info) is not None:
+                return ScanState.WORKING, None, 0, ""  # version 1: payload to come
             return ScanState.DONE, s.outcome, s.outcome_serial, ""
         if own_reason is not None:
             return ScanState.UNREADABLE, None, 0, own_reason
@@ -1216,13 +1579,13 @@ class Document:
         """The title comes from the group's own scans that it shows: the most common
         name of a tagged group (on a tie, the longest), the longest of another."""
         names = [self._scans[i].info.name.rstrip(" ") for i in shown]
-        if g.tag is not None:
+        if g.tag is not None or g.v1 is not None:
             counts = Counter(names)
             title = max(names, key=lambda n: (counts[n], len(n)), default="")
         else:
             title = max(names, key=len, default="")
         key = scan_ids[0] if scan_ids else None
-        return GroupView(key, title, g.total, g.format, g.tag, scan_ids)
+        return GroupView(key, title, g.total, g.format, g.tag, scan_ids, g.header)
 
     def _group(self) -> tuple[_Group | None, list[_Group]]:
         """Groups the scans; returns the hand-started group (if any) and all groups."""
@@ -1232,12 +1595,21 @@ class Document:
             hand = _Group(self._hand.format, self._hand.total, None)
             untagged.append(hand)
         tagged: dict[tuple, _Group] = {}
+        versioned: dict[tuple, _Group] = {}  # version 1, by ``_v1_key``
         for s in self._scans.values():
             i = s.info
             if i is None or s.unreadable_reason is not None:
                 continue
             if i.total > MAX_TOTAL_PAGES or not 1 <= i.page <= _pages(i.total):
                 continue  # unreadable: see _unreadable_reason
+            header = _v1_header(i)
+            if header is not None:
+                key = _v1_key(i)
+                g = versioned.get(key)
+                if g is None:
+                    g = versioned[key] = _Group(i.format, i.total, None, v1=key, header=header)
+                g.members.append(s.id)
+                continue
             if i.tag is not None:
                 identity = (i.format, i.total, i.tag)
                 g = tagged.get(identity)
@@ -1260,6 +1632,7 @@ class Document:
             else:
                 untagged.append(_Group(i.format, i.total, None, [s.id], name))
         groups = [g for g in untagged if g is not hand] + list(tagged.values())
+        groups += versioned.values()
         groups.sort(key=lambda g: g.members[0])
         if hand is not None:
             groups.insert(0, hand)
@@ -1318,7 +1691,8 @@ class Document:
             lay.anchor = self._hand
         elif current is not None:
             lay.anchor = _Choice(frozenset(current.members), _identity(current))
-        lay.assigned = {s: p for s, (a, p) in self._assigned.items() if active(a)}
+        if current is None or current.v1 is None:  # none in a version-1 document
+            lay.assigned = {s: p for s, (a, p) in self._assigned.items() if active(a)}
         lay.preferred = {s: n for s, (a, n) in self._preferred.items() if active(a)}
         if current is not None:
             lay.shown = [m for m in current.members if m not in lay.assigned]

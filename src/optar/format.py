@@ -7,13 +7,21 @@ that holds format numbers.
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
+from fractions import Fraction
 
 from optar.errors import FormatError
 
 PIXELS_PER_INCH = 200
 POINTS_PER_INCH = 72
+# The printer the layouts are made for, in device dots per inch; a standard
+# data dot (1 / PIXELS_PER_INCH inch) is this many of them wide.
+PRINTER_DPI = 600
+STANDARD_PRINTER_DOTS = PRINTER_DPI // PIXELS_PER_INCH
+# Scan pixels per printed data dot at the advised scan resolution.
+SCAN_PIXELS_PER_DOT = 3
 TEXT_WIDTH = 13
 # Smallest margin, on every side, that a printer can be trusted not to clip.
 MIN_MARGIN_PT = 12.0
@@ -212,3 +220,160 @@ class PageFormat:
     def fits(self, paper: Paper) -> bool:
         """True if the page image leaves at least MIN_MARGIN_PT on every side of paper."""
         return paper.fits_image(self.width, self.height)
+
+
+@dataclass(frozen=True)
+class DotSize:
+    name: str  # "standard" | "medium" | "big" | "large" | "xlarge"
+    printer_dots: int  # width of one data dot in 600 dpi printer dots
+
+    @property
+    def scale(self) -> Fraction:
+        """Printed size of a data dot relative to the standard 1/200 inch."""
+        return Fraction(self.printer_dots, STANDARD_PRINTER_DOTS)
+
+    @property
+    def is_standard(self) -> bool:
+        """True for the 1/200 inch dot of 0.2.0 and the C tools."""
+        return self.printer_dots == STANDARD_PRINTER_DOTS
+
+    @property
+    def pixels_per_inch(self) -> Fraction:
+        """Printed data dots per inch."""
+        return Fraction(PRINTER_DPI, self.printer_dots)
+
+    @property
+    def size_pt(self) -> float:
+        """The printed width of one data dot, in points."""
+        return POINTS_PER_INCH * self.printer_dots / PRINTER_DPI
+
+    @property
+    def scan_dpi(self) -> int:
+        """The advised scan resolution: SCAN_PIXELS_PER_DOT pixels per printed dot."""
+        return SCAN_PIXELS_PER_DOT * PRINTER_DPI // self.printer_dots
+
+
+DOT_SIZES: dict[str, DotSize] = {
+    "standard": DotSize("standard", 3),
+    "medium": DotSize("medium", 4),
+    "big": DotSize("big", 5),
+    "large": DotSize("large", 6),
+    "xlarge": DotSize("xlarge", 9),
+}
+
+# Reed-Solomon parity bytes per codeword, and the container's fixed numbers.
+PARITY: dict[str, int] = {"none": 0, "standard": 32, "high": 64}
+HEADER_MAGIC = b"oPt1"
+CONTAINER_VERSION = 1
+HEADER_SIZE = 38
+HEADER_COPIES = 5
+FINGERPRINT_SIZE = 16
+SPREAD_STEP = 7919
+CODEWORD = 255
+NAME_MAX_BYTES = 255
+# Largest stream (pages times page bytes) of a document with parity.
+PROTECTED_MAX_BYTES = 256 * 1024 * 1024
+# The window promises a page can be lost only while it takes at most this
+# share of the parity bytes of a codeword.
+PROMISE_NUM, PROMISE_DEN = 3, 4
+
+# One printer device dot, in points.
+_DEVICE_DOT_PT = POINTS_PER_INCH / PRINTER_DPI
+
+
+@dataclass(frozen=True)
+class Layout:
+    paper: Paper
+    dots: DotSize
+    xcrosses: int
+    ycrosses: int
+    offset_x_pt: float
+    offset_y_pt: float
+
+    @property
+    def fmt(self) -> PageFormat:
+        return PageFormat(xcrosses=self.xcrosses, ycrosses=self.ycrosses)
+
+    @property
+    def pixels_per_inch(self) -> Fraction:
+        return self.dots.pixels_per_inch
+
+    def margins(self) -> tuple[float, float, float, float]:
+        """Margins (left, bottom, right, top) in points around the placed image."""
+        fmt = self.fmt
+        unit = self.dots.size_pt
+        return (
+            self.offset_x_pt,
+            self.offset_y_pt,
+            self.paper.width_pt - self.offset_x_pt - fmt.width * unit,
+            self.paper.height_pt - self.offset_y_pt - fmt.height * unit,
+        )
+
+    @property
+    def scan_dpi(self) -> int:
+        """The advised scan resolution, which depends only on the dot size."""
+        return self.dots.scan_dpi
+
+
+def _centred_offset(free_pt: float) -> float:
+    """Half of free_pt, rounded down to a whole 600 dpi device dot."""
+    return math.floor(free_pt / 2 / _DEVICE_DOT_PT + 1e-9) * _DEVICE_DOT_PT
+
+
+def _fitted_layout(paper: Paper, dots: DotSize) -> Layout:
+    """The largest grid that leaves MIN_MARGIN_PT on every side, centred."""
+    unit = dots.size_pt
+    probe = PageFormat(xcrosses=2, ycrosses=2)
+    pitch = probe.cpitch * unit
+    # width = 2*border + cpitch*(x-1) + 2*chalf; height adds text_height
+    base_x = probe.width * unit - pitch
+    base_y = probe.height * unit - pitch
+    x = math.floor((paper.width_pt - 2 * MIN_MARGIN_PT - base_x) / pitch + 1e-9) + 1
+    y = math.floor((paper.height_pt - 2 * MIN_MARGIN_PT - base_y) / pitch + 1e-9) + 1
+    fmt = PageFormat(xcrosses=x, ycrosses=y)
+    return Layout(
+        paper,
+        dots,
+        x,
+        y,
+        _centred_offset(paper.width_pt - fmt.width * unit),
+        _centred_offset(paper.height_pt - fmt.height * unit),
+    )
+
+
+def _build_layouts() -> dict[tuple[str, str], Layout]:
+    layouts: dict[tuple[str, str], Layout] = {}
+    for paper in PAPERS.values():
+        for dots in DOT_SIZES.values():
+            if dots.is_standard:  # today's grid and offsets, kept exactly
+                layout = Layout(
+                    paper,
+                    dots,
+                    paper.xcrosses,
+                    paper.ycrosses,
+                    paper.offset_x_pt,
+                    paper.offset_y_pt,
+                )
+            else:
+                layout = _fitted_layout(paper, dots)
+            layouts[(paper.name, dots.name)] = layout
+    return layouts
+
+
+LAYOUTS: dict[tuple[str, str], Layout] = _build_layouts()
+
+
+def get_layout(paper: str, dots: str = "standard") -> Layout:
+    key = (get_paper(paper).name, dots.lower())
+    try:
+        return LAYOUTS[key]
+    except KeyError:
+        raise FormatError(f"unknown dot size {dots!r}; known: {', '.join(DOT_SIZES)}") from None
+
+
+def layout_for_format(format: str) -> Layout | None:
+    """The layout whose page format string is `format`, or None."""
+    for layout in LAYOUTS.values():
+        if layout.fmt.to_string() == format:
+            return layout
+    return None

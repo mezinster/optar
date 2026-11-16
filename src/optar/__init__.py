@@ -1,8 +1,27 @@
 # (c) GPL 2007 Karel 'Clock' Kulhavy, Twibright Labs; Python port 2026
 """Python port of optar: store files on paper."""
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
+from optar.container import (  # noqa: E402
+    BEST_EFFORT_PAGES,
+    PROTECTED_MAX_BYTES,
+    Header,
+    PagePayload,
+    Plan,
+    Unwrapped,
+    document_plan,
+    fingerprint,
+    name_bytes,
+    page_payload,
+    pages_promised,
+    plan,
+    plan_for,
+    positions,
+    read_header,
+    unwrap,
+    wrap,
+)
 from optar.decoder import (  # noqa: E402
     BitPacker,
     DecodeOptions,
@@ -20,8 +39,20 @@ from optar.decoder import (  # noqa: E402
 from optar.encoder import Page, encode  # noqa: E402
 from optar.errors import DecodeError, FormatError, IdentifyError, OptarError  # noqa: E402
 from optar.fileio import replacing  # noqa: E402
-from optar.format import PAPERS, PageFormat, Paper, get_paper  # noqa: E402
-from optar.identify import ScanIdentity, decode_unlabelled, identify_scan  # noqa: E402
+from optar.format import (  # noqa: E402
+    DOT_SIZES,
+    LAYOUTS,
+    PAPERS,
+    PARITY,
+    DotSize,
+    Layout,
+    PageFormat,
+    Paper,
+    get_layout,
+    get_paper,
+    layout_for_format,
+)
+from optar.identify import ScanIdentity, decode_unlabelled, identify_scan, scan_dpi  # noqa: E402
 from optar.imageio import read_scan, write_pgm, write_png  # noqa: E402
 from optar.label import (  # noqa: E402
     LabelInfo,
@@ -39,6 +70,13 @@ __all__ = [
     "Paper",
     "PAPERS",
     "get_paper",
+    "DotSize",
+    "DOT_SIZES",
+    "Layout",
+    "LAYOUTS",
+    "PARITY",
+    "get_layout",
+    "layout_for_format",
     "encode",
     "Page",
     "decode",
@@ -74,5 +112,23 @@ __all__ = [
     "identify_scan",
     "decode_unlabelled",
     "ScanIdentity",
+    "scan_dpi",
     "replacing",
+    "PROTECTED_MAX_BYTES",
+    "BEST_EFFORT_PAGES",
+    "Header",
+    "read_header",
+    "fingerprint",
+    "name_bytes",
+    "Plan",
+    "plan",
+    "plan_for",
+    "document_plan",
+    "pages_promised",
+    "positions",
+    "wrap",
+    "PagePayload",
+    "page_payload",
+    "Unwrapped",
+    "unwrap",
 ]

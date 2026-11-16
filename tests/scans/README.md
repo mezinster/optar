@@ -1,5 +1,15 @@
-Real printed-and-scanned pages, one subdirectory per test case (e.g. `tests/scans/laser-a4/`).
-Each subdirectory holds `original.bin` (the encoded file), `paper.txt` (`a4` or `letter`)
-and the scans `scan_0001.png`, `scan_0002.png`, ... in page order.
-`test_real_scans.py` decodes every subdirectory with `read_scan` and checks the data byte for byte.
-With no subdirectories the test reports one skip.
+Real scans are not kept in this repository. They are measured where they are, on the
+machine that made them, and this folder stays empty of scans.
+
+`test_real_scans.py` is kept for that reason only: with no case in this folder it reports
+one skip, which is the expected result everywhere, CI included.
+
+To check scans you have, point the `OPTAR_REAL_SCANS` environment variable at a folder
+outside the repository that holds them as `*.png`:
+
+    OPTAR_REAL_SCANS=/path/to/scans .venv/bin/pytest -q tests/unit/test_identify.py -k real
+
+The test it turns on, `test_real_coarse_scans_report_their_resolution`, is for
+Standard-dot pages scanned at 300 dpi, which do not decode: it checks that each scan is
+refused with an estimated resolution between 270 and 330 dpi. Without the variable the
+test is skipped.

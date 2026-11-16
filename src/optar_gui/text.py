@@ -23,6 +23,8 @@ from optar_gui.document import (
 )
 
 if TYPE_CHECKING:
+    from optar.container import Unwrapped
+    from optar.format import Layout
     from optar_gui.document import Document
 
 # Same wording as the command line's (optar.cli.ACTUAL_SIZE).
@@ -85,6 +87,10 @@ PREPARING = "Reading the file…"
 CREATING = "Creating the PDF…"
 # Why a PDF is not created over the file being put on paper.
 DEST_IS_SOURCE = "the PDF would replace the file being put on paper; choose another name"
+# The choices of how the file is put on paper.
+DOTS_FIELD = "Dot size:"
+PROTECT_FIELD = "Protection:"
+COMPATIBLE = "Compatible with optar 0.2 and the original optar"
 
 # What a document without a name is called.
 NO_NAME = "(no name)"
@@ -141,8 +147,14 @@ def health_label(page: PageView) -> str:
 
 
 def summary_line(s: Summary) -> str:
-    """The document's state for the bottom bar."""
+    """The document's state for the bottom bar.
+
+    For a version-1 document an accepted repair result adds what the repair did
+    (``repair_line``); one that could not give the file says which pages to add
+    or rescan (``rescan_advice``).
+    """
     pages = s.good + s.repaired + s.damaged + s.unreadable + s.missing
+    repair = s.repair
     if s.state == DocState.EMPTY:
         return ""
     if s.state == DocState.WORKING:
@@ -150,9 +162,23 @@ def summary_line(s: Summary) -> str:
     if s.state == DocState.CHECKING:
         return "Checking the fingerprint…"
     if s.state == DocState.VERIFIED:
-        return f"Verified · {count(s.size, 'byte')}"
+        line = f"Verified · {count(s.size, 'byte')}"
+        return f"{line} · {repair_line(repair)}" if repair is not None else line
+    if s.state == DocState.RECOVERABLE:
+        missing = _page_numbers(s.missing_pages)
+        if repair is None:
+            return f"Recoverable: {missing} missing, can be repaired from the others"
+        return (
+            f"Recoverable: {missing} missing, repaired from the others · matches the "
+            f"fingerprint · {count(s.size, 'byte')} · {repair_line(repair)}"
+        )
     if s.state == DocState.MISMATCH:
-        return "Does not match the fingerprint on the paper"
+        line = "Does not match the fingerprint on the paper"
+        return f"{line} · {repair_line(repair)}" if repair is not None else line
+    if s.repair_error:
+        return repair_failed(s.repair_error)
+    if repair is not None:
+        return f"{rescan_advice(repair)} ({repair_line(repair)})"
     if s.state == DocState.UNVERIFIABLE:
         read = f"All {count(pages, 'page')}" if pages > 1 else count(pages, "page")
         return f"{read} read · cannot be verified (no tag)"
@@ -193,10 +219,24 @@ def save_warning(doc: Document, summary: Summary | None = None) -> str | None:
 
     ``summary`` is the document's summary if the caller has it (it may be
     ``CHECKING``); otherwise ``doc.summary()`` is used, which may hash the file.
+    A version-1 document saves what its repair gave (``Summary.repair``), whatever
+    else is going on (another scan of a page may be being read): the warning is
+    about that result. One that could not give the file is saved as far as it was
+    recovered, which may be wrong in parts.
     """
-    state = (summary if summary is not None else doc.summary()).state
+    s = summary if summary is not None else doc.summary()
+    state = s.state
     if state == DocState.VERIFIED:
         return None
+    if s.repair is not None and s.repair.verified:
+        return None  # repaired, and the fingerprint matches
+    if s.repair is not None and s.repair.data is None:
+        return (
+            f"{rescan_advice(s.repair)} If you save now, the saved file is only what "
+            "could be recovered and may contain wrong parts."
+        )
+    if s.repair is not None:
+        state = DocState.MISMATCH  # the file as repaired, which is not the original
     if state == DocState.CHECKING:
         return (
             "The fingerprint is still being checked, so it is not yet known whether the "
@@ -277,22 +317,27 @@ def by_hand_caution() -> str:
 
 
 def caution(doc: Document) -> str | None:
-    """The standing caution over the current document, or None when it has a tag."""
+    """The standing caution over the current document, or None when it has a tag
+    or is a version-1 document (its pages say what they are in their data)."""
     cur = doc.current
-    if cur is None or cur.tag is not None:
+    if cur is None or cur.tag is not None or cur.header is not None:
         return None
     return by_hand_caution() if doc.by_hand else untagged_caution()
 
 
 def paper_name(format: str) -> str:
-    """The paper a page format string belongs to, or the string itself."""
+    """The paper a page format string belongs to, with its dot size unless the dots
+    are standard ("A4", "A4, Large dots"), or the string itself."""
     # Imported here: loading the optar package loads numpy, which importing this
     # module must not.
-    from optar.format import PAPERS, PageFormat
+    from optar.format import LAYOUTS, PAPERS, PageFormat
 
     for key, paper in PAPERS.items():
         if PageFormat.for_paper(paper).to_string() == format:
             return _PAPER_NAMES.get(key, paper.name)
+    for (key, dots), layout in LAYOUTS.items():
+        if layout.fmt.to_string() == format:
+            return f"{_PAPER_NAMES.get(key, key)}, {_DOT_NAMES.get(dots, dots)} dots"
     return format
 
 
@@ -423,17 +468,31 @@ def file_info(total: int, size: int) -> str:
     return f"{count(max(total, 1), 'page')} · {count(size, 'byte')}"
 
 
-def name_warning(dropped: str, cut: bool) -> str | None:
-    """Why the printed name differs from the name typed, or None when it does not."""
+def name_warning(
+    dropped: str, cut: bool, *, stored: bool = False, printed: bool = True
+) -> str | None:
+    """Why the printed name differs from the name typed, or None when it does not.
+
+    ``stored`` is whether the pages carry the name in their data and identify
+    themselves from it (every printout but a compatible one): the printed name
+    is then only for people. ``printed`` is whether any of the name is printed
+    at all; the label of the largest dots has no room for it.
+    """
     parts = []
-    if dropped:
+    if dropped and (printed or not cut):
         shown = " ".join(ch if ch.isprintable() else repr(ch)[1:-1] for ch in dropped)
         parts.append(f"These characters are not in the label font and are not printed: {shown}")
-    if cut:
+    if cut and not printed:
+        parts.append("The label of this dot size has no room for the name, so it is not printed")
+    elif cut:
         parts.append("The name is too long for the page and is cut")
     if not parts:
         return None
-    return ". ".join(parts) + ". The printed name is what identifies the pages later."
+    if stored:
+        ending = "The pages do not need it: the full name is kept with the file."
+    else:
+        ending = "The printed name is what identifies the pages later."
+    return f"{'. '.join(parts)}. {ending}"
 
 
 def not_regular_file(path: str) -> str:
@@ -443,10 +502,6 @@ def not_regular_file(path: str) -> str:
 
 def file_unreadable(message: str) -> str:
     return f"The file could not be read: {message}"
-
-
-def cannot_put_on_paper(message: str) -> str:
-    return f"This file cannot be put on paper: {message}"
 
 
 def created_message(path: str, pages: int) -> str:
@@ -478,3 +533,187 @@ def preview_failed(message: str) -> str:
 
 def too_large_to_show(pixels: int, limit: int) -> str:
     return f"{pixels:,} pixels is more than the {limit:,} a scan may have"
+
+
+# Dot sizes and protection levels as the window shows them, by their names in optar.format.
+_DOT_NAMES = {
+    "standard": "Standard",
+    "medium": "Medium",
+    "big": "Big",
+    "large": "Large",
+    "xlarge": "Extra large",
+}
+_PROTECTION_NAMES = {"none": "None", "standard": "Standard", "high": "High"}
+
+
+def dot_size_label(dots: str, scan_dpi: int) -> str:
+    """A dot size in its selector: its name and the scan resolution to use."""
+    return f"{_DOT_NAMES.get(dots, dots)} (scan at {scan_dpi:,} dpi)"
+
+
+def protection_label(protect: str) -> str:
+    return _PROTECTION_NAMES.get(protect, protect)
+
+
+def promise(promised: int, total: int) -> str:
+    """How many of a protected printout's pages, any of them, may be lost
+    without losing the file (``optar.container.pages_promised``)."""
+    return f"can lose {count(promised, 'page')} of {total:,}"
+
+
+DAMAGE_REPAIRED = "damage within pages is repaired, but losing a whole page loses the file"
+
+
+def print_summary(total: int, size: int, promised: int, protected: bool) -> str:
+    """Pages and size of a file to put on paper, and what its protection allows."""
+    line = file_info(total, size)
+    if promised > 0:
+        return f"{line} · {promise(promised, total)}"
+    if protected:
+        return f"{line} · {DAMAGE_REPAIRED}"
+    return line
+
+
+# Why a file cannot be put on paper with the chosen dot size and protection
+# (``work.PrintPlan.too_large``): more pages than a printout may have, or more
+# than a protected one may have.
+TOO_MANY_PAGES = "too many pages"
+TOO_LARGE_TO_PROTECT = "too large to protect"
+
+
+def too_large(
+    reason: str, limit: int, unprotected_fits: bool = False, smaller_dots: str | None = None
+) -> str:
+    """Why a file cannot be put on paper with the chosen dot size and protection,
+    and which other choice would take it.
+
+    ``reason`` is ``TOO_MANY_PAGES`` or ``TOO_LARGE_TO_PROTECT``; ``limit`` the
+    most pages a printout of that kind may have. ``unprotected_fits`` is whether
+    the file fits at this dot size without protection; ``smaller_dots`` names
+    the largest smaller dot size at which it fits with this protection, if any.
+    """
+    if reason == TOO_LARGE_TO_PROTECT:
+        why = (
+            "This file is too large to protect with this dot size: a protected "
+            f"printout may have at most {count(limit, 'page')}."
+        )
+    else:
+        why = (
+            "This file is too large to put on paper with these choices: a printout "
+            f"may have at most {count(limit, 'page')}."
+        )
+    ways = []
+    if unprotected_fits:
+        ways.append("without protection")
+    if smaller_dots is not None:
+        ways.append(f"with {_DOT_NAMES.get(smaller_dots, smaller_dots)} dots")
+    return f"{why} It fits {', or '.join(ways)}." if ways else why
+
+
+# --- Documents that repair themselves, and coarse scans ---------------------------
+#
+# What the library calls parity, codewords and page headers is never named here:
+# the window speaks of "protection", "repair" and the "fingerprint". Only the
+# fingerprint proves the file is right; nothing below suggests otherwise.
+
+# Why a page whose data says it repairs itself gave no data to repair with.
+NO_PAGE_DATA = "The data of this page could not be read"
+
+# The bar while a document is repaired and checked in the background.
+REPAIRING = "Repairing and checking the fingerprint…"
+
+# How many of the most damaged pages the advice after a failed repair names.
+RESCAN_PAGES = 3
+
+
+def _about_dpi(dpi: float) -> str:
+    """A measured resolution, rounded to the nearest 10: scans measure a few
+    percent off (a printout scaled to 95% reads 286 dpi at 300)."""
+    return f"about {int(round(dpi / 10)) * 10:,} dpi"
+
+
+def coarse_scan(scan_dpi: float, layout: Layout | None) -> str:
+    """A scan made at too low a resolution: for an identified page of ``layout``,
+    the resolution its dots need; for an unreadable scan (``layout`` None), the
+    resolution every dot size needs."""
+    if layout is not None:
+        return (
+            f"Scanned too coarsely for this page: {_about_dpi(scan_dpi)}. "
+            f"Scan it at {layout.scan_dpi:,} dpi."
+        )
+    # Imported here: loading the optar package loads numpy.
+    from optar.format import DOT_SIZES
+
+    needs = [(_DOT_NAMES.get(d, d), dots.scan_dpi) for d, dots in DOT_SIZES.items()]
+    (first, first_dpi), rest = needs[0], needs[1:]
+    listed = ", ".join([f"{first_dpi:,} dpi for {first} dots", *(f"{d:,} {n}" for n, d in rest)])
+    # Any image with a page outline has an estimate: this does not claim it is a page.
+    return f"Scanned at {_about_dpi(scan_dpi)}, which is too coarse to read. Scan at {listed}."
+
+
+def _and(items: list[str]) -> str:
+    """``a``, ``a and b``, ``a, b and c``."""
+    return items[0] if len(items) == 1 else f"{', '.join(items[:-1])} and {items[-1]}"
+
+
+def _page_numbers(numbers: tuple[int, ...] | list[int], in_order: bool = True) -> str:
+    """``page 3``, ``pages 3 and 7``, ``pages 2-4 and 9``. ``in_order`` sorts the
+    numbers and joins runs; else they are named in the order given. At most
+    ``MAX_RUNS`` items are named, then the pages left are counted."""
+    numbers = list(dict.fromkeys(numbers))
+    if not numbers:
+        return "no pages"
+    spans: list[tuple[int, int]] = []  # (first, last) of each item named
+    if in_order:
+        for n in sorted(numbers):
+            if spans and spans[-1][1] == n - 1:
+                spans[-1] = (spans[-1][0], n)
+            else:
+                spans.append((n, n))
+        # Two pages in a row are named apart: "pages 3 and 4".
+        spans = [s for a, b in spans for s in ([(a, a), (b, b)] if b == a + 1 else [(a, b)])]
+    else:
+        spans = [(n, n) for n in numbers]
+    items = [f"{a:,}" if a == b else f"{a:,}-{b:,}" for a, b in spans[:MAX_RUNS]]
+    rest = sum(b - a + 1 for a, b in spans[MAX_RUNS:])
+    if rest:
+        items.append(f"{rest:,} more")
+    return f"page {items[0]}" if len(numbers) == 1 else f"pages {_and(items)}"
+
+
+def repair_line(u: Unwrapped) -> str:
+    """What repairing a document did: the bytes it repaired, and how much of its
+    capacity the worst spot used (``worst_used`` of ``budget``)."""
+    if u.budget == 0:
+        return "Printed without protection, so nothing could be repaired"
+    fixed = f"{count(u.repaired_bytes, 'byte')} repaired"
+    if u.worst_used > u.budget:
+        return (
+            f"{fixed} · the worst spot needed {u.worst_used:,} of {u.budget:,}: "
+            "too much to repair"
+        )
+    return f"{fixed} · the worst spot used {u.worst_used:,} of {u.budget:,} of its repair capacity"
+
+
+def rescan_advice(u: Unwrapped) -> str:
+    """After a repair that could not give the file: the missing pages to add, and
+    the ``RESCAN_PAGES`` pages with the most damage to rescan."""
+    missing = set(u.missing)
+    worst = sorted(
+        (p for p in u.page_damage if p not in missing), key=lambda p: (-u.page_damage[p], p)
+    )[:RESCAN_PAGES]
+    parts = []
+    if missing:
+        parts.append(f"add {_page_numbers(sorted(missing))}")
+    if worst:
+        which = "which has" if len(worst) == 1 else "which have"
+        parts.append(f"rescan {_page_numbers(worst, in_order=False)}, {which} the most damage")
+    advice = "The file could not be fully repaired."
+    if not parts:
+        return f"{advice} Rescanning the pages may still improve it."
+    return f"{advice} Adding or rescanning pages can still improve it: {' and '.join(parts)}."
+
+
+def repair_failed(reason: str) -> str:
+    """The bar when repairing the pages itself failed (an error, not damage)."""
+    return f"The pages could not be repaired: {reason}"

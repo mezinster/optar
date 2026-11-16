@@ -34,6 +34,15 @@ def test_png_is_one_bit_at_200_ppi(tmp_path):
     assert np.array_equal(np.array(im.convert("L")), px)
 
 
+def test_png_dpi_follows_pixels_per_inch(tmp_path):
+    from optar.format import get_layout
+
+    px = (np.indices((5, 9)).sum(0) % 2 * 255).astype(np.uint8)
+    write_png(tmp_path / "p.png", px, get_layout("a4", "xlarge").pixels_per_inch)
+    dpi = Image.open(tmp_path / "p.png").info["dpi"]
+    assert dpi == pytest.approx((66.667, 66.667), abs=0.01)
+
+
 def test_read_scan_linearises_with_default_gamma(tmp_path):
     Image.fromarray(gradient()).save(tmp_path / "g.png")
     out = read_scan(tmp_path / "g.png")
