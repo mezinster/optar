@@ -18,8 +18,8 @@ Responsiveness.
   in the background, then hands the verdict back with
   ``Document.accept_verdict``. A job that fails is not retried for the same
   pages; the bar says the check failed.
-- Saving streams ``Document.chunks()`` (a snapshot taken when the user has
-  confirmed the warning) through ``optar.fileio.replacing`` in the background,
+- Saving streams ``Document.chunks()`` (a snapshot taken together with the
+  warning, before the user confirms it) through ``optar.fileio.replacing`` in the background,
   so an existing file is untouched by a failed save and a large file never
   freezes the window.
 - Scans are read and decoded only by background jobs. Saving and checking run on
@@ -28,7 +28,8 @@ Responsiveness.
   (``preview_runner``), so closing stops it with everything else.
 - Closing cancels every scan, check and preview load, lets a running save
   finish, and waits for all of it within one time budget; a save still running
-  when the budget runs out is told to stop and leaves no file.
+  when the budget runs out is told to stop and leaves no file. The window asks
+  first whether to wait for a running save (``MainWindow.closeEvent``).
 
 Working by hand. Which actions apply to the selected row comes from
 ``Document.actions``; the tab only enables the buttons it names. Replacing a
