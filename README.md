@@ -56,9 +56,10 @@ application the first time from Finder with right-click, Open. The programs
 are unsigned, so macOS and Windows may warn on first run. The macOS and
 Windows builds have not yet run in CI.
 
-Or install from source (Python 3.10 or newer):
+Or install from source, from a checkout of the repository (Python 3.10 or
+newer):
 
-    pip install 'optar[gui]'
+    pip install '.[gui]'
     optar-gui
 
 `optar-gui --version` prints the version. `optar-gui --self-test` starts the
@@ -84,10 +85,11 @@ can assign it to a page by hand.
 From 0.2.0, `optar encode` and the application print a tag at the start of the
 free text of every page, in the form `[SIZE:FINGERPRINT:CC]`. `SIZE` is the
 size of the file in bytes, `FINGERPRINT` is the first 8 hex digits of its
-SHA-256, and `CC` is a two-digit check that depends on the page number and the
+SHA-256, and `CC` is a check of two hexadecimal digits that depends on the page number and the
 number of pages. The tag lets the application:
 
 - keep the pages of different printouts apart;
+- refuse a tagged label whose size does not fit the page count;
 - refuse a scan whose label was misread, instead of placing it on the wrong
   page (about 1 misread in 256 can still pass the check);
 - cut the recovered file to its true size, so it has no zero padding;
@@ -125,7 +127,8 @@ The bar at the bottom shows the state of the whole document:
   the fingerprint on the paper.
 - "Does not match the fingerprint on the paper": all pages were read, but the
   file is not the original, because some data was decoded wrongly. Rescan
-  the pages, starting with those marked Repaired or Damaged.
+  the pages, starting with those marked Repaired.
+- "Working…": scans are still being read.
 - "Checking the fingerprint…": the check is running in the background.
 - "All N pages read · cannot be verified (no tag)": the pages have no tag.
 - Otherwise, a count such as "4 of 6 pages good · 1 damaged · 1 missing".
@@ -136,8 +139,9 @@ what is wrong with it.
 ### Scan formats
 
 Scan in grayscale at 600 dpi (1200 dpi is slightly better). The application
-and `optar decode` accept PNG, TIFF, BMP, PGM/PPM and JPEG. JPEG is accepted
-but is lossy and a poor choice: use PNG.
+accepts PNG, TIFF, BMP, PGM/PPM and JPEG. JPEG is accepted but is lossy and a
+poor choice: use PNG. `optar decode` reads only files named `BASE_0001.png`,
+`BASE_0002.png`, ...
 
 ### What is not proven
 
@@ -167,7 +171,7 @@ Or install from source (Python 3.10 or newer; installs numpy and Pillow):
 
 ### Usage
 
-    optar encode INPUT [-o BASE] [--paper a4|letter] [--to pdf|png|pgm] [--label TEXT] [--format STRING]
+    optar encode INPUT [-o BASE] [--paper a4|letter] [--to pdf|png|pgm] [--label TEXT] [--no-tag] [--format STRING]
     optar decode BASE [-o OUTPUT] [--paper a4|letter] [--format STRING] [--debug-images]
     optar --version
 
@@ -193,8 +197,10 @@ Print the PDF at actual size (100%), not "fit to page", on a 600 dpi laser
 printer. Each data pixel is 3 x 3 printer dots.
 
 Scan at 600 dpi (or 1200 dpi) in grayscale, lossless (PNG, not JPEG), with the
-page upright (portrait, label at the bottom). Landscape scans are not
-supported; this is inherited from the C decoder.
+page upright (portrait, label at the bottom) when you use `optar decode`:
+landscape scans are not supported there, which is inherited from the C
+decoder. The desktop application accepts a scan in any of the four
+orientations.
 
 The decoded output of `optar decode` is zero-padded to a whole page and the
 original length is not stored in the page data (format version 0, unchanged);
