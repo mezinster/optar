@@ -1,0 +1,36 @@
+# (c) GPL 2007 Karel 'Clock' Kulhavy, Twibright Labs; Python port 2026
+"""The ``optar-gui`` entry point where it needs no Qt: ``--version``, bad arguments
+and the message when PySide6 is missing (run without PySide6 in CI)."""
+
+import sys
+
+import optar_gui.__main__ as entry
+from optar import __version__
+
+
+def test_version_and_bad_arguments(capsys):
+    assert entry.main(["--version"]) == 0
+    assert capsys.readouterr().out == f"optar-gui {__version__}\n"
+    assert entry.main(["--no-such-option"]) == 2
+    assert "--no-such-option" in capsys.readouterr().err
+
+
+def test_missing_pyside6_says_how_to_get_it(capsys, monkeypatch):
+    monkeypatch.setitem(sys.modules, "PySide6", None)  # as if it were not installed
+    assert entry.main([]) == 2
+    assert capsys.readouterr().err == (
+        "optar-gui needs PySide6: run pip install '.[gui]' in a checkout of the source, "
+        "or download optar-gui from the project's Releases page.\n"
+    )
+
+
+def test_the_entry_point_does_not_import_qt():
+    import subprocess
+
+    code = (
+        "import sys, optar_gui.__main__\n"
+        "print(','.join(m for m in sys.modules if m.split('.')[0] in ('PySide6', 'shiboken6')))\n"
+    )
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == ""

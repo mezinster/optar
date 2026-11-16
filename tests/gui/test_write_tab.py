@@ -3,6 +3,7 @@
 
 import os
 import threading
+import time
 
 import pytest
 from PySide6.QtCore import QMimeData, QPointF, Qt, QTimer, QUrl
@@ -10,15 +11,14 @@ from PySide6.QtGui import QDropEvent
 from PySide6.QtWidgets import QLabel, QLineEdit, QPushButton, QRadioButton
 
 import optar.encoder as encoder_module
-import optar_gui.__main__ as entry
 from optar import PAPERS, PageFormat
 from optar.encoder import page_count
 from optar.tag import make_tag
 from optar_gui import text
-from optar_gui.document import DocState
+from optar_gui.document import DocState, PageOutcome, ScanInfo
 from optar_gui.main_window import MainWindow
 from optar_gui.read_tab import ReadController
-from optar_gui.work import encode_to_pdf, prepare_file
+from optar_gui.work import Cancelled, encode_to_pdf, prepare_file
 from optar_gui.write_tab import WriteTab
 from tests.helpers import fake_scan, parse_pdf, save_scan, seeded_bytes
 
@@ -339,23 +339,76 @@ def test_window_has_both_tabs_and_hides_before_shutting_down(qtbot):
             return real(*args, **kw)
         return shutdown
 
+    write_cancel = window.write_tab.cancel
     window.read_tab.controller.shutdown = record("read", read_shutdown)
     window.write_tab.shutdown = record("write", write_shutdown)
+    window.write_tab.cancel = record("write cancelled", write_cancel)
+    window.ask_wait = lambda: pytest.fail("nothing is being written: nothing to ask")
     window.close()
-    assert sorted(seen) == [("read", False), ("write", False)]
+    # The writing tab's work is cancelled first, so both tabs' waits overlap.
+    names = [name for name, _ in seen]
+    assert names.index("write cancelled") < names.index("read") < names.index("write")
+    assert not any(visible for _, visible in seen)
 
 
-# --- The entry point -------------------------------------------------------------------
+def synthetic_document(controller):
+    doc = controller.document
+    sid = doc.add_scan("/scans/1.png")
+    doc.set_identified(sid, ScanInfo(A4.to_string(), 1, 1, "x.bin", None))
+    doc.set_outcome(sid, PageOutcome(b"x" * 16, (100, 0, 0, 0), 0))
+    controller.refresh()
 
 
-def test_main_version_and_missing_arguments(capsys, monkeypatch):
-    from optar import __version__
+# Showing a window off-screen makes the offscreen plugin warn about size hints.
+@pytest.mark.qt_log_ignore("This plugin does not support propagateSizeHints")
+def test_closing_while_a_file_is_saved_asks_whether_to_wait(qtbot, tmp_path):
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.show()
+    controller = window.read_tab.controller
+    synthetic_document(controller)
+    gate = threading.Event()
 
-    assert entry.main(["--version"]) == 0
-    assert capsys.readouterr().out == f"optar-gui {__version__}\n"
-    assert entry.main(["--no-such-option"]) == 2
-    assert "--no-such-option" in capsys.readouterr().err
-    # Without PySide6 the window cannot start: say how to install it.
-    monkeypatch.setitem(__import__("sys").modules, "PySide6", None)
-    assert entry.main([]) == 2
-    assert capsys.readouterr().err == "optar-gui needs PySide6: pip install 'optar[gui]'\n"
+    def chunks():
+        yield b"first "
+        gate.wait(TIMEOUT / 1000)
+        yield b"second"
+
+    target = tmp_path / "out.bin"
+    controller.save(str(target), chunks())
+    asked = []
+    window.ask_wait = lambda: asked.append(window.isVisible()) or True
+    assert not window.close()  # the user waits: nothing stops
+    assert asked == [True]
+    assert window.isVisible() and controller.saving
+    gate.set()
+    qtbot.waitUntil(lambda: not controller.saving, timeout=TIMEOUT)
+    assert target.read_bytes() == b"first second"
+    assert window.close()  # nothing is written any more: nothing is asked
+    assert asked == [True]
+
+
+@pytest.mark.qt_log_ignore("This plugin does not support propagateSizeHints")
+def test_closing_while_a_pdf_is_created_can_close_anyway(qtbot, tmp_path):
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.show()
+    tab = window.write_tab
+    started = threading.Event()
+
+    def endless_encode(src, dest, paper, name, cancelled):
+        started.set()
+        while not cancelled():
+            time.sleep(0.01)
+        raise Cancelled()
+
+    tab._encode = endless_encode
+    choose(qtbot, tab, write_file(tmp_path, "data.bin", seeded_bytes(12, 100)))
+    tab.ask_save_path = lambda suggested: str(tmp_path / "data.pdf")
+    child(tab, QPushButton, "createButton").click()
+    assert started.wait(TIMEOUT / 1000) and tab.creating
+    asked = []
+    window.ask_wait = lambda: asked.append(1) or False  # close anyway
+    assert window.close()
+    assert asked == [1] and not window.isVisible()
+    assert not (tmp_path / "data.pdf").exists()

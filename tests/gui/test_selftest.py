@@ -23,3 +23,27 @@ def test_self_test_fails_when_a_check_fails(qapp, capsys, monkeypatch):
     assert run_self_test() == 1
     out = capsys.readouterr().out
     assert "FAIL" in out
+
+
+def test_without_a_console_the_report_goes_to_a_log_file(qapp, monkeypatch, tmp_path):
+    import sys
+    import tempfile
+
+    import optar_gui.selftest as selftest
+
+    def checks(folder):
+        return selftest._report("first check", True) and selftest._report("second", True)
+
+    monkeypatch.setattr(selftest, "_checks", checks)
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    monkeypatch.setattr(sys, "stdout", None)  # a windowed program on Windows
+    assert run_self_test() == 0
+    log = tmp_path / selftest.SELF_TEST_LOG
+    assert log.read_text(encoding="utf-8") == "ok first check\nok second\n"
+
+    def failing(folder):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(selftest, "_checks", failing)
+    assert run_self_test() == 1
+    assert log.read_text(encoding="utf-8") == "FAIL self-test stopped: RuntimeError: boom\n"

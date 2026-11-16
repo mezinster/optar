@@ -51,9 +51,12 @@ From 0.2.0, download the file for your system from the GitHub Releases page of
 - macOS (Apple silicon): `optar-gui-<tag>-macos-arm64.zip`
 - Windows: `optar-gui-<tag>-windows-x86_64.exe`
 
-On Linux, run `chmod +x` on the file first. On macOS, unzip it and open the
-application the first time from Finder with right-click, Open. The programs
-are unsigned, so macOS and Windows may warn on first run. The macOS and
+On Linux, run `chmod +x` on the file first (this applies to the Linux files
+and to the macOS command-line file, not to the zipped application). The
+programs are unsigned, so macOS and Windows may warn on first run. On macOS,
+unzip the application and try to open it; if macOS refuses, open System
+Settings, Privacy & Security, and choose "Open Anyway" (on older macOS
+versions, right-click the application and choose Open). The macOS and
 Windows builds have not yet run in CI.
 
 Or install from source, from a checkout of the repository (Python 3.10 or
@@ -71,8 +74,9 @@ Every page has a label at the bottom: the page format, the page number and
 the number of pages, then free text. The application reads this label from
 the scan.
 
-- A label with a tag is accepted when it reads plausibly and the tag's check
-  matches the page number and page count.
+- A label with a tag is accepted when it reads plausibly, the tag's check
+  matches the page number and page count, and the file size in the tag fits
+  that page count.
 - A label without a tag (printouts made by 0.1.0 or by the C tool) has
   nothing to check it against, so it is accepted only when it reads clearly.
 - A label that looks like a tag with one damaged character is refused.

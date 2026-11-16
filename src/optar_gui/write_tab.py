@@ -175,10 +175,14 @@ class WriteTab(QWidget):
         self._runner.submit(_PREPARE_JOB, partial(self._prepare, path))
         self.refresh()
 
-    def shutdown(self, timeout_ms: int = SHUTDOWN_MS) -> bool:
-        """Cancels all work and waits up to ``timeout_ms`` for it to stop."""
+    def cancel(self) -> None:
+        """Cancels all work without waiting; the tab does nothing more afterwards."""
         self._closed = True
         self._runner.cancel_all()
+
+    def shutdown(self, timeout_ms: int = SHUTDOWN_MS) -> bool:
+        """Cancels all work and waits up to ``timeout_ms`` for it to stop."""
+        self.cancel()
         return self._runner.shutdown(timeout_ms)
 
     # --- Showing -------------------------------------------------------------------

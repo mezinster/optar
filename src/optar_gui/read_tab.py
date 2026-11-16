@@ -72,7 +72,7 @@ from PySide6.QtWidgets import (
 from optar.fileio import replacing
 from optar.format import PAPERS, PageFormat, get_paper
 from optar_gui import text
-from optar_gui.dialogs import AssignPageDialog, StartByHandDialog
+from optar_gui.dialogs import AssignPageDialog, StartByHandDialog, ask
 from optar_gui.document import (
     NO_ACTIONS,
     Actions,
@@ -534,37 +534,6 @@ class ReadController(QObject):
         self.save_failed.emit(message)
 
 
-def _ask(
-    parent: QWidget,
-    icon: QMessageBox.Icon,
-    title: str,
-    message: str,
-    buttons: QMessageBox.StandardButton = QMessageBox.StandardButton.Ok,
-    default: QMessageBox.StandardButton = QMessageBox.StandardButton.NoButton,
-) -> QMessageBox.StandardButton:
-    """Shows a message box and returns the button clicked (``NoButton`` if none).
-
-    The message is always plain text: it holds file names and label text read from
-    scans, which Qt would otherwise take for rich text when they look like markup.
-    """
-    box = QMessageBox(parent)
-    box.setIcon(icon)
-    box.setWindowTitle(title)
-    box.setTextFormat(Qt.TextFormat.PlainText)
-    box.setText(message)
-    box.setStandardButtons(buttons)
-    if default != QMessageBox.StandardButton.NoButton:
-        box.setDefaultButton(default)
-    try:
-        box.exec()
-        clicked = box.clickedButton()
-        if clicked is None:
-            return QMessageBox.StandardButton.NoButton
-        return box.standardButton(clicked)
-    finally:
-        box.deleteLater()
-
-
 class _RowModel(QAbstractListModel):
     """The rows of the page list: (kind, key, text), updated in place when it can be.
 
@@ -736,12 +705,12 @@ class ReadTab(QWidget):
 
     def confirm(self, message: str) -> bool:
         save, cancel = QMessageBox.StandardButton.Save, QMessageBox.StandardButton.Cancel
-        clicked = _ask(self, QMessageBox.Icon.Question, text.CONFIRM_SAVE_TITLE, message,
-                       save | cancel, cancel)  # fmt: skip
+        clicked = ask(self, QMessageBox.Icon.Question, text.CONFIRM_SAVE_TITLE, message,
+                      save | cancel, cancel)  # fmt: skip
         return clicked == save
 
     def show_error(self, message: str) -> None:
-        _ask(self, QMessageBox.Icon.Warning, text.ERROR_TITLE, message)
+        ask(self, QMessageBox.Icon.Warning, text.ERROR_TITLE, message)
 
     def ask_replace_path(self, page: int) -> str | None:
         path, _ = QFileDialog.getOpenFileName(
@@ -766,7 +735,7 @@ class ReadTab(QWidget):
             dialog.deleteLater()
 
     def show_notice(self, message: str) -> None:
-        _ask(self, QMessageBox.Icon.Information, text.REPLACE_REJECTED_TITLE, message)
+        ask(self, QMessageBox.Icon.Information, text.REPLACE_REJECTED_TITLE, message)
 
     # --- Showing the document ------------------------------------------------------
 

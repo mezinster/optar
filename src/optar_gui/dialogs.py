@@ -1,5 +1,6 @@
 # (c) GPL 2007 Karel 'Clock' Kulhavy, Twibright Labs; Python port 2026
-"""The reading tab's small dialogs: which page a scan is, and starting a document by hand.
+"""The application's small dialogs: which page a scan is, starting a document by
+hand, and plain-text message boxes.
 
 They only collect values; what is allowed is decided by the document and the
 controller before a dialog is opened. All wording comes from ``text``.
@@ -14,6 +15,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFormLayout,
     QLabel,
+    QMessageBox,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -23,7 +25,38 @@ from optar.format import PAPERS
 from optar_gui import text
 from optar_gui.document import MAX_TOTAL_PAGES
 
-__all__ = ["AssignPageDialog", "StartByHandDialog"]
+__all__ = ["AssignPageDialog", "StartByHandDialog", "ask"]
+
+
+def ask(
+    parent: QWidget,
+    icon: QMessageBox.Icon,
+    title: str,
+    message: str,
+    buttons: QMessageBox.StandardButton = QMessageBox.StandardButton.Ok,
+    default: QMessageBox.StandardButton = QMessageBox.StandardButton.NoButton,
+) -> QMessageBox.StandardButton:
+    """Shows a message box and returns the button clicked (``NoButton`` if none).
+
+    The message is always plain text: it holds file names and label text read from
+    scans, which Qt would otherwise take for rich text when they look like markup.
+    """
+    box = QMessageBox(parent)
+    box.setIcon(icon)
+    box.setWindowTitle(title)
+    box.setTextFormat(Qt.TextFormat.PlainText)
+    box.setText(message)
+    box.setStandardButtons(buttons)
+    if default != QMessageBox.StandardButton.NoButton:
+        box.setDefaultButton(default)
+    try:
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is None:
+            return QMessageBox.StandardButton.NoButton
+        return box.standardButton(clicked)
+    finally:
+        box.deleteLater()
 
 
 def _buttons(dialog: QDialog) -> QDialogButtonBox:

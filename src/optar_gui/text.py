@@ -59,6 +59,13 @@ START_BY_HAND_PROMPT = (
 )
 TOTAL_FIELD = "Pages:"
 
+# Asked when the window is closed while a file is being written.
+STILL_WRITING_TITLE = "Still writing a file"
+STILL_WRITING = (
+    "A file is still being written. Wait until it is finished? If you close now, "
+    "it may not be written."
+)
+
 # Why a save cannot start (programming errors, never shown in a dialog).
 SAVE_RUNNING = "a save is already running"
 SAVE_AFTER_CLOSE = "the window has been closed, so nothing more can be saved"

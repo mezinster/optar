@@ -11,7 +11,10 @@ from optar import __version__
 
 __all__ = ["main"]
 
-MISSING_QT = "optar-gui needs PySide6: pip install 'optar[gui]'"
+MISSING_QT = (
+    "optar-gui needs PySide6: run pip install '.[gui]' in a checkout of the source, "
+    "or download optar-gui from the project's Releases page."
+)
 
 
 def _parser() -> argparse.ArgumentParser:
