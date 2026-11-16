@@ -2,8 +2,9 @@
 """The hidden self-test (``optar-gui --self-test``) that release builds must pass.
 
 It runs an encode and a decode through the application's own background jobs
-and document code, without showing a window, in a temporary directory, and
-wraps, encodes, decodes and unwraps a small protected document with large dots. It
+and document code, without showing a window, in a temporary directory, creates
+a PDF of each kind (protected, and compatible with optar 0.2), and wraps,
+encodes, decodes and unwraps a small protected document with large dots. It
 prints one line per check; a windowed program on Windows has no console
 (``sys.stdout`` is None), so there the lines go to ``SELF_TEST_LOG`` in the
 system's temporary directory instead.
@@ -159,6 +160,14 @@ def _checks(folder: str) -> bool:
     with open(pdf, "rb") as f:
         head = f.read(4)
     results.append(_report("created a PDF", head == b"%PDF"))
+    # The printout optar 0.2 reads: as many pages as the scans encoded above.
+    old = os.path.join(folder, "self-test-compatible.pdf")
+    count = encode_to_pdf(src, old, SELF_TEST_PAPER, SELF_TEST_NAME, compatible=True)
+    with open(old, "rb") as f:
+        head = f.read(4)
+    results.append(
+        _report("created a compatible PDF", head == b"%PDF" and count == len(paths))
+    )
     results.append(_protected_check())
     return all(results)
 

@@ -903,6 +903,9 @@ def stretched(img, horizontal=1.0, vertical=1.0):
     pytest.param("a4", "xlarge", 200, 1.0, 1.05, id="a4-xlarge-v"),
     pytest.param("letter", "large", 300, 1.0, 1.05, id="letter-large-v",
                  marks=pytest.mark.slow),
+    # A shrink moves the shape further than a stretch of the same size does.
+    pytest.param("a4", "xlarge", 200, 1.0, 0.94, id="a4-xlarge-v-shrink",
+                 marks=pytest.mark.slow),
 ])
 def test_stretched_page_is_identified(paper, dots, dpi, horizontal, vertical):
     layout, _, _, images = wrapped(paper, dots)
@@ -912,6 +915,19 @@ def test_stretched_page_is_identified(paper, dots, dpi, horizontal, vertical):
     assert ident.layout is layout
     assert (ident.page, ident.total, ident.rotation) == (2, 2, 0)
     assert ident.header is not None and ident.header.page == 2
+
+
+@pytest.mark.parametrize("horizontal,vertical", [(1.06, 1), (1, 1.06), (0.94, 1), (1, 0.94)])
+def test_a_page_distorted_by_six_percent_keeps_its_own_layouts(horizontal, vertical):
+    # Whichever paper the distorted outline looks closest to, the layouts of
+    # the page's own paper are still among those decoded, with room to spare.
+    layout = get_layout("a4", "large")
+    corners = optar.identify._outline(
+        stretched(simulated("a4", "large", 300, 0, blur=1.8), horizontal, vertical)
+    )
+    distance = optar.identify._relative_shape_distance(corners, layout.fmt)
+    assert 0.05 < distance < optar.identify._OTHER_PAPER_TOLERANCE - 0.004
+    assert layout in optar.identify._layouts_by_shape(corners, layout.paper)
 
 
 def test_scan_dpi_of_a_grid():

@@ -273,7 +273,7 @@ def _document_key(ident: ScanIdentity) -> tuple:
 def _coarse_advice(dpi: float | None) -> str:
     if dpi is None or dpi >= COARSE_DPI:
         return ""
-    needs = ", ".join(f"{DOT_NAMES[d]} {get_layout('a4', d).scan_dpi}" for d in DOT_SIZES)
+    needs = ", ".join(f"{DOT_NAMES[d]} {dots.scan_dpi}" for d, dots in DOT_SIZES.items())
     return f"; it was scanned at about {round(dpi, -1):.0f} dpi, the dot sizes need: {needs}"
 
 
@@ -389,6 +389,8 @@ def _decode(args: argparse.Namespace) -> int:
             if ident.header is not None:
                 return _decode_version1(args, files, probes, ident)
             break
+    if args.force:
+        _eprint("optar: --force has no effect on printouts from 0.2.0 or earlier")
     _, fmt = _resolve_format(args)
     name = os.path.basename(args.base)
     gap = False

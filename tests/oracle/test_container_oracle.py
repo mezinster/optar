@@ -54,6 +54,7 @@ def test_c_unoptar_reads_container_pages(c_build, tmp_path, paper, dots):
     if build.unoptar is None:
         pytest.skip("libpng headers not available")
     pages = list(encode(stream, fmt, LABEL))
+    assert len(pages) > 1  # unoptar must go on from one page to the next
     for page in pages:
         save_scan(tmp_path / f"scan_{page.number:04d}.png", fake_scan(page.pixels, scale=1))
     r = subprocess.run(

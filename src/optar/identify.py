@@ -59,18 +59,23 @@ _OFF_LINE_PX = 1.5
 # header; a layout of another paper only if its width-to-height ratio is
 # within this relative distance of the outline's. Shape only orders the
 # candidates of the closest paper, so no stretch rules out its own layouts.
-# Rollers stretch a page in one axis, which moves its ratio by the stretch:
-# a page stretched by s is within s of its own layout, so with this value a
-# stretch of up to 6.5% (horizontal or vertical) that makes the other paper
-# look closer still tries the page's own layouts. An undistorted page is at
-# least 6.7% from every layout of the other paper (A4 medium 0.7018 against
-# Letter large 0.7523; 7.2% the other way), so the other paper is decoded
-# only for a page distorted towards it: from a ratio change of 0.24% (Letter
-# large), 0.66% (A4 medium), 1.1% to 1.5% (A4 big and large, Letter
-# standard, medium and extra large), 2.45% to 3.63% (the rest). That costs
-# time only, and only for a page not found on the closest paper, which is
-# tried first.
-_OTHER_PAPER_TOLERANCE = 0.065
+# Rollers stretch a page in one axis, which moves its ratio by about the
+# stretch: enlarging an axis by s moves it by s / (1 + s), shrinking one by
+# s / (1 - s), which is more. Measured on simulated scans of all ten layouts
+# (blur 1.8, at the advised resolution), the distance of a page from its own
+# layout was 0.0000 to 0.0005 undistorted, 0.056 to 0.061 with one axis
+# enlarged by 6%, 0.060 to 0.065 with one shrunk by 6% (the worst, 0.0647,
+# for a vertical shrink) and 0.060 to 0.070 at 6.5% (0.0701 for a vertical
+# shrink). So with this value a page distorted by up to 6% in either axis
+# and either direction that makes the other paper look closer still has its
+# own layouts tried, with 0.005 to spare. The same scans, undistorted, were
+# 0.067 (A4 medium against Letter large), 0.071 to 0.072 (A4 big and large,
+# Letter large) and 0.081 to 0.099 (the rest) from the nearest layout of the
+# other paper: one layout of the other paper is within the tolerance of an
+# undistorted A4 medium page, and others come within it for a page distorted
+# towards them. That costs time only, and only for a page not found on the
+# closest paper, which is tried first.
+_OTHER_PAPER_TOLERANCE = 0.07
 
 
 @dataclass(frozen=True)

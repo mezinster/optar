@@ -1,5 +1,9 @@
 # (c) GPL 2007 Karel 'Clock' Kulhavy, Twibright Labs; Python port 2026
-"""Print-ready PDF writer: one 1-bit Flate image per page at 200 pixels per inch."""
+"""Print-ready PDF writer: one 1-bit Flate image per page.
+
+The image is placed at the dot size of its layout: 200 pixels per inch for a
+Paper (standard dots), the Layout's own pixels_per_inch otherwise.
+"""
 
 import contextlib
 import os
@@ -56,8 +60,9 @@ def write_pdf(path, pages: Iterable[np.ndarray], paper: Paper | Layout) -> int:
 
     Raises OptarError if there are no pages, TypeError for a page that is not
     a uint8 numpy array, ValueError for one that is not a non-empty 2-D image,
-    and FormatError (a ValueError) for one that would leave less than
-    MIN_MARGIN_PT on any side of the paper.
+    and FormatError (a ValueError) for one that, with a Paper, would leave
+    less than MIN_MARGIN_PT on any side of the paper or, with a Layout, is not
+    exactly the size of the layout's page.
     """
     pages = iter(pages)
     first = next(pages, None)

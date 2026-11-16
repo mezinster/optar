@@ -16,6 +16,12 @@ from optar.errors import FormatError
 
 PIXELS_PER_INCH = 200
 POINTS_PER_INCH = 72
+# The printer the layouts are made for, in device dots per inch; a standard
+# data dot (1 / PIXELS_PER_INCH inch) is this many of them wide.
+PRINTER_DPI = 600
+STANDARD_PRINTER_DOTS = PRINTER_DPI // PIXELS_PER_INCH
+# Scan pixels per printed data dot at the advised scan resolution.
+SCAN_PIXELS_PER_DOT = 3
 TEXT_WIDTH = 13
 # Smallest margin, on every side, that a printer can be trusted not to clip.
 MIN_MARGIN_PT = 12.0
@@ -224,7 +230,27 @@ class DotSize:
     @property
     def scale(self) -> Fraction:
         """Printed size of a data dot relative to the standard 1/200 inch."""
-        return Fraction(self.printer_dots, 3)
+        return Fraction(self.printer_dots, STANDARD_PRINTER_DOTS)
+
+    @property
+    def is_standard(self) -> bool:
+        """True for the 1/200 inch dot of 0.2.0 and the C tools."""
+        return self.printer_dots == STANDARD_PRINTER_DOTS
+
+    @property
+    def pixels_per_inch(self) -> Fraction:
+        """Printed data dots per inch."""
+        return Fraction(PRINTER_DPI, self.printer_dots)
+
+    @property
+    def size_pt(self) -> float:
+        """The printed width of one data dot, in points."""
+        return POINTS_PER_INCH * self.printer_dots / PRINTER_DPI
+
+    @property
+    def scan_dpi(self) -> int:
+        """The advised scan resolution: SCAN_PIXELS_PER_DOT pixels per printed dot."""
+        return SCAN_PIXELS_PER_DOT * PRINTER_DPI // self.printer_dots
 
 
 DOT_SIZES: dict[str, DotSize] = {
@@ -251,8 +277,8 @@ PROTECTED_MAX_BYTES = 256 * 1024 * 1024
 # share of the parity bytes of a codeword.
 PROMISE_NUM, PROMISE_DEN = 3, 4
 
-# One printer device dot at 600 dpi, in points.
-_DEVICE_DOT_PT = POINTS_PER_INCH / 600
+# One printer device dot, in points.
+_DEVICE_DOT_PT = POINTS_PER_INCH / PRINTER_DPI
 
 
 @dataclass(frozen=True)
@@ -270,12 +296,12 @@ class Layout:
 
     @property
     def pixels_per_inch(self) -> Fraction:
-        return Fraction(600, self.dots.printer_dots)
+        return self.dots.pixels_per_inch
 
     def margins(self) -> tuple[float, float, float, float]:
         """Margins (left, bottom, right, top) in points around the placed image."""
         fmt = self.fmt
-        unit = POINTS_PER_INCH * self.dots.printer_dots / 600
+        unit = self.dots.size_pt
         return (
             self.offset_x_pt,
             self.offset_y_pt,
@@ -285,8 +311,8 @@ class Layout:
 
     @property
     def scan_dpi(self) -> int:
-        """The advised scan resolution: three scan pixels per printed dot."""
-        return 1800 // self.dots.printer_dots
+        """The advised scan resolution, which depends only on the dot size."""
+        return self.dots.scan_dpi
 
 
 def _centred_offset(free_pt: float) -> float:
@@ -296,7 +322,7 @@ def _centred_offset(free_pt: float) -> float:
 
 def _fitted_layout(paper: Paper, dots: DotSize) -> Layout:
     """The largest grid that leaves MIN_MARGIN_PT on every side, centred."""
-    unit = POINTS_PER_INCH * dots.printer_dots / 600
+    unit = dots.size_pt
     probe = PageFormat(xcrosses=2, ycrosses=2)
     pitch = probe.cpitch * unit
     # width = 2*border + cpitch*(x-1) + 2*chalf; height adds text_height
@@ -319,7 +345,7 @@ def _build_layouts() -> dict[tuple[str, str], Layout]:
     layouts: dict[tuple[str, str], Layout] = {}
     for paper in PAPERS.values():
         for dots in DOT_SIZES.values():
-            if dots.printer_dots == 3:
+            if dots.is_standard:  # today's grid and offsets, kept exactly
                 layout = Layout(
                     paper,
                     dots,
