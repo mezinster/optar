@@ -34,11 +34,13 @@ Working by hand. Which actions apply to the selected row comes from
 ``Document.actions``; the tab only enables the buttons it names. Replacing a
 page adds the new scan and decides once it has been read
 (``Document.replacement_fit``): it becomes the page's scan in use, or
-``replace_rejected`` says what it is instead. A scan assigned to a page that has
-no decoded page yet (its label could not be read, or it did not decode) is
-decoded again with ``work.process_unlabelled`` in the document's format, on the
-scan runner. Every action clears the "Saved …" note, and does nothing once the
-controller is closed.
+``replace_rejected`` says what it is instead. Only the latest choice for a page
+counts, whichever job finishes last. In a document started by hand, Replace
+assigns the file to the page instead (no label to go by). A scan assigned to a
+page that ``Document.needs_decoding`` says must be decoded (no decoded page, or
+one decoded in another format) is decoded with ``work.process_unlabelled`` in the
+document's format, on the scan runner. Every action clears the "Saved …" note,
+and does nothing once the controller is closed.
 """
 
 from __future__ import annotations
@@ -81,6 +83,7 @@ from optar_gui.document import (
     ScanState,
     Summary,
     expand_paths,
+    paper_for_size,
 )
 from optar_gui.jobs import JobRunner
 from optar_gui.preview import ScanPreview
@@ -116,13 +119,6 @@ def _write_chunks(
     return written
 
 
-def _paper_for_size(size: tuple[int, int]) -> str:
-    """The paper whose shape is closest to an image of ``size`` (width, height)."""
-    short, long = sorted(size)
-    ratio = short / long
-    return min(PAPERS, key=lambda name: abs(PAPERS[name].width_pt / PAPERS[name].height_pt - ratio))
-
-
 class ReadController(QObject):
     """The document, its background work, redrawing and saving; no widgets.
 
@@ -150,7 +146,9 @@ class ReadController(QObject):
         self._doc = Document()
         self._process = process
         self._unlabelled = unlabelled
-        self._replacing: dict[int, int] = {}  # scan -> the page it was added to replace
+        # page -> the scan last chosen to replace it, until that scan has been read
+        self._replacing: dict[int, int] = {}
+        self._decoding_in: dict[int, str] = {}  # scan -> format of its unlabelled decode
         self._runner = JobRunner(self, max_workers)
         self._runner.started.connect(self._on_started)
         self._runner.finished.connect(self._on_finished)
@@ -248,34 +246,50 @@ class ReadController(QObject):
         self._doc.remove_scan(scan_id)
         self.note = ""
         self._works.pop(scan_id, None)
-        self._replacing.pop(scan_id, None)
+        self._decoding_in.pop(scan_id, None)
+        self._replacing = {p: s for p, s in self._replacing.items() if s != scan_id}
         self.refresh()
 
     def replace(self, page: int, path: str) -> None:
         """Adds the scan at ``path`` for page ``page``. Once it has been read, it
-        becomes the page's scan in use if it is that page of the current document;
-        otherwise ``replace_rejected`` says what it is and the page keeps its scan.
-        A file already added is judged as it is (at once, if it has been read)."""
+        becomes the page's scan in use if it is that page of the current document
+        and gives usable data where the page has some; otherwise
+        ``replace_rejected`` says why and the page keeps its scan. A file already
+        added is judged as it is (at once, if it has been read).
+
+        Only the latest choice for a page counts: a later ``replace`` of the page,
+        ``use_spare`` or ``assign`` for it, ``switch_document`` and ``start_by_hand``
+        drop a replacement still being read, whose scan simply stays added.
+
+        In a document started by hand there are no labels to go by: the file is
+        assigned to the page and decoded without its label, then judged the same way.
+        """
         if self._closed:
             return
         self.note = ""
         doc = self._doc
+        self._replacing.pop(page, None)
         scan_id = doc.add_scan(path)
-        if scan_id is not None:
-            self._replacing[scan_id] = page
-            self._runner.submit(scan_id, partial(self._process, path))
-        else:
+        added = scan_id is not None
+        if not added:
             scan_id = doc.scan_id_of(path)
-            if doc.scan(scan_id).state in (ScanState.WAITING, ScanState.WORKING):
-                self._replacing[scan_id] = page
-            else:
-                self._settle_replacement(scan_id, page)
+        if doc.by_hand:
+            doc.assign_page(scan_id, page)
+            if doc.needs_decoding(scan_id):
+                self._decode_for_document(scan_id)
+        elif added:
+            self._runner.submit(scan_id, partial(self._process, path))
+        if doc.scan(scan_id).state in (ScanState.WAITING, ScanState.WORKING):
+            self._replacing[page] = scan_id
+        else:
+            self._settle_replacement(scan_id, page)
         self.refresh()
 
     def use_spare(self, scan_id: int) -> None:
         """Makes a spare the scan in use for its page."""
         if self._closed:
             return
+        self._replacing.pop(self._doc.page_with(scan_id).number, None)
         self._doc.use_scan(scan_id)
         self.note = ""
         self.refresh()
@@ -285,24 +299,23 @@ class ReadController(QObject):
         if self._closed:
             return
         self._doc.switch_to(key)
+        self._replacing.clear()
         self.note = ""
         self.refresh()
 
     def assign(self, scan_id: int, page: int) -> bool:
         """Puts the scan into page ``page`` of the current document by hand; a scan
-        with no decoded page is then decoded without its label, in the document's
-        format. Returns False, doing nothing, when the document no longer has that
-        page (it may have changed while the user was choosing)."""
+        that needs it (``Document.needs_decoding``) is then decoded without its
+        label, in the document's format. Returns False, doing nothing, when the
+        document no longer has that page (it may have changed while the user was
+        choosing)."""
         doc = self._doc
         if self._closed or doc.current is None or not 1 <= page <= len(doc.slots()):
             return False
+        self._replacing.pop(page, None)
         doc.assign_page(scan_id, page)
-        scan = doc.scan(scan_id)
-        if scan.outcome is None:
-            self._runner.cancel(scan_id)
-            self._runner.submit(
-                scan_id, partial(self._unlabelled, scan.path, doc.current.format)
-            )
+        if doc.needs_decoding(scan_id):
+            self._decode_for_document(scan_id)
         self.note = ""
         self.refresh()
         return True
@@ -312,6 +325,7 @@ class ReadController(QObject):
         if self._closed:
             return
         self._doc.start_by_hand(PageFormat.for_paper(get_paper(paper_name)).to_string(), total)
+        self._replacing.clear()
         self.note = ""
         self.refresh()
 
@@ -323,9 +337,17 @@ class ReadController(QObject):
             candidates.insert(0, scan_id)
         for candidate in candidates:
             work = self._works.get(candidate)
-            if work is not None and min(work.size) > 0:
-                return _paper_for_size(work.size)
+            paper = paper_for_size(work.size) if work is not None else None
+            if paper is not None:
+                return paper
         return next(iter(PAPERS))
+
+    def _decode_for_document(self, scan_id: int) -> None:
+        """Decodes the scan without its label, in the current document's format."""
+        fmt = self._doc.current.format
+        self._runner.cancel(scan_id)  # required before submitting the id again
+        self._decoding_in[scan_id] = fmt
+        self._runner.submit(scan_id, partial(self._unlabelled, self._doc.scan(scan_id).path, fmt))
 
     def _settle_replacement(self, scan_id: int, page: int) -> None:
         doc = self._doc
@@ -431,8 +453,9 @@ class ReadController(QObject):
         self._settle_pending(scan_id)
 
     def _settle_pending(self, scan_id: int) -> None:
-        page = self._replacing.pop(scan_id, None)
-        if page is not None:
+        """Judges the replacements still waiting for this scan to be read."""
+        for page in [p for p, s in self._replacing.items() if s == scan_id]:
+            del self._replacing[page]
             self._settle_replacement(scan_id, page)
 
     def _apply(self, scan_id: int, work: ScanWork) -> None:
@@ -441,7 +464,7 @@ class ReadController(QObject):
         doc.set_working(scan_id, False)
         if work.info is None:
             if work.outcome is not None:  # decoded without its label
-                doc.set_outcome(scan_id, work.outcome)
+                doc.set_outcome(scan_id, work.outcome, self._decoding_in.pop(scan_id, None))
             else:
                 doc.set_unreadable(scan_id, work.reason)
             return
@@ -481,6 +504,37 @@ class ReadController(QObject):
         self._save_path = None
         self.refresh()
         self.save_failed.emit(message)
+
+
+def _ask(
+    parent: QWidget,
+    icon: QMessageBox.Icon,
+    title: str,
+    message: str,
+    buttons: QMessageBox.StandardButton = QMessageBox.StandardButton.Ok,
+    default: QMessageBox.StandardButton = QMessageBox.StandardButton.NoButton,
+) -> QMessageBox.StandardButton:
+    """Shows a message box and returns the button clicked (``NoButton`` if none).
+
+    The message is always plain text: it holds file names and label text read from
+    scans, which Qt would otherwise take for rich text when they look like markup.
+    """
+    box = QMessageBox(parent)
+    box.setIcon(icon)
+    box.setWindowTitle(title)
+    box.setTextFormat(Qt.TextFormat.PlainText)
+    box.setText(message)
+    box.setStandardButtons(buttons)
+    if default != QMessageBox.StandardButton.NoButton:
+        box.setDefaultButton(default)
+    try:
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is None:
+            return QMessageBox.StandardButton.NoButton
+        return box.standardButton(clicked)
+    finally:
+        box.deleteLater()
 
 
 class _RowModel(QAbstractListModel):
@@ -653,17 +707,13 @@ class ReadTab(QWidget):
         return path or None
 
     def confirm(self, message: str) -> bool:
-        answer = QMessageBox.question(
-            self,
-            text.CONFIRM_SAVE_TITLE,
-            message,
-            QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Cancel,
-        )
-        return answer == QMessageBox.StandardButton.Save
+        save, cancel = QMessageBox.StandardButton.Save, QMessageBox.StandardButton.Cancel
+        clicked = _ask(self, QMessageBox.Icon.Question, text.CONFIRM_SAVE_TITLE, message,
+                       save | cancel, cancel)  # fmt: skip
+        return clicked == save
 
     def show_error(self, message: str) -> None:
-        QMessageBox.warning(self, text.ERROR_TITLE, message)
+        _ask(self, QMessageBox.Icon.Warning, text.ERROR_TITLE, message)
 
     def ask_replace_path(self, page: int) -> str | None:
         path, _ = QFileDialog.getOpenFileName(
@@ -688,7 +738,7 @@ class ReadTab(QWidget):
             dialog.deleteLater()
 
     def show_notice(self, message: str) -> None:
-        QMessageBox.information(self, text.REPLACE_REJECTED_TITLE, message)
+        _ask(self, QMessageBox.Icon.Information, text.REPLACE_REJECTED_TITLE, message)
 
     # --- Showing the document ------------------------------------------------------
 
@@ -703,11 +753,9 @@ class ReadTab(QWidget):
         if cur is not None:
             rows.append(("title", None, text.document_title(cur)))
         self._pages = doc.pages()
-        self._spare_page: dict[int, int] = {}  # spare scan -> its page
         for p in self._pages:
             rows.append((Row.PAGE, p.number, text.page_row(p)))
             for spare in p.spare_ids:
-                self._spare_page[spare] = p.number
                 name = os.path.basename(doc.scan(spare).path)
                 rows.append((Row.SPARE, spare, text.spare_row(doc.page_with(spare), name)))
         self._others = {g.key: g for g in doc.others()}
@@ -828,7 +876,7 @@ class ReadTab(QWidget):
         scan_id = self._actions().use_spare
         if scan_id is None:
             return
-        page = self._spare_page[scan_id]
+        page = self.controller.document.page_with(scan_id).number
         self.controller.use_spare(scan_id)
         self._select((Row.PAGE, page))  # the page, now showing this scan
 

@@ -8,12 +8,14 @@ the format), so a scan is decoded once however many tests add it.
 """
 
 import hashlib
+import os
 import shutil
 import threading
 
 import numpy as np
 import pytest
-from PySide6.QtWidgets import QPushButton
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QLabel, QMessageBox, QPushButton
 
 from optar import PAPERS, PageFormat, encode
 from optar.tag import Tag, make_tag, tagged_label
@@ -33,6 +35,7 @@ from tests.helpers import fake_scan, save_scan, seeded_bytes
 
 TIMEOUT = 300_000  # ms: decoding is slow on a loaded machine
 A4 = PageFormat.for_paper(PAPERS["a4"])
+LETTER = PageFormat.for_paper(PAPERS["letter"])
 BUTTONS = ("replaceButton", "useSpareButton", "switchButton", "assignButton",
            "startByHandButton", "removeButton")  # fmt: skip
 
@@ -97,7 +100,15 @@ def scans(tmp_path_factory):
         page.pixels
         for page in encode(other, A4, lambda p, t: tagged_label(make_tag(other), "other.tar", p, t))
     )
+    letter = seeded_bytes(5, 1000)
+    (l1,) = (
+        page.pixels
+        for page in encode(
+            letter, LETTER, lambda p, t: tagged_label(make_tag(letter), "letter.tar", p, t)
+        )
+    )
     images = {
+        "letter.png": fake_scan(l1, scale=1),
         "page-1.png": fake_scan(p1, scale=1),
         "page-2.png": fake_scan(p2, scale=1),
         "page-2-damaged.png": fake_scan(p2, scale=1, flips=40_000, fmt=A4, seed=5),
@@ -115,11 +126,12 @@ def scans(tmp_path_factory):
 
 @pytest.fixture
 def make_tab(qtbot):
-    """make_tab() -> ReadTab with its own controller, decoding through the caches."""
+    """make_tab(process=..., unlabelled=..., **controller_kw) -> ReadTab with its own
+    controller, decoding through the caches by default."""
     controllers = []
 
-    def make():
-        controller = ReadController(process=cached_process, unlabelled=cached_unlabelled)
+    def make(process=cached_process, unlabelled=cached_unlabelled, **kw):
+        controller = ReadController(process=process, unlabelled=unlabelled, **kw)
         controllers.append(controller)
         tab = ReadTab(controller)
         qtbot.addWidget(tab)
@@ -224,7 +236,9 @@ def test_replace_with_the_wrong_page_is_rejected(qtbot, make_tab, scans):
     # Another page of this document, already added: told at once.
     tab.ask_replace_path = lambda page: paths["page-1.png"]
     click(tab, "replaceButton")
-    assert notices[1] == "page-1.png was not used for page 2: it is page 1 of this document."
+    assert notices[1] == (
+        "page-1.png was not used for page 2: it is page 1 of this document and is listed there."
+    )
     # A scan whose label cannot be read.
     tab.ask_replace_path = lambda page: paths["page-1-no-label.png"]
     click(tab, "replaceButton")
@@ -239,6 +253,87 @@ def test_replace_with_the_wrong_page_is_rejected(qtbot, make_tab, scans):
     tab.ask_replace_path = lambda page: None
     click(tab, "replaceButton")
     assert len(doc.scans()) == 4 and len(notices) == 3
+
+
+def held_back(gate, slow):
+    """A ``process`` that reads ``slow`` only once ``gate`` is set; others at once."""
+    slow = os.path.realpath(slow)
+
+    def process(path, cancelled=lambda: False):
+        if os.path.realpath(path) == slow:
+            gate.wait(TIMEOUT / 1000)
+        return cached_process(path, cancelled)
+
+    return process
+
+
+def test_the_latest_replacement_wins_whichever_is_read_first(qtbot, make_tab, scans, tmp_path):
+    _, paths = scans
+    slow = str(tmp_path / "slow-page-2.png")
+    shutil.copy(paths["page-2.png"], slow)  # a better scan than the damaged one
+    gate = threading.Event()
+    tab = make_tab(process=held_back(gate, slow), max_workers=3)
+    try:
+        tab.controller.add_paths([paths["page-1.png"]])
+        wait_settled(qtbot, tab)
+        select(tab, "Page 2 · Missing")
+        tab.ask_replace_path = lambda page: slow
+        click(tab, "replaceButton")
+        tab.ask_replace_path = lambda page: paths["page-2-damaged.png"]
+        click(tab, "replaceButton")
+        doc = tab.controller.document
+        damaged = scan_id(tab, paths["page-2-damaged.png"])
+        qtbot.waitUntil(lambda: doc.pages()[1].scan_id == damaged, timeout=TIMEOUT)
+    finally:
+        gate.set()
+    wait_settled(qtbot, tab)
+    # The earlier choice, read last, stays added as a spare, with no notice.
+    assert doc.pages()[1].scan_id == damaged
+    assert doc.pages()[1].spare_ids == (scan_id(tab, slow),)
+
+
+def test_use_spare_after_a_replacement_in_flight(qtbot, make_tab, scans, tmp_path):
+    _, paths = scans
+    slow = str(tmp_path / "slow-page-2.png")
+    shutil.copy(paths["page-2.png"], slow)
+    gate = threading.Event()
+    tab = make_tab(process=held_back(gate, slow), max_workers=3)
+    try:
+        tab.controller.add_paths(
+            [paths["page-1.png"], paths["page-2.png"], paths["page-2-damaged.png"]]
+        )
+        wait_settled(qtbot, tab)
+        select(tab, "Page 2 · Good")
+        tab.ask_replace_path = lambda page: slow
+        click(tab, "replaceButton")
+        select(tab, next(r for r in tab.rows() if "page-2-damaged.png" in r))
+        click(tab, "useSpareButton")
+    finally:
+        gate.set()
+    wait_settled(qtbot, tab)
+    doc = tab.controller.document
+    assert doc.pages()[1].scan_id == scan_id(tab, paths["page-2-damaged.png"])
+
+
+def test_switching_document_drops_a_replacement_in_flight(qtbot, make_tab, scans, tmp_path):
+    _, paths = scans
+    slow = str(tmp_path / "slow-page-2.png")
+    shutil.copy(paths["page-2.png"], slow)
+    gate = threading.Event()
+    tab = make_tab(process=held_back(gate, slow), max_workers=3)
+    try:
+        tab.controller.add_paths([paths["page-1.png"], paths["other.png"]])
+        wait_settled(qtbot, tab)
+        select(tab, "Page 2 · Missing")
+        tab.ask_replace_path = lambda page: slow
+        click(tab, "replaceButton")
+        select(tab, "other.tar · A4 · 1 page · 1 scan")
+        click(tab, "switchButton")
+    finally:
+        gate.set()
+    wait_settled(qtbot, tab)  # no notice about page 2 of a document the user left
+    assert tab.rows()[0] == "other.tar · A4 · 1 page"
+    assert tab.rows()[-1] == "doc.tar · A4 · 2 pages · 2 scans"
 
 
 # --- Spares and other documents --------------------------------------------------------
@@ -342,6 +437,74 @@ def test_assign_unreadable_scan_decodes_it_in_the_best_rotation(qtbot, make_tab,
     assert work.rotation == 2 and work.info is None
     assert tab.preview.path == upside_down
     assert tab.detail.text().startswith("Page 2 of 2 · page-2-no-label-upside-down.png\n")
+
+
+def test_assigning_a_scan_of_the_other_paper_decodes_it_in_this_format(qtbot, make_tab, scans):
+    _, paths = scans
+    calls = []
+
+    def recording(path, format, cancelled=lambda: False):
+        calls.append((path, format))
+        return cached_unlabelled(path, format, cancelled)
+
+    tab = make_tab(unlabelled=recording)
+    tab.controller.add_paths([paths["page-1.png"], paths["letter.png"]])
+    wait_settled(qtbot, tab)
+    select(tab, "letter.tar · US Letter · 1 page · 1 scan")
+    tab.ask_page = lambda total, suggested, name: 2
+    click(tab, "assignButton")
+    wait_settled(qtbot, tab)
+    assert calls == [(paths["letter.png"], A4.to_string())]
+    assert tab.rows()[2] == "Page 2 · Not readable"  # never the Letter page's data
+    doc = tab.controller.document
+    page = doc.page_bytes
+    assert page == doc.scan(scan_id(tab, paths["page-1.png"])).outcome.bytes
+    saved = b"".join(tab.controller.snapshot())
+    assert saved[page:] == bytes(len(saved) - page)
+
+
+def test_replace_on_a_page_of_a_document_started_by_hand(qtbot, make_tab, scans):
+    data, paths = scans
+    tab = make_tab()
+    tab.controller.add_paths([paths["page-1-no-label.png"]])
+    wait_settled(qtbot, tab)
+    tab.ask_start_by_hand = lambda paper: ("a4", 2)
+    click(tab, "startByHandButton")
+    select(tab, "Page 2 · Missing")
+    assert "replaceButton" in enabled(tab)
+    upside_down = paths["page-2-no-label-upside-down.png"]
+    tab.ask_replace_path = lambda page: upside_down  # its label cannot be read
+    click(tab, "replaceButton")
+    wait_settled(qtbot, tab)
+    doc = tab.controller.document
+    assert doc.pages()[1].scan_id == scan_id(tab, upside_down)
+    assert tab.rows()[2] == "Page 2 · Good"
+    assert tab.controller.work_for(scan_id(tab, upside_down)).rotation == 2
+
+
+def test_names_from_scans_are_shown_as_plain_text(qtbot, make_tab, monkeypatch):
+    shown = []
+
+    def fake_exec(box):
+        shown.append((box.textFormat(), box.text()))
+        return 0
+
+    monkeypatch.setattr(QMessageBox, "exec", fake_exec)
+    tab = make_tab()
+    name = "<b>x</b>.png"
+    ReadTab.show_notice(tab, f"{name} was not used for page 2")
+    ReadTab.show_error(tab, f"cannot write /tmp/{name}")
+    assert not ReadTab.confirm(tab, f"{name} is damaged")
+    assert shown == [
+        (Qt.TextFormat.PlainText, f"{name} was not used for page 2"),
+        (Qt.TextFormat.PlainText, f"cannot write /tmp/{name}"),
+        (Qt.TextFormat.PlainText, f"{name} is damaged"),
+    ]
+    dialog = AssignPageDialog(2, 1, name)
+    qtbot.addWidget(dialog)
+    (label,) = [w for w in dialog.findChildren(QLabel) if name in w.text()]
+    assert label.textFormat() == Qt.TextFormat.PlainText
+    assert label.text() == text.assign_prompt(name)
 
 
 def test_start_by_hand_when_nothing_is_identified(qtbot, make_tab, scans):

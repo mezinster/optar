@@ -7,6 +7,7 @@ controller before a dialog is opened. All wording comes from ``text``.
 
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -35,7 +36,9 @@ def _buttons(dialog: QDialog) -> QDialogButtonBox:
 
 
 def _prompt(words: str) -> QLabel:
-    label = QLabel(words)
+    label = QLabel()
+    label.setTextFormat(Qt.TextFormat.PlainText)  # it may hold a scan's file name
+    label.setText(words)
     label.setWordWrap(True)
     return label
 

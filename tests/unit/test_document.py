@@ -17,6 +17,7 @@ import pytest
 
 from optar.tag import Tag, make_tag
 from optar_gui.document import (
+    FORMAT_MISMATCH,
     MAX_TOTAL_PAGES,
     NO_ACTIONS,
     SCAN_EXTENSIONS,
@@ -36,6 +37,7 @@ from optar_gui.document import (
     ScanView,
     Summary,
     expand_paths,
+    paper_for_size,
 )
 
 A = "0-65-93-24-3-1-2-24"
@@ -1353,7 +1355,7 @@ def test_regression_scan_of_another_paper_size_used_for_a_page():
     doc.assign_page(letter, 2)
     doc.use_scan(letter)
     assert doc.pages()[1] == PageView(
-        2, Health.UNREADABLE, letter, (p2,), 0, 0, None, SIZE_MISMATCH
+        2, Health.UNREADABLE, letter, (p2,), 0, 0, None, FORMAT_MISMATCH
     )
     assert doc.summary() == Summary(DocState.INCOMPLETE, 1, 0, 0, 1, 0, 2000)
     assert doc.assemble() == pages[0] + bytes(PAGE)
@@ -1901,3 +1903,74 @@ def test_assigned_scan_that_fails_to_decode_after_working_is_unreadable():
     doc.set_working(bad, False)
     assert doc.scan(bad).state == ScanState.UNREADABLE
     assert doc.pages()[1].health == Health.UNREADABLE
+
+
+# --- Data decoded in another format ------------------------------------------------
+
+
+def test_needs_decoding_when_no_outcome_or_decoded_in_another_format():
+    doc, (a, letter, bad) = build(info(1), info(1, total=1, fmt=LETTER, name="l"), None)
+    doc.set_outcome(a, out(data=b"aaaa"))
+    doc.set_outcome(letter, out(data=b"letter"))
+    doc.set_unreadable(bad, "label unreadable")
+    assert not doc.needs_decoding(a)
+    assert doc.needs_decoding(letter)  # identified, so decoded, as Letter
+    assert doc.needs_decoding(bad)  # no outcome
+    doc.set_outcome(bad, out(data=b"bbbb"), format=A)  # decoded without its label as A4
+    assert not doc.needs_decoding(bad)
+    doc.set_outcome(bad, out(data=b"bbbb"), format=LETTER)
+    assert doc.needs_decoding(bad)
+    with pytest.raises(ValueError):
+        build(None)[0].needs_decoding(1)  # no document
+
+
+def test_data_decoded_in_another_format_is_never_placed_on_a_page():
+    doc, (a, letter) = build(info(1), info(1, total=1, fmt=LETTER, name="l"))
+    doc.set_outcome(a, out(data=b"aaaa"))
+    doc.set_outcome(letter, out(data=b"llll"))  # the same length, the wrong layout
+    doc.assign_page(letter, 2)
+    page = doc.pages()[1]
+    assert (page.health, page.reason, page.histogram) == (Health.UNREADABLE, FORMAT_MISMATCH, None)
+    assert doc.assemble()[4:8] == bytes(4)  # zeros, not the Letter data
+    doc.set_working(letter)  # decoding it again in this document's format
+    assert doc.pages()[1].health == Health.WORKING
+    doc.set_working(letter, False)
+    doc.set_outcome(letter, out(data=b"LLLL"), format=A)
+    assert doc.pages()[1].health == Health.GOOD
+    assert doc.assemble()[4:8] == b"LLLL"
+
+
+def test_by_hand_document_takes_page_size_only_from_its_own_format():
+    doc, (a4,) = build(info(1, total=1))
+    doc.set_outcome(a4, out(data=b"a4a4a4"))
+    doc.start_by_hand(LETTER, 2)
+    doc.assign_page(a4, 1)
+    assert doc.page_bytes is None
+    assert doc.pages()[0].reason == FORMAT_MISMATCH
+    assert not doc.can_save
+
+
+def test_paper_for_size():
+    from optar.format import PAPERS
+
+    for name, paper in PAPERS.items():
+        w, h = int(paper.width_pt * 3), int(paper.height_pt * 3)
+        assert paper_for_size((w, h)) == name
+        assert paper_for_size((h + 50, w + 40)) == name  # turned, with margins
+    assert paper_for_size((0, 0)) is None
+
+
+# --- Replacing ---------------------------------------------------------------------
+
+
+def test_a_replacement_without_usable_data_does_not_replace_usable_data():
+    doc, (a, b) = build(info(1, tag=None, name="x"), info(1, tag=OTHER_TAG))
+    doc.set_outcome(a, out())
+    doc.start_by_hand(A, 3)  # takes in the untagged scan of page 1
+    assert doc.slots()[0].scan_id == a
+    doc.assign_page(b, 1)
+    doc.set_unreadable(b, "decoding failed")
+    assert doc.replacement_fit(b, 1) == Fit.UNUSABLE
+    # A page with no usable data may take it.
+    doc.assign_page(b, 2)
+    assert doc.replacement_fit(b, 2) == Fit.THIS_PAGE

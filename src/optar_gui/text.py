@@ -99,6 +99,9 @@ _REASONS = {
     "page size does not match this document": (
         "This scan is of a different paper size than the document"
     ),
+    "decoded for another page format": (
+        "This scan was decoded for a different paper size than the document"
+    ),
 }
 
 # A save warning names at most this many runs of pages, then counts the rest.
@@ -334,11 +337,20 @@ def _sentence(words: str) -> str:
 def replace_rejected(page: int, fit: str, scan: ScanView) -> str:
     """Why a scan chosen to replace ``page`` was not used; ``fit`` is a ``Fit``."""
     name = os.path.basename(scan.path)
+    if fit == Fit.UNUSABLE:
+        why = f" ({unreadable_reason(scan.reason)})" if scan.reason else ""
+        return (
+            f"{name} was not used for page {page:,}: it could not be read{why}, "
+            f"so page {page:,} keeps the scan it has."
+        )
     if fit == Fit.UNREADABLE or scan.info is None:
         return f"{name} was not used for page {page:,}. {_sentence(unreadable_reason(scan.reason))}"
     info = scan.info
     if fit == Fit.OTHER_PAGE:
-        return f"{name} was not used for page {page:,}: it is page {info.page:,} of this document."
+        return (
+            f"{name} was not used for page {page:,}: it is page {info.page:,} of this "
+            "document and is listed there."
+        )
     printout = (
         f"{info.name.rstrip(' ') or NO_NAME} · {paper_name(info.format)} · "
         f"{count(max(info.total, 1), 'page')}"

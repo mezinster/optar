@@ -421,7 +421,20 @@ def test_replace_rejected_says_what_the_scan_is():
     )
     mine = ScanInfo(A, 3, 1, "doc.tar", None)
     assert text.replace_rejected(2, Fit.OTHER_PAGE, scan(mine)) == (
-        "new.png was not used for page 2: it is page 1 of this document."
+        "new.png was not used for page 2: it is page 1 of this document and is listed there."
+    )
+    assert text.replace_rejected(2, Fit.UNUSABLE, scan(mine, "decoding failed")) == (
+        "new.png was not used for page 2: it could not be read (decoding failed), "
+        "so page 2 keeps the scan it has."
+    )
+    assert text.replace_rejected(2, Fit.UNUSABLE, scan(mine)) == (
+        "new.png was not used for page 2: it could not be read, "
+        "so page 2 keeps the scan it has."
+    )
+    from optar_gui.document import FORMAT_MISMATCH
+
+    assert text.unreadable_reason(FORMAT_MISMATCH) == (
+        "This scan was decoded for a different paper size than the document"
     )
     assert text.replace_rejected(2, Fit.UNREADABLE, scan(None, "label unreadable")) == (
         "new.png was not used for page 2. "
