@@ -526,7 +526,7 @@ def test_start_by_hand_when_nothing_is_identified(qtbot, make_tab, scans):
     assert tab.caution.text() == text.by_hand_caution()
     assert "startByHandButton" not in enabled(tab)
     for path, page in ((second, 2), (first, 1)):
-        select(tab, next(r for r in tab.rows() if r.startswith(path.rsplit("/", 1)[1])))
+        select(tab, next(r for r in tab.rows() if r.startswith(os.path.basename(path))))
         tab.ask_page = lambda total, suggested, name, page=page: page
         click(tab, "assignButton")
     wait_settled(qtbot, tab)

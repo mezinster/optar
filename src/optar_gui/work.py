@@ -330,6 +330,13 @@ def encode_to_pdf(
         return write_pdf(temp, pages(), paper)
 
 
+def native_path(path: str) -> str:
+    """A local path in the system's own spelling. Qt gives forward slashes on
+    Windows (drops, file dialogs); paths are shown and compared as the system
+    spells them. An empty path (a cancelled dialog) stays empty."""
+    return os.path.normpath(path) if path else path
+
+
 def same_file(a: str, b: str) -> bool:
     """Whether the paths name the same file: by the file system when both exist
     (hard links and symbolic links included), else by their resolved spelling."""

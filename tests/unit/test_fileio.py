@@ -189,12 +189,14 @@ def test_fifo_failure_does_not_unlink_it(tmp_path):
 
 
 @posix
-def test_socket_is_written_directly_and_kept(tmp_path):
+def test_socket_is_written_directly_and_kept(tmp_path, monkeypatch):
     import socket
 
+    # Bound by a relative name: tmp_path on macOS is longer than a socket path may be.
+    monkeypatch.chdir(tmp_path)
     path = str(tmp_path / "s")
     with socket.socket(socket.AF_UNIX) as srv:
-        srv.bind(path)
+        srv.bind("s")
         with pytest.raises(OptarError, match="cannot write"), replacing(path) as p:
             assert p == path
             raise OSError(111, "Connection refused")

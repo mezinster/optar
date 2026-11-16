@@ -2,6 +2,7 @@
 """The scan preview, off-screen: upright image, damage marks, zoom and pan."""
 
 import os
+import re
 import threading
 import time
 
@@ -260,7 +261,7 @@ def test_a_jpeg_whose_reduced_size_differs_is_refused(tmp_path, monkeypatch):
         return mode, (x0, y0, x1 * 2, y1 * 2)
 
     monkeypatch.setattr(JpegImagePlugin.JpegImageFile, "draft", misreported)
-    with pytest.raises(preview_module.OptarError, match=text.size_changed()):
+    with pytest.raises(preview_module.OptarError, match=re.escape(text.size_changed())):
         load_for_preview(str(path), 0, lambda: False)
 
 

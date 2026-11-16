@@ -9,6 +9,7 @@ and removing while working use ``process_scan`` itself.
 
 import dataclasses
 import os
+import re
 import shutil
 import threading
 import time
@@ -304,6 +305,19 @@ def drop(tab, paths):
     return event
 
 
+def test_dropped_paths_take_the_systems_spelling(qtbot, make_tab, printouts, tmp_path):
+    # Qt gives forward slashes on Windows; the document holds the system's spelling,
+    # the same as for a path from the file dialog.
+    _, (other,) = printouts["foreign"]
+    (tmp_path / "sub").mkdir()
+    spelled = os.path.join(str(tmp_path), "sub", "..", "copy.png")
+    shutil.copy(other, spelled)
+    tab = make_tab()
+    assert drop(tab, [spelled]).isAccepted()
+    assert [s.path for s in tab.controller.document.scans()] == [os.path.normpath(spelled)]
+    wait_settled(qtbot, tab)
+
+
 def test_drop_of_files_and_folder_adds_scans(qtbot, make_tab, printouts, tmp_path):
     _, (p1, p2, p3) = printouts["three"]
     _, (other,) = printouts["foreign"]
@@ -562,7 +576,7 @@ def test_save_after_closing_is_refused_with_its_own_message(qtbot, make_tab, pri
     tab.controller.add_paths(printouts["two"][1][:1])
     wait_settled(qtbot, tab)
     assert tab.controller.shutdown(TIMEOUT)
-    with pytest.raises(RuntimeError, match=text.SAVE_AFTER_CLOSE):
+    with pytest.raises(RuntimeError, match=re.escape(text.SAVE_AFTER_CLOSE)):
         tab.controller.save("/nowhere/x.bin")
 
 

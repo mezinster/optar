@@ -24,6 +24,16 @@ _HERE = Path(__file__).parent
 _REASON = "the GUI tests need PySide6 and pytest-qt (pip install -e '.[gui-dev]')"
 _HAVE_QT = all(importlib.util.find_spec(m) is not None for m in ("PySide6", "pytestqt"))
 
+# Font warnings of the off-screen platform the tests run on, issued once per run
+# by whichever test first needs a font; the real platforms use the system fonts.
+# macOS: the off-screen theme asks for a "Sans Serif" family that does not exist.
+# Windows: the off-screen font database looks for fonts beside Qt, which ships none.
+_OFFSCREEN_FONT_WARNINGS = (
+    r"^Populating font family aliases took \d+ ms\. "
+    r'Replace uses of missing font family "Sans Serif"',
+    r"^QFontDatabase: Cannot find font directory ",
+)
+
 
 class _QtModule(pytest.Module):
     """A test module that is skipped, without being imported, when Qt is missing."""
@@ -44,6 +54,7 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(pytest.mark.gui)
             if _HAVE_QT:
                 item.add_marker(pytest.mark.qt_log_level_fail("WARNING"))
+                item.add_marker(pytest.mark.qt_log_ignore(*_OFFSCREEN_FONT_WARNINGS))
 
 
 @pytest.fixture

@@ -4,6 +4,7 @@
 import gc
 import os
 import pickle
+import re
 import stat
 import subprocess
 import sys
@@ -460,7 +461,7 @@ def test_encode_to_pdf_refuses_the_source_as_destination(tmp_path):
         os.link(src, tmp_path / "hard.bin")  # another name for the same file
         spellings.append(str(tmp_path / "hard.bin"))
     for dest in spellings:
-        with pytest.raises(OptarError, match=text.DEST_IS_SOURCE):
+        with pytest.raises(OptarError, match=re.escape(text.DEST_IS_SOURCE)):
             encode_to_pdf(src, dest, "a4", "x")
     assert (tmp_path / "source.bin").read_bytes() == data
     expected = ["hard.bin", "source.bin"] if hasattr(os, "link") else ["source.bin"]
@@ -475,9 +476,17 @@ def test_same_file_compares_files_and_spellings(tmp_path):
     assert not work.same_file(a, str(tmp_path / "copy.bin"))
 
 
+def test_native_path_uses_the_systems_separators():
+    # Qt hands out forward slashes on Windows (drops, file dialogs).
+    spelled = "folder/sub/../scan.png"
+    assert work.native_path(spelled) == os.path.normpath(spelled)
+    assert work.native_path(spelled) == os.path.join("folder", "scan.png")
+    assert work.native_path("") == ""  # a cancelled dialog stays empty
+
+
 def test_encode_to_pdf_missing_source(tmp_path):
     src = tmp_path / "missing.bin"
-    with pytest.raises(OptarError, match=f"cannot read {src}"):
+    with pytest.raises(OptarError, match=re.escape(f"cannot read {src}")):
         encode_to_pdf(str(src), str(tmp_path / "out.pdf"), "a4", "x")
     assert os.listdir(tmp_path) == []
 
@@ -524,7 +533,7 @@ def test_prepare_file_cancelled_and_unreadable(tmp_path):
     src = write_source(tmp_path, seeded_bytes(12, 3 * 2**20))
     with pytest.raises(Cancelled):
         work.prepare_file(src, turns_true_after(1))
-    with pytest.raises(OptarError, match="missing.bin"):
+    with pytest.raises(OptarError, match=re.escape("missing.bin")):
         work.prepare_file(str(tmp_path / "missing.bin"))
 
 

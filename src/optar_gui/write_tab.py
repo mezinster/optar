@@ -34,7 +34,14 @@ from optar.errors import OptarError
 from optar.format import PageFormat, get_paper
 from optar_gui import text
 from optar_gui.jobs import JobRunner
-from optar_gui.work import FileFacts, encode_to_pdf, name_preview, prepare_file, same_file
+from optar_gui.work import (
+    FileFacts,
+    encode_to_pdf,
+    name_preview,
+    native_path,
+    prepare_file,
+    same_file,
+)
 
 __all__ = ["WriteTab"]
 
@@ -137,13 +144,13 @@ class WriteTab(QWidget):
 
     def ask_open_path(self) -> str | None:
         path, _ = QFileDialog.getOpenFileName(self, text.CHOOSE_FILE_TITLE)
-        return path or None
+        return native_path(path) or None
 
     def ask_save_path(self, suggested: str) -> str | None:
         path, _ = QFileDialog.getSaveFileName(
             self, text.CREATE_TITLE, suggested, text.PDF_FILTER
         )
-        return path or None
+        return native_path(path) or None
 
     # --- State ---------------------------------------------------------------------
 
@@ -275,7 +282,7 @@ class WriteTab(QWidget):
             event.acceptProposedAction()
 
     def dropEvent(self, event) -> None:  # noqa: N802
-        paths = [u.toLocalFile() for u in event.mimeData().urls() if u.isLocalFile()]
+        paths = [native_path(u.toLocalFile()) for u in event.mimeData().urls() if u.isLocalFile()]
         if paths:
             event.acceptProposedAction()
             self.set_file(paths[0])

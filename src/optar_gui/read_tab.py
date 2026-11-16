@@ -95,7 +95,7 @@ from optar_gui.document import (
 )
 from optar_gui.jobs import JobRunner
 from optar_gui.preview import ScanPreview
-from optar_gui.work import Cancelled, ScanWork, process_scan, process_unlabelled
+from optar_gui.work import Cancelled, ScanWork, native_path, process_scan, process_unlabelled
 
 __all__ = ["REFRESH_MS", "SHUTDOWN_MS", "ReadController", "ReadTab"]
 
@@ -745,11 +745,11 @@ class ReadTab(QWidget):
         paths, _ = QFileDialog.getOpenFileNames(
             self, text.ADD_SCANS_TITLE, "", text.scan_filter()
         )
-        return paths
+        return [native_path(p) for p in paths]
 
     def ask_save_path(self, suggested: str) -> str | None:
         path, _ = QFileDialog.getSaveFileName(self, text.SAVE_TITLE, suggested)
-        return path or None
+        return native_path(path) or None
 
     def confirm(self, message: str) -> bool:
         save, cancel = QMessageBox.StandardButton.Save, QMessageBox.StandardButton.Cancel
@@ -764,7 +764,7 @@ class ReadTab(QWidget):
         path, _ = QFileDialog.getOpenFileName(
             self, text.replace_title(page), "", text.scan_filter()
         )
-        return path or None
+        return native_path(path) or None
 
     def ask_page(self, total: int, suggested: int, scan_name: str) -> int | None:
         dialog = AssignPageDialog(total, suggested, scan_name, self)
@@ -978,7 +978,7 @@ class ReadTab(QWidget):
             event.acceptProposedAction()
 
     def dropEvent(self, event) -> None:  # noqa: N802
-        paths = [u.toLocalFile() for u in event.mimeData().urls() if u.isLocalFile()]
+        paths = [native_path(u.toLocalFile()) for u in event.mimeData().urls() if u.isLocalFile()]
         if paths:
             event.acceptProposedAction()
             self.controller.add_paths(paths)

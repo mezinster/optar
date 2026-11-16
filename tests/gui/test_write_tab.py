@@ -186,6 +186,21 @@ def test_dropping_a_file_chooses_it(qtbot, make_tab, tmp_path):
     assert child(tab, QLineEdit, "nameEdit").text() == "dropped.bin"
 
 
+def test_a_dropped_path_is_shown_in_the_systems_spelling(qtbot, make_tab, tmp_path):
+    # Qt gives forward slashes on Windows; the tab shows the path as the system spells it.
+    path = write_file(tmp_path, "dropped.bin", seeded_bytes(6, 500))
+    (tmp_path / "sub").mkdir()
+    spelled = os.path.join(str(tmp_path), "sub", "..", "dropped.bin")
+    tab = make_tab()
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(spelled)])
+    event = QDropEvent(QPointF(5, 5), Qt.DropAction.CopyAction, mime,
+                       Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier)
+    tab.dropEvent(event)
+    qtbot.waitUntil(lambda: tab.prepared, timeout=TIMEOUT)
+    assert child(tab, QLineEdit, "fileEdit").text() == os.path.normpath(spelled) == path
+
+
 # --- Creating the PDF ------------------------------------------------------------------
 
 
