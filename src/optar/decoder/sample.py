@@ -29,22 +29,37 @@ def _bilinear(ul, ur, ll, lr, hpar, vpar):
     return lo * vpar + u * (one - vpar)
 
 
-def _bit_coord(x, y, positions, cutlevels, fmt: PageFormat):
-    """Sampling centre (integers at pixel centres) and local cut level for x, y."""
+def _cell(x, y, fmt: PageFormat):
+    """Cross cell (int64 cx, cy) of page coordinates x, y and the remainders
+    (float64 xrem, yrem) within it; outside the grid the nearest cell is used."""
     c, p = fmt.chalf, fmt.cpitch
-    cx = np.minimum(np.where(x < c, 0, (x - c) // p), fmt.xcrosses - 2)
-    cy = np.minimum(np.where(y < c, 0, (y - c) // p), fmt.ycrosses - 2)
+    cx = np.minimum(np.where(x < c, 0, np.floor_divide(x - c, p)), fmt.xcrosses - 2)
+    cy = np.minimum(np.where(y < c, 0, np.floor_divide(y - c, p)), fmt.ycrosses - 2)
+    cx, cy = cx.astype(np.int64), cy.astype(np.int64)
     xrem = ((x - (cx * p + c)) + 0.5) / p  # remainders may be < 0 or > 1
     yrem = ((y - (cy * p + c)) + 0.5) / p
+    return cx, cy, xrem, yrem
+
+
+def _cell_point(positions, cx, cy, xrem, yrem):
+    """Scan coordinates (integers at pixel centres) interpolated between the
+    four cross centres of each cell."""
     corners = (positions[cx, cy], positions[cx + 1, cy], positions[cx, cy + 1],
                positions[cx + 1, cy + 1])  # fmt: skip
     xd = _bilinear(*(q[:, 0] for q in corners), xrem, yrem)
     yd = _bilinear(*(q[:, 1] for q in corners), xrem, yrem)
+    return xd - 0.5, yd - 0.5
+
+
+def _bit_coord(x, y, positions, cutlevels, fmt: PageFormat):
+    """Sampling centre (integers at pixel centres) and local cut level for x, y."""
+    cx, cy, xrem, yrem = _cell(x, y, fmt)
+    xd, yd = _cell_point(positions, cx, cy, xrem, yrem)
     cut = _bilinear(
         cutlevels[cx, cy], cutlevels[cx + 1, cy], cutlevels[cx, cy + 1], cutlevels[cx + 1, cy + 1],
         xrem.astype(_f32), yrem.astype(_f32),
     )  # fmt: skip
-    return xd - 0.5, yd - 0.5, cut
+    return xd, yd, cut
 
 
 def _correct_sample(img, x, y, geom: Geometry, opts: DecodeOptions):

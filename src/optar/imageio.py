@@ -1,8 +1,12 @@
 # (c) GPL 2007 Karel 'Clock' Kulhavy, Twibright Labs; Python port 2026
 """Reading and writing page and scan images."""
 
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
+
 import numpy as np
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 
 from .errors import OptarError
 from .format import PIXELS_PER_INCH
@@ -12,6 +16,11 @@ DEFAULT_FILE_GAMMA = 0.454545
 # megapixels. Pillow's own decompression-bomb limit (about 179 megapixels,
 # warning above 89) would refuse or warn about ordinary 1200 dpi scans.
 MAX_SCAN_PIXELS = 600_000_000
+# Image.MAX_IMAGE_PIXELS is process-wide; it is lifted only while Image.open runs.
+_OPEN_LOCK = threading.Lock()
+# Formats read_scan opens (PPM covers PGM and PBM). JPEG is lossy, a poor choice
+# for scans, but users will try it.
+SCAN_FORMATS = ("PNG", "TIFF", "BMP", "PPM", "JPEG")
 _GRAY_WEIGHTS = (0.212671, 0.715160, 0.072169)
 
 
@@ -58,25 +67,79 @@ def _to_gray8(im: Image.Image) -> tuple[np.ndarray, bool]:
     return np.asarray(im.convert("RGB")), True
 
 
+def _accepted_formats() -> str:
+    names = [{"PPM": "PGM/PPM"}.get(f, f) for f in SCAN_FORMATS]
+    return ", ".join(names[:-1]) + " or " + names[-1]
+
+
+@contextmanager
+def scan_pixel_limit() -> Iterator[None]:
+    """Lets Pillow open images of up to MAX_SCAN_PIXELS while the block runs.
+
+    For code that opens scans with Pillow itself (to show one, say). The limit is
+    process-wide, so the block holds the lock read_scan takes: reads in other
+    threads wait meanwhile and never see the raised limit. Keep the block short:
+    open the image (and, for formats other than PNG, load it) inside it. The lock
+    is not reentrant: calling read_scan (or entering this block again) inside the
+    block deadlocks.
+    """
+    with _OPEN_LOCK:
+        pillow_limit = Image.MAX_IMAGE_PIXELS
+        Image.MAX_IMAGE_PIXELS = MAX_SCAN_PIXELS
+        try:
+            yield
+        finally:
+            Image.MAX_IMAGE_PIXELS = pillow_limit
+
+
 def read_scan(path) -> np.ndarray:
     """Load a scan as 8-bit gray in linear light, like read_png in unoptar.c."""
+    # Pillow's size check runs inside Image.open for PNG, but other plugins
+    # (TIFF, ...) repeat it while loading. So PNG releases the lock right after
+    # open; every other format keeps the limit set to the cap and the lock held
+    # until its pixels are loaded and converted.
+    held = True
+    _OPEN_LOCK.acquire()
     pillow_limit = Image.MAX_IMAGE_PIXELS
-    Image.MAX_IMAGE_PIXELS = None  # read_scan checks the size itself, below
+    # Never None: our own check refuses above the cap from the header size, and
+    # Pillow's check (warning above the cap, error above twice it) stays as a
+    # backstop for images that grow while loading.
+    Image.MAX_IMAGE_PIXELS = MAX_SCAN_PIXELS
+
+    def release() -> None:
+        nonlocal held
+        if held:
+            held = False
+            Image.MAX_IMAGE_PIXELS = pillow_limit
+            _OPEN_LOCK.release()
+
     try:
-        with Image.open(path) as im:
+        with Image.open(path, formats=SCAN_FORMATS) as im:
+            if im.format == "PNG":
+                release()
             pixels = im.width * im.height
             if pixels > MAX_SCAN_PIXELS:
                 raise OptarError(
                     f"cannot read image {path}: {pixels:,} pixels is more than "
                     f"the {MAX_SCAN_PIXELS:,} a scan may have"
                 )
+            checked_pixels = pixels
             im.load()
+            if im.width * im.height > MAX_SCAN_PIXELS:
+                raise OptarError(
+                    f"cannot read image {path}: {im.width * im.height:,} pixels is more "
+                    f"than the {MAX_SCAN_PIXELS:,} a scan may have"
+                )
+            if im.width * im.height != checked_pixels:  # a transpose keeps the count
+                raise OptarError(f"cannot read image {path}: image size changed while loading")
             file_gamma = im.info.get("gamma") or DEFAULT_FILE_GAMMA
             data, is_colour = _to_gray8(im)
+    except UnidentifiedImageError as e:
+        raise OptarError(f"cannot read image {path}: not a {_accepted_formats()} image") from e
     except (OSError, ValueError, SyntaxError, Image.DecompressionBombError) as e:
         raise OptarError(f"cannot read image {path}: {e}") from e
     finally:
-        Image.MAX_IMAGE_PIXELS = pillow_limit
+        release()
     table = _gamma_table(float(file_gamma))
     lin = table[data]
     if not is_colour:

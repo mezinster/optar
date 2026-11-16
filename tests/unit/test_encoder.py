@@ -2,8 +2,10 @@
 import io
 
 import numpy as np
+import pytest
 
 from optar.encoder import blank_page, encode, page_count
+from optar.font import label_text
 from optar.format import PageFormat
 from optar.layout import channel_xy
 from tests.helpers import seeded_bytes
@@ -65,3 +67,34 @@ def test_non_seekable_stream_input():
     a = [p.pixels for p in encode(data, F)]
     b = [p.pixels for p in encode(stream, F)]
     assert all(np.array_equal(i, j) for i, j in zip(a, b, strict=True))
+
+
+def test_callable_label_is_called_once_per_page_in_order():
+    calls = []
+
+    def label(page, total):
+        calls.append((page, total))
+        return f"page {page}"
+
+    pages = list(encode(seeded_bytes(2, PAGE_BYTES + 1), F, label))
+    assert calls == [(1, 2), (2, 2)]
+    for page in pages:
+        want = blank_page(F, label_text(F, page.number, 2, f"page {page.number}"))
+        band = F.border + F.data_height
+        assert np.array_equal(page.pixels[band:], want[band:])
+    calls.clear()
+    pages = list(encode(b"", F, label))
+    assert calls == [(1, 0)]
+    assert np.array_equal(pages[0].pixels, blank_page(F, label_text(F, 1, 0, "page 1")))
+
+
+def test_callable_label_giving_one_string_equals_the_string():
+    data = seeded_bytes(3, PAGE_BYTES + 5)
+    pairs = zip(encode(data, F, lambda p, t: "same"), encode(data, F, "same"), strict=True)
+    for got, want in pairs:
+        assert np.array_equal(got.pixels, want.pixels)
+
+
+def test_callable_label_must_return_a_string():
+    with pytest.raises(TypeError):
+        list(encode(b"abc", F, lambda p, t: None))

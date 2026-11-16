@@ -10,6 +10,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `.venv/bin/pytest -q`: default suite, needs no C compiler.
 - `.venv/bin/pytest -q -m "oracle or gs or slow"`: compares against the C tools; needs a C compiler, libpng headers and Ghostscript. Without system libpng headers, point at them with `OPTAR_TEST_CFLAGS` / `OPTAR_TEST_LDFLAGS`.
 - `.venv/bin/ruff check .`
+- GUI tests: `.venv/bin/pip install -e '.[dev,gui-dev]'`, then `QT_QPA_PLATFORM=offscreen .venv/bin/pytest -q -m gui`. The `gui` marker is applied to all of `tests/gui`, and those tests are skipped without PySide6 and pytest-qt, so the default suite needs neither.
+- `optar-gui --self-test` runs an encode and a decode without a window; the release build must pass it.
 - One-file build: `.venv/bin/pyinstaller --onefile --name optar --collect-data optar packaging/entry.py`, then `python packaging/smoke.py dist/optar`.
 - Regenerate `tests/golden/fixtures.json` with `.venv/bin/python -m tests.golden.make_fixtures` (needs a C compiler). The output must be unchanged unless the C sources changed.
 
@@ -21,7 +23,16 @@ Rules:
 - The decoder mirrors the C algorithm and its constants. Do not retune it without real scans.
 - Tests write only under pytest's `tmp_path`, because `make clean` deletes `*.pgm` and `*.ps` in the repo root.
 - Runtime dependencies are numpy and Pillow only. No JPEG output.
+- GUI build (`optar-gui`, as in `.github/workflows/release.yml`; macOS uses `--windowed` without `--onefile`): `.venv/bin/pyinstaller --onefile --name optar-gui --collect-data optar packaging/gui_entry.py`.
 - A `.py` edit is linted by the PostToolUse hook with `.venv/bin/ruff`.
+
+## Desktop application (`src/optar_gui`)
+
+- Nothing under `src/optar` imports Qt or `optar_gui`. `document.py`, `work.py` and `text.py` import no Qt either.
+- Rules (placement of scans, page health, document state) live in `document.py`; widgets only show them.
+- No scan is read, decoded, hashed or saved on the interface thread; use the jobs.
+- Every user-visible string lives in `text.py`.
+- Untrusted text (label text, file names) is shown as plain text, never as rich text.
 
 ## C build notes (oracle)
 

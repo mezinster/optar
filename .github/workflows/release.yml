@@ -3,6 +3,9 @@ name: Release
 on:
   push:
     tags: ['v*']
+  # A manual run rehearses the build: the files are built, tested and kept as
+  # workflow artifacts, and nothing is published.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -34,12 +37,22 @@ jobs:
           python-version: "3.15"
       - run: pip install -e '.[dev]'
       - name: Check tag matches package version
+        if: startsWith(github.ref, 'refs/tags/')
         run: |
           version="v$(python -c "import optar; print(optar.__version__)")"
           if [ "$GITHUB_REF_NAME" != "$version" ]; then
             echo "Tag $GITHUB_REF_NAME does not match package version $version" >&2
             exit 1
           fi
+      - name: Name the files
+        # The tag on a release; on a manual run the package version and commit.
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            name="$GITHUB_REF_NAME"
+          else
+            name="v$(python -c "import optar; print(optar.__version__)")-${GITHUB_SHA::7}"
+          fi
+          echo "RELEASE_NAME=$name" >> "$GITHUB_ENV"
       - name: Build one-file executable
         run: pyinstaller --onefile --name optar --collect-data optar packaging/entry.py
       - name: Smoke test
@@ -50,15 +63,62 @@ jobs:
         env:
           EXT: ${{ matrix.ext }}
           ASSET: ${{ matrix.asset }}
-        run: mv "dist/optar${EXT}" "dist/optar-${GITHUB_REF_NAME}-${ASSET}${EXT}"
+        run: |
+          mkdir release
+          mv "dist/optar${EXT}" "release/optar-${RELEASE_NAME}-${ASSET}${EXT}"
       - uses: actions/upload-artifact@v7
         with:
           name: optar-${{ matrix.asset }}
-          path: dist/optar-*
+          path: release/optar-*
+          if-no-files-found: error
+      # The desktop application, built after the command line so that the
+      # command-line executable is made without PySide6 installed.
+      - name: Install Qt libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1 libxcb-cursor0
+      - run: pip install -e '.[gui]'
+      - name: Build optar-gui
+        run: |
+          case "$RUNNER_OS" in
+            macOS) pyinstaller --windowed --name optar-gui --collect-data optar packaging/gui_entry.py ;;
+            Windows) pyinstaller --onefile --windowed --name optar-gui --collect-data optar packaging/gui_entry.py ;;
+            *) pyinstaller --onefile --name optar-gui --collect-data optar packaging/gui_entry.py ;;
+          esac
+      - name: Self-test optar-gui
+        run: |
+          status=0
+          case "$RUNNER_OS" in
+            macOS) dist/optar-gui.app/Contents/MacOS/optar-gui --self-test || status=$? ;;
+            Windows)
+              # A windowed program has no console: its report is in a log file.
+              dist/optar-gui.exe --self-test || status=$?
+              python -c "import os, tempfile; print(open(os.path.join(tempfile.gettempdir(), 'optar-gui-self-test.log'), encoding='utf-8').read())" \
+                || echo "The self-test wrote no log file."
+              ;;
+            *) dist/optar-gui --self-test || status=$? ;;
+          esac
+          exit "$status"
+      - name: Rename optar-gui
+        env:
+          EXT: ${{ matrix.ext }}
+          ASSET: ${{ matrix.asset }}
+        run: |
+          if [ "$RUNNER_OS" = macOS ]; then
+            ditto -c -k --keepParent dist/optar-gui.app "release/optar-gui-${RELEASE_NAME}-${ASSET}.zip"
+          else
+            mv "dist/optar-gui${EXT}" "release/optar-gui-${RELEASE_NAME}-${ASSET}${EXT}"
+          fi
+      - uses: actions/upload-artifact@v7
+        with:
+          name: optar-gui-${{ matrix.asset }}
+          path: release/optar-gui-*
           if-no-files-found: error
 
   publish:
     needs: build
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -73,5 +133,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" --generate-notes \
-            --notes "On Linux and macOS, run chmod +x on the downloaded file before first use. The executables are unsigned, so macOS and Windows may warn on first run." \
+            --notes "The executables are unsigned, so macOS and Windows may warn on first run. Run chmod +x before first use on the Linux files and on the macOS command-line file (optar-...-macos-arm64), not on the zipped application. On macOS, unzip optar-gui and try to open it; if macOS refuses, open System Settings, Privacy & Security, and choose Open Anyway (on older macOS versions, right-click the application and choose Open)." \
             release-files/*

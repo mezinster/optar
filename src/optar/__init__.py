@@ -1,23 +1,38 @@
 # (c) GPL 2007 Karel 'Clock' Kulhavy, Twibright Labs; Python port 2026
 """Python port of optar: store files on paper."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from optar.decoder import (  # noqa: E402
     BitPacker,
     DecodeOptions,
     DecodeResult,
+    PageGrid,
     PageResult,
     PageStats,
     decode,
+    decode_located,
     decode_page,
     decode_pages,
+    locate_page,
+    page_to_scan,
 )
 from optar.encoder import Page, encode  # noqa: E402
-from optar.errors import DecodeError, FormatError, OptarError  # noqa: E402
+from optar.errors import DecodeError, FormatError, IdentifyError, OptarError  # noqa: E402
+from optar.fileio import replacing  # noqa: E402
 from optar.format import PAPERS, PageFormat, Paper, get_paper  # noqa: E402
+from optar.identify import ScanIdentity, decode_unlabelled, identify_scan  # noqa: E402
 from optar.imageio import read_scan, write_pgm, write_png  # noqa: E402
+from optar.label import (  # noqa: E402
+    LabelInfo,
+    LabelReading,
+    label_capacity,
+    parse_label,
+    printed_label,
+    read_label,
+)
 from optar.pdf import write_pdf  # noqa: E402
+from optar.tag import Tag, make_tag, split_label, tagged_label  # noqa: E402
 
 __all__ = [
     "PageFormat",
@@ -41,4 +56,23 @@ __all__ = [
     "OptarError",
     "FormatError",
     "DecodeError",
+    "IdentifyError",
+    "Tag",
+    "make_tag",
+    "tagged_label",
+    "split_label",
+    "PageGrid",
+    "locate_page",
+    "decode_located",
+    "page_to_scan",
+    "read_label",
+    "parse_label",
+    "LabelReading",
+    "LabelInfo",
+    "printed_label",
+    "label_capacity",
+    "identify_scan",
+    "decode_unlabelled",
+    "ScanIdentity",
+    "replacing",
 ]
