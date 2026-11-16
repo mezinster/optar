@@ -17,7 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Rules:
 
-- Format numbers (65, 93, 24, 3, 2, 13, 200, paper sizes) live only in `src/optar/format.py`.
+- Format numbers (65, 93, 24, 3, 2, 13, 200, paper sizes, dot sizes, grids per dot size, header, spread and parity numbers) live only in `src/optar/format.py`.
 - The C sources, `Makefile` and `pgm2ps` are the test oracle. Do not edit them.
 - Library modules never print, call `sys.exit` or read `sys.argv`; only `cli.py` does.
 - The decoder mirrors the C algorithm and its constants. Do not retune it without real scans.
@@ -25,6 +25,11 @@ Rules:
 - Runtime dependencies are numpy and Pillow only. No JPEG output.
 - GUI build (`optar-gui`, as in `.github/workflows/release.yml`; macOS uses `--windowed` without `--onefile`): `.venv/bin/pyinstaller --onefile --name optar-gui --collect-data optar packaging/gui_entry.py`.
 - A `.py` edit is linted by the PostToolUse hook with `.venv/bin/ruff`.
+- Every page, whatever the dot size or protection, stays an ordinary version-0 optar page. `encode()` is not changed for the self-identifying (version 1) printouts: the container wraps the stream before it and unwraps it after.
+- A valid label tag wins over a header found in the data (a re-printed old stream must stay a 0.2.0 page).
+- Only the fingerprint makes a file "verified"; a repair that reports no failure does not.
+- The claims tests (`tests/unit/test_claims.py`, marked `slow`) are the project's claims about simulated scans. Do not loosen them or change the simulator's defaults to make them pass. Run them with `.venv/bin/pytest -q -m slow tests/unit/test_claims.py`.
+- The user's real scans are never copied into the repository, so `tests/scans` stays empty of scans.
 
 ## Desktop application (`src/optar_gui`)
 

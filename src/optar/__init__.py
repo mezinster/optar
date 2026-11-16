@@ -1,7 +1,7 @@
 # (c) GPL 2007 Karel 'Clock' Kulhavy, Twibright Labs; Python port 2026
 """Python port of optar: store files on paper."""
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 from optar.container import (  # noqa: E402
     PROTECTED_MAX_BYTES,
