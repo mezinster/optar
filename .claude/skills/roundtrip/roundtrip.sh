@@ -4,7 +4,7 @@
 #   -s SCALE  pixel repetition for the fake scan (default 3)
 #   -k        keep the work directory and print its path
 # Without INPUT_FILE, 300000 random bytes are used (two A4 pages).
-# Expects ./optar and ./unoptar to be built in the current directory.
+# Expects ./optar and ./unoptar to be built in the current directory (lega-c).
 set -eu
 scale=3
 keep=0
@@ -20,7 +20,7 @@ shift $((OPTIND - 1))
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(pwd)
 [ -x "$repo/optar" ] && [ -x "$repo/unoptar" ] || {
-	echo "roundtrip: build optar and unoptar first (make)" >&2
+	echo "roundtrip: build optar and unoptar first (cd lega-c && make)" >&2
 	exit 2
 }
 

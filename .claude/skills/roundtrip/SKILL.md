@@ -9,13 +9,13 @@ The repo has no test suite. This is the check that the encoder and decoder still
 
 ## Run
 
-From the repo root:
+From `lega-c`, where the C sources and their Makefile live:
 
 ```sh
-make && .claude/skills/roundtrip/roundtrip.sh
+cd lega-c && make && ../.claude/skills/roundtrip/roundtrip.sh
 ```
 
-It encodes a file with `./optar`, turns each `.pgm` page into a PNG "scan" with `pgm2png.py` (standard-library Python, no ImageMagick), decodes with `./unoptar`, and compares the first N bytes with the input. It prints `PASS: ...` or `FAIL: ...` and exits non-zero on failure. All files go to a temporary directory, never the repo root.
+It encodes a file with `./optar`, turns each `.pgm` page into a PNG "scan" with `pgm2png.py` (standard-library Python, no ImageMagick), decodes with `./unoptar`, and compares the first N bytes with the input. It prints `PASS: ...` or `FAIL: ...` and exits non-zero on failure. All files go to a temporary directory, never the repository.
 
 Options:
 

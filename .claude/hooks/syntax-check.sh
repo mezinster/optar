@@ -22,7 +22,7 @@ case $f in
 	exit 0
 	;;
 */golay_codes.c) exit 0 ;;
-*.h) set -- "$dir"/*.c ;;
+*.h) set -- "$(dirname "$f")"/*.c ;;
 *.c) set -- "$f" ;;
 *) exit 0 ;;
 esac

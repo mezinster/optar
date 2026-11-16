@@ -31,7 +31,7 @@ def parse(text: str) -> np.ndarray:
 
 
 def main() -> None:
-    text = (ROOT / "font.h").read_text(errors="replace")
+    text = (ROOT / "lega-c" / "font.h").read_text(errors="replace")
     white = parse(text)
     out = ROOT / "src" / "optar" / "data" / "font.png"
     out.parent.mkdir(parents=True, exist_ok=True)

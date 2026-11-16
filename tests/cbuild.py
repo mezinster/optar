@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+# The original C tools: a frozen test oracle kept apart from the Python code.
+C_DIR = REPO_ROOT / "lega-c"
 C_SOURCES = [
     "common.c", "golay.c", "optar.c", "parity.c", "unoptar.c",
     "optar.h", "font.h", "parity.h",
@@ -134,7 +136,7 @@ def build_c_tools(dest: Path, format_overrides: dict[str, int] | None = None) ->
     dest = Path(dest).resolve()
     dest.mkdir(parents=True, exist_ok=True)
     for name in C_SOURCES:
-        shutil.copy(REPO_ROOT / name, dest / name)
+        shutil.copy(C_DIR / name, dest / name)
     if format_overrides:
         _override(dest / "optar.h", format_overrides)
 

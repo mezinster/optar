@@ -401,10 +401,11 @@ Build the one-file executable and smoke-test it:
 C reference implementation
 --------------------------
 
-The original C programs follow. They are also the test oracle for the Python
-version. The C encoder is also called `optar`: `make` builds it in the repo
-root as `./optar`, so run it as `./optar` to avoid confusion with the Python
-command.
+The original C programs live in the `lega-c` folder, and the rest of this
+document describes them. They are also the test oracle for the Python version.
+Run the commands below from inside `lega-c`. The C encoder is also called
+`optar`: `make` builds it there as `./optar`, so run it as `./optar` to avoid
+confusion with the Python command.
 
 Building
 --------
@@ -420,6 +421,7 @@ and every macOS system has this installed already.
 
 Compile with
 
+    cd lega-c
     make
 
 Note that there may be some hardcoded configuration values that you may need to
