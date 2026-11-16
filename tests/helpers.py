@@ -215,7 +215,7 @@ def simulate_scan(
     dpi,
     *,
     rotate_deg=0.4,
-    blur=2.0,
+    blur=1.0,
     noise=6.0,
     seed=1,
     quarter_turns=0,
@@ -227,6 +227,9 @@ def simulate_scan(
     rotation by rotate_deg degrees (bicubic, expanded, white fill), a white
     border of 0.2 inch, box resampling to dpi, noise, then np.rot90(-quarter_turns)
     so that np.rot90(scan, quarter_turns) is upright. Deterministic for a seed.
+
+    The default blur of 1.0 is the mild blur behind the project's evidence; Standard
+    (3-dot) pages stop decoding at about 2.0.
     """
     import numpy as np
     from PIL import Image, ImageFilter

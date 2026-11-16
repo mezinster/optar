@@ -2,7 +2,6 @@
 """The scan simulator in tests/helpers.py."""
 
 import numpy as np
-import pytest
 
 from optar import decode_page, encode
 from optar.format import get_layout
@@ -23,10 +22,6 @@ def _check(layout, data, scan):
     assert np.array_equal(r.bits, want)
 
 
-# Measured: blur sigma 2.0 printer dots on 3-dot Standard pixels leaves ~39000 of 133182
-# symbols uncorrectable at 600 dpi (and ~36000 at 1200 dpi); sigma 1.0 gives 0. The
-# reference snippet's blur 2.0 was in 1200 dpi units, i.e. 1.0 here. Needs a decision.
-@pytest.mark.xfail(strict=True, reason="sigma 2.0 dots is too blurry for 3-dot pixels")
 def test_standard_a4_at_600_dpi_decodes():
     layout, data, px = _page("a4")
     _check(layout, data, simulate_scan(px, layout, 600))
@@ -60,3 +55,9 @@ def test_quarter_turns_are_undone_by_rot90():
     layout, data, px = _page("a4", "large")
     scan = simulate_scan(px, layout, 300, quarter_turns=1)
     _check(layout, data, np.rot90(scan, 1))
+
+
+def test_large_a4_at_300_dpi_survives_blur_2():
+    # Standard pages stop decoding near blur 2.0; Large pages still decode.
+    layout, data, px = _page("a4", "large")
+    _check(layout, data, simulate_scan(px, layout, 300, blur=2.0))
