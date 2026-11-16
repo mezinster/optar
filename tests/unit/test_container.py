@@ -393,6 +393,7 @@ def test_unwrap_round_trip(key, parity):
     assert isinstance(out, Unwrapped)
     assert out.verified
     assert out.data == data
+    assert out.best_effort == data
     assert out.name == name
     assert out.repaired_bytes == 0
     assert out.worst_used == 0
@@ -476,6 +477,12 @@ def test_unwrap_with_one_page_missing(lost):
     assert out.repaired_bytes == in_codewords
 
 
+# Measured 0.861 for the case below: about an eighth of each codeword lies on
+# the missing page and stays zero (or is filled wrongly where a codeword has
+# exactly `parity` erasures and an undetected error), plus 1% errors.
+BEST_EFFORT_AGREEMENT = 0.85
+
+
 def test_unwrap_beyond_repair_reports_failure():
     fmt = get_layout("a4", "xlarge").fmt
     data, name, p, header, pages = _document(fmt, 32, total=8)
@@ -488,6 +495,9 @@ def test_unwrap_beyond_repair_reports_failure():
     assert out.worst_used > out.budget
     assert out.missing == (3,)
     assert max(out.page_damage, key=out.page_damage.get) == 3
+    assert len(out.best_effort) == len(data)
+    same = np.mean(np.frombuffer(out.best_effort, np.uint8) == np.frombuffer(data, np.uint8))
+    assert same >= BEST_EFFORT_AGREEMENT, same
 
 
 def test_unwrap_with_another_documents_header():
@@ -518,6 +528,43 @@ def test_unwrap_without_parity_takes_data_as_read():
     assert out.data is None and not out.verified
     assert out.missing == (2,)
     assert out.failed > 0
+
+
+def _file_byte_places(p, size):
+    """(page number, payload index) of each file byte, for parity 0 (k = 255)."""
+    body_index = np.flatnonzero(~_covered(p))
+    pos = positions(p).reshape(-1)[:size]  # with k = 255 the region is positions in order
+    return pos // p.page_body + 1, body_index[pos % p.page_body]
+
+
+def test_best_effort_without_parity_keeps_an_erased_byte_as_read():
+    fmt = get_layout("a4", "xlarge").fmt
+    data, name, p, header, pages = _document(fmt, 0, total=3)
+    target = len(data) // 2
+    page_of, index_of = _file_byte_places(p, len(data))
+    number, index = int(page_of[target]), int(index_of[target])
+    payload = np.frombuffer(pages[number].data, np.uint8).copy()
+    payload[index] ^= 0x5A
+    erased = np.zeros(p.page_bytes, dtype=bool)
+    erased[index] = True
+    pages[number] = PagePayload(payload.tobytes(), erased)
+    out = unwrap(header, fmt, pages)
+    assert out.data is None and not out.verified
+    diff = np.flatnonzero(np.frombuffer(out.best_effort, np.uint8) != np.frombuffer(data, np.uint8))
+    assert diff.tolist() == [target]
+
+
+def test_best_effort_without_parity_zeros_a_missing_page():
+    fmt = get_layout("a4", "xlarge").fmt
+    data, name, p, header, pages = _document(fmt, 0, total=3)
+    del pages[2]
+    out = unwrap(header, fmt, pages)
+    assert out.data is None
+    page_of, _ = _file_byte_places(p, len(data))
+    expected = np.frombuffer(data, np.uint8).copy()
+    expected[page_of == 2] = 0
+    assert (page_of == 2).sum() > 0
+    assert out.best_effort == expected.tobytes()
 
 
 def test_unwrap_ignores_pages_outside_the_document():

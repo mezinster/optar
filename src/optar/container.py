@@ -318,6 +318,13 @@ def page_payload(result: PageResult, fmt: PageFormat) -> PagePayload:
 @dataclass(frozen=True)
 class Unwrapped:
     data: bytes | None  # the file, cut to size; None if any codeword holding file bytes failed
+    # The file as far as it could be recovered, cut to the header's size (shorter
+    # only if the header claims more than the document holds): corrected
+    # codewords where correction succeeded, bytes as read where it failed or
+    # there is no parity, zeros for unrepaired bytes of missing pages. Equal to
+    # data when data is not None. It MAY CONTAIN WRONG BYTES and is never
+    # verified: it is only for an explicit "save anyway".
+    best_effort: bytes
     name: str  # "" if unreadable
     verified: bool  # data is not None and its fingerprint equals the header's
     repaired_bytes: int  # bytes parity changed or filled
@@ -406,6 +413,7 @@ def unwrap(header: Header, fmt: PageFormat, pages: Mapping[int, PagePayload]) ->
         name = _read_name(region, ok, size, k)
     return Unwrapped(
         data=data_out,
+        best_effort=region[:size].tobytes(),
         name=name,
         verified=data_out is not None and fingerprint(data_out) == header.fingerprint,
         repaired_bytes=repaired,
