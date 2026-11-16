@@ -2552,6 +2552,7 @@ def test_version1_documents_take_no_pages_by_hand():
     bad = add(doc, "bad")
     doc.set_unreadable(bad, "label unreadable")
     assert doc.actions(Row.UNREADABLE, bad) == Actions(remove=bad)
+    assert not doc.can_assign(bad, 1)
     with pytest.raises(ValueError):
         doc.assign_page(bad, 1)
     # Nor is a version-1 page put into another document by hand.
@@ -2559,12 +2560,20 @@ def test_version1_documents_take_no_pages_by_hand():
     v1 = add_v1(doc2, "v", payloads[1])
     key = doc2.others()[0].key
     assert doc2.actions(Row.OTHER, key) == Actions(switch=key)
+    assert not doc2.can_assign(v1, 1)
     with pytest.raises(ValueError):
         doc2.assign_page(v1, 1)
     doc2.set_unreadable(v1, "could not be decoded")
     assert doc2.actions(Row.UNREADABLE, v1) == Actions(remove=v1)
+    assert not doc2.can_assign(v1, 1)
     with pytest.raises(ValueError):
         doc2.assign_page(v1, 1)
+    # A scan that can be: only for a page the document has, and while it is there.
+    bad2 = add(doc2, "bad2")
+    doc2.set_unreadable(bad2, "label unreadable")
+    assert doc2.can_assign(bad2, 1) and not doc2.can_assign(bad2, 0)
+    assert not doc2.can_assign(bad2 + 100, 1) and not Document().can_assign(1, 1)
+    doc2.assign_page(bad2, 1)
     # Its scans still replace a page as tagged scans do.
     again = add_v1(doc, "again", payloads[2])
     assert doc.replacement_fit(again, 2) == Fit.THIS_PAGE

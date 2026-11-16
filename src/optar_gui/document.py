@@ -866,6 +866,17 @@ class Document:
             self._preferred.clear()
         self._changed()
 
+    def can_assign(self, scan_id: int, page: int) -> bool:
+        """Whether ``assign_page`` would take the scan for that page now: there is a
+        document with that page, and neither it nor the scan is version 1. The
+        window asks again when the user has chosen a page: the scan may have been
+        read, or removed, meanwhile."""
+        s = self._scans.get(scan_id)
+        current = self._layout.current
+        if s is None or current is None or current.v1 is not None:
+            return False
+        return _v1_header(s.info) is None and 1 <= page <= _pages(current.total)
+
     def assign_page(self, scan_id: int, page: int) -> None:
         """Puts the scan into a page of the current document by hand. Raises
         ValueError for a version-1 document or a version-1 scan: their pages

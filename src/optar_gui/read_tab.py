@@ -359,10 +359,10 @@ class ReadController(QObject):
         """Puts the scan into page ``page`` of the current document by hand; a scan
         that needs it (``Document.needs_decoding``) is then decoded without its
         label, in the document's format. Returns False, doing nothing, when the
-        document no longer has that page (it may have changed while the user was
-        choosing)."""
+        document no longer has that page or no longer takes the scan by hand (it
+        may have changed while the user was choosing: ``Document.can_assign``)."""
         doc = self._doc
-        if self._closed or doc.current is None or not 1 <= page <= len(doc.slots()):
+        if self._closed or not doc.can_assign(scan_id, page):
             return False
         self._drop_pending(page, scan_id)
         doc.assign_page(scan_id, page)

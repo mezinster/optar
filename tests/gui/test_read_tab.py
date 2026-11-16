@@ -14,6 +14,7 @@ import shutil
 import threading
 import time
 
+import numpy as np
 import pytest
 from PySide6.QtCore import QMimeData, QPointF, Qt, QTimer, QUrl
 from PySide6.QtGui import QDropEvent
@@ -24,7 +25,7 @@ from optar import PAPERS, PARITY, PageFormat, encode, get_layout
 from optar.container import plan_for, wrap
 from optar.tag import make_tag, tagged_label
 from optar_gui import text
-from optar_gui.document import DocState, Document, PageOutcome, ScanInfo, ScanState
+from optar_gui.document import DocState, Document, PageOutcome, Row, ScanInfo, ScanState
 from optar_gui.main_window import MainWindow
 from optar_gui.read_tab import ReadController, ReadTab
 from optar_gui.work import ScanWork, process_scan
@@ -865,6 +866,26 @@ def test_a_version1_scan_is_decoded_once_and_keeps_no_payload(qtbot, make_tab, v
     assert work.scan_dpi == pytest.approx(2 * float(XLARGE.pixels_per_inch), rel=0.02)
     assert work.outcome is None and work.payload is None  # the document holds them
     assert tab.controller.scan_note(work) is None  # two pixels per dot: not too coarse
+
+
+def test_assigning_into_a_version1_document_is_refused_not_raised(
+    qtbot, make_tab, v1_printouts, tmp_path
+):
+    # The page dialog can be open while the document under it becomes one that
+    # takes no pages by hand: the choice is then dropped, without an error.
+    _, paths = v1_printouts["three"]
+    blank = tmp_path / "blank.png"
+    save_scan(blank, np.full((600, 400), 255, np.uint8))
+    tab = make_tab()
+    tab.controller.add_paths([paths[0], str(blank)])
+    wait_settled(qtbot, tab)
+    doc = tab.controller.document
+    unreadable = doc.scan_id_of(str(blank))
+    assert doc.actions(Row.UNREADABLE, unreadable).assign is None
+    before = doc.slots()
+    assert tab.controller.assign(unreadable, 2) is False
+    assert tab.controller.assign(unreadable + 50, 1) is False  # removed meanwhile
+    assert doc.slots() == before
 
 
 def test_one_page_of_twelve_missing_is_recoverable_and_saves_the_original(
