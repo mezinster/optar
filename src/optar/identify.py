@@ -55,11 +55,22 @@ LABEL_UNREADABLE = "label unreadable"
 # 79% or more for a grid whose cross pitch is not a multiple of the page's.
 _OFF_LINE_SHARE = 0.5
 _OFF_LINE_PX = 1.5
-# Only layouts whose width-to-height ratio is this close to the outline's are
-# decoded for a header. Measured: the page's own layout within 0.001 on
-# simulated scans and 0.003 on real sheet-fed scans; the layouts of the other
-# paper are at least 0.05 away.
-_SHAPE_TOLERANCE = 0.025
+# Every layout of the paper closest to the outline's shape is decoded for a
+# header; a layout of another paper only if its width-to-height ratio is
+# within this relative distance of the outline's. Shape only orders the
+# candidates of the closest paper, so no stretch rules out its own layouts.
+# Rollers stretch a page in one axis, which moves its ratio by the stretch:
+# a page stretched by s is within s of its own layout, so with this value a
+# stretch of up to 6.5% (horizontal or vertical) that makes the other paper
+# look closer still tries the page's own layouts. An undistorted page is at
+# least 6.7% from every layout of the other paper (A4 medium 0.7018 against
+# Letter large 0.7523; 7.2% the other way), so the other paper is decoded
+# only for a page distorted towards it: from a ratio change of 0.24% (Letter
+# large), 0.66% (A4 medium), 1.1% to 1.5% (A4 big and large, Letter
+# standard, medium and extra large), 2.45% to 3.63% (the rest). That costs
+# time only, and only for a page not found on the closest paper, which is
+# tried first.
+_OTHER_PAPER_TOLERANCE = 0.065
 
 
 @dataclass(frozen=True)
@@ -160,14 +171,26 @@ def _papers_by_shape(corners: np.ndarray) -> list[Paper]:
     return sorted(PAPERS.values(), key=lambda p: _shape_distance(corners, PageFormat.for_paper(p)))
 
 
+def _relative_shape_distance(corners: np.ndarray, fmt: PageFormat) -> float:
+    width, height = _size(corners)
+    return abs((width / height) / (fmt.width / fmt.height) - 1)
+
+
 def _layouts_by_shape(corners: np.ndarray, paper: Paper) -> list[Layout]:
-    """The paper's layouts within _SHAPE_TOLERANCE of the outline's shape,
-    closest first; equal shapes in DOT_SIZES order."""
+    """The layouts of paper to decode for a header, closest shape first (equal
+    shapes in DOT_SIZES order): all of them if paper has the layout closest
+    to the outline's shape, else those within _OTHER_PAPER_TOLERANCE."""
     layouts = [layout for layout in LAYOUTS.values() if layout.paper is paper]
     if _size(corners)[1] == 0:
         return layouts
-    near = [lay for lay in layouts if _shape_distance(corners, lay.fmt) <= _SHAPE_TOLERANCE]
-    return sorted(near, key=lambda layout: _shape_distance(corners, layout.fmt))
+    layouts.sort(key=lambda layout: _shape_distance(corners, layout.fmt))
+    closest = min(LAYOUTS.values(), key=lambda layout: _shape_distance(corners, layout.fmt))
+    if closest.paper is paper:
+        return layouts
+    return [
+        layout for layout in layouts
+        if _relative_shape_distance(corners, layout.fmt) <= _OTHER_PAPER_TOLERANCE
+    ]
 
 
 def _outline_dpi(corners: np.ndarray) -> float:
@@ -275,9 +298,11 @@ def identify_scan(image: np.ndarray, options: DecodeOptions | None = None) -> Sc
        A valid tag wins at once, whatever the data holds. A reliable untagged
        label is checked for a header first: a standard-dot version-1 page
        carries an untagged label.
-    2. Every layout of the paper whose shape is near the outline's, closest
-       first, in every rotation: unless its located grid is not _regular,
-       the page is decoded and a valid header (version-1 rules) wins.
+    2. The paper's layouts, closest shape first, in every rotation: all of
+       them for the paper with the layout closest to the outline's shape,
+       only those of nearly its shape for the other paper (_layouts_by_shape).
+       Unless its located grid is not _regular, the page is decoded and a
+       valid header (version-1 rules) wins.
 
     Raises IdentifyError("no page found") when no candidate rotation shows a
     page outline, else IdentifyError("label unreadable"), carrying the

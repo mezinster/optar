@@ -106,9 +106,9 @@ def test_claim(claim, blur):
 
 def test_standard_dots_at_300_dpi_are_not_recovered():
     # Not a claim: the limit the tools must report honestly. At the blur of
-    # the owner's scans a third of a Standard-dot page's bytes are wrong. The
-    # page is refused, or identified from its untagged label with no header
-    # (measured: the latter), or its document does not verify.
+    # the owner's scans a third of a Standard-dot page's bytes are wrong: no
+    # header copy survives. The page is refused, or identified from its
+    # untagged label with no header (measured: the latter).
     outcome = run_claim("standard", 300, 1, blur=BLURS["binding"])
-    assert not outcome.misplaced
-    assert not outcome.verified
+    assert outcome.unidentified + outcome.headerless == [1], outcome
+    assert not outcome.uncorrectable and not outcome.verified

@@ -874,13 +874,44 @@ def test_regular_grid_check():
 
 @pytest.mark.parametrize("paper,dots", [("a4", "large"), ("letter", "xlarge")])
 def test_only_layouts_of_the_outlines_shape_are_decoded(paper, dots):
-    # Every dot size of the page's paper is near its outline's shape, so none
-    # is ruled out by shape alone; no layout of the other paper is.
+    # Every dot size of the closest paper is tried; an undistorted page is too
+    # far from the other paper's shapes for any of its layouts to be decoded.
     corners = optar.identify._outline(simulated(paper, dots, V1_CASES[dots][1], 0))
     near = optar.identify._layouts_by_shape(corners, PAPERS[paper])
     assert {lay.dots.name for lay in near} == set(DOT_SIZES)
     other = next(p for p in PAPERS.values() if p is not PAPERS[paper])
     assert optar.identify._layouts_by_shape(corners, other) == []
+
+
+def stretched(img, horizontal=1.0, vertical=1.0):
+    """A scan resized in one axis (bicubic), as rollers stretch a sheet."""
+    from PIL import Image
+
+    im = Image.fromarray(np.asarray(img))
+    size = (round(im.width * horizontal), round(im.height * vertical))
+    return np.asarray(im.resize(size, Image.Resampling.BICUBIC)).copy()
+
+
+# A sheet-fed scanner stretches the page in the feed direction: each page
+# must still be identified as its own layout, whichever paper its stretched
+# outline looks closest to.
+# The two cases stretched towards the other paper try that paper first and
+# take about 17 s each, so they run in the slow run.
+@pytest.mark.parametrize("paper,dots,dpi,horizontal,vertical", [
+    pytest.param("a4", "large", 300, 1.0, 1.05, id="a4-large-v"),
+    pytest.param("a4", "large", 300, 1.05, 1.0, id="a4-large-h", marks=pytest.mark.slow),
+    pytest.param("a4", "xlarge", 200, 1.0, 1.05, id="a4-xlarge-v"),
+    pytest.param("letter", "large", 300, 1.0, 1.05, id="letter-large-v",
+                 marks=pytest.mark.slow),
+])
+def test_stretched_page_is_identified(paper, dots, dpi, horizontal, vertical):
+    layout, _, _, images = wrapped(paper, dots)
+    img = stretched(simulate_scan(images[1], layout, dpi, blur=1.8, seed=2),
+                    horizontal, vertical)
+    ident = identify_scan(img)
+    assert ident.layout is layout
+    assert (ident.page, ident.total, ident.rotation) == (2, 2, 0)
+    assert ident.header is not None and ident.header.page == 2
 
 
 def test_scan_dpi_of_a_grid():
