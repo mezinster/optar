@@ -21,6 +21,7 @@ from optar.decoder import PageGrid
 from optar.errors import DecodeError, OptarError
 from optar.layout import channel_xy
 from optar.tag import make_tag, tagged_label
+from optar_gui import text
 from optar_gui.document import PageOutcome, ScanInfo
 from optar_gui.work import (
     NOT_DECODABLE,
@@ -443,6 +444,29 @@ def test_encode_to_pdf_cancelled_midway(tmp_path, existing):
         assert sorted(os.listdir(tmp_path)) == ["out.pdf", "source.bin"]
     else:
         assert sorted(os.listdir(tmp_path)) == ["source.bin"]
+
+
+def test_encode_to_pdf_refuses_the_source_as_destination(tmp_path):
+    data = seeded_bytes(3, 1000)
+    src = write_source(tmp_path, data)
+    spellings = [src, os.path.join(str(tmp_path), ".", "source.bin")]
+    if hasattr(os, "link"):
+        os.link(src, tmp_path / "hard.bin")  # another name for the same file
+        spellings.append(str(tmp_path / "hard.bin"))
+    for dest in spellings:
+        with pytest.raises(OptarError, match=text.DEST_IS_SOURCE):
+            encode_to_pdf(src, dest, "a4", "x")
+    assert (tmp_path / "source.bin").read_bytes() == data
+    expected = ["hard.bin", "source.bin"] if hasattr(os, "link") else ["source.bin"]
+    assert sorted(os.listdir(tmp_path)) == expected
+
+
+def test_same_file_compares_files_and_spellings(tmp_path):
+    a = write_source(tmp_path, b"a")
+    assert work.same_file(a, os.path.join(str(tmp_path), "x", "..", "source.bin"))
+    assert not work.same_file(a, str(tmp_path / "other.bin"))  # does not exist
+    (tmp_path / "copy.bin").write_bytes(b"a")
+    assert not work.same_file(a, str(tmp_path / "copy.bin"))
 
 
 def test_encode_to_pdf_missing_source(tmp_path):

@@ -239,6 +239,36 @@ def test_create_pdf_round_trips_through_the_reading_tab(qtbot, make_tab, tmp_pat
         controller.shutdown(TIMEOUT)
 
 
+def test_a_pdf_source_is_not_offered_as_the_destination(qtbot, make_tab, tmp_path):
+    src = write_file(tmp_path, "report.pdf", seeded_bytes(10, 1000))
+    tab = make_tab()
+    choose(qtbot, tab, src)
+    asked = []
+    tab.ask_save_path = lambda suggested: asked.append(suggested) or None
+    child(tab, QPushButton, "createButton").click()
+    assert asked == [os.path.join(str(tmp_path), "report-optar.pdf")]
+
+
+def test_the_source_chosen_as_destination_is_refused(qtbot, make_tab, tmp_path):
+    data = seeded_bytes(11, 1000)
+    src = write_file(tmp_path, "report.pdf", data)
+    encodes = []
+    tab = make_tab(encode=lambda *args, **kw: encodes.append(args) or 1)
+    choose(qtbot, tab, src)
+    status = child(tab, QLabel, "statusLabel")
+    spellings = [src, os.path.join(str(tmp_path), ".", "report.pdf")]
+    if hasattr(os, "symlink"):
+        os.symlink(src, tmp_path / "link.pdf")
+        spellings.append(str(tmp_path / "link.pdf"))
+    for spelling in spellings:
+        tab.ask_save_path = lambda suggested, spelling=spelling: spelling
+        child(tab, QPushButton, "createButton").click()
+        assert status.text() == text.create_failed(text.DEST_IS_SOURCE), spelling
+        assert not tab.creating
+    assert encodes == []
+    assert (tmp_path / "report.pdf").read_bytes() == data
+
+
 def test_too_many_pages_is_reported(qtbot, make_tab, tmp_path, monkeypatch):
     monkeypatch.setattr(encoder_module, "MAX_PAGES", 1)
     tab = make_tab()

@@ -34,12 +34,15 @@ from optar.errors import OptarError
 from optar.format import PageFormat, get_paper
 from optar_gui import text
 from optar_gui.jobs import JobRunner
-from optar_gui.work import FileFacts, encode_to_pdf, name_preview, prepare_file
+from optar_gui.work import FileFacts, encode_to_pdf, name_preview, prepare_file, same_file
 
 __all__ = ["WriteTab"]
 
 # How long closing the window waits for running work to stop.
 SHUTDOWN_MS = 3000
+
+# The suggested PDF name for a source that is itself a PDF: never the source.
+_PDF_OF_PDF_SUFFIX = "-optar.pdf"
 
 # Job ids on the tab's runner.
 _PREPARE_JOB = 1
@@ -217,9 +220,16 @@ class WriteTab(QWidget):
             self.status.setText(text.cannot_put_on_paper(str(e)))
             return
         src = self._path
-        stem = os.path.splitext(os.path.basename(src))[0] or "optar"
-        dest = self.ask_save_path(os.path.join(os.path.dirname(src), stem + ".pdf"))
+        base = os.path.basename(src)
+        stem = os.path.splitext(base)[0] or "optar"
+        suggested = stem + ".pdf"
+        if os.path.normcase(suggested) == os.path.normcase(base):
+            suggested = stem + _PDF_OF_PDF_SUFFIX
+        dest = self.ask_save_path(os.path.join(os.path.dirname(src), suggested))
         if not dest or self.creating or self._closed:
+            return
+        if same_file(src, dest):
+            self.status.setText(text.create_failed(text.DEST_IS_SOURCE))
             return
         self._dest = dest
         self.status.setText(text.CREATING)

@@ -404,6 +404,35 @@ def test_save_incomplete_asks_and_respects_no(
     assert saved[2 * page:] == data[2 * page:]
 
 
+def test_save_writes_what_the_warning_described(qtbot, make_tab, printouts, tmp_path):
+    data, paths = printouts["untagged"]
+    tab = make_tab()
+    tab.controller.add_paths(paths)
+    wait_settled(qtbot, tab)
+    assert tab.controller.summary.state == DocState.UNVERIFIABLE
+    doc = tab.controller.document
+    page = doc.page_bytes
+    before = b"".join(doc.chunks())
+    target = tmp_path / "old.tar"
+    tab.ask_save_path = lambda suggested: str(target)
+    tab.show_error = lambda message: pytest.fail(message)
+    warnings = []
+
+    def confirm_while_page_1_gets_worse(message):
+        # While the dialog is open a background result makes page 1 damaged.
+        warnings.append(message)
+        sid = doc.pages()[0].scan_id
+        doc.set_outcome(sid, PageOutcome(b"\xff" * page, (0, 0, 0, 0), 99))
+        assert doc.pages()[0].lost == 99
+        return True
+
+    tab.confirm = confirm_while_page_1_gets_worse
+    tab.save_button.click()
+    assert len(warnings) == 1 and "cannot be verified" in warnings[0]
+    qtbot.waitUntil(lambda: not tab.controller.saving, timeout=TIMEOUT)
+    assert target.read_bytes() == before  # not the damaged page shown since
+
+
 @pytest.mark.skipif(os.name != "posix" or os.geteuid() == 0, reason="needs file permissions")
 def test_save_failure_shows_error_and_keeps_existing_file(
     qtbot, make_tab, printouts, tmp_path

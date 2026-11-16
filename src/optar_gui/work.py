@@ -21,6 +21,7 @@ one per scan.
 from __future__ import annotations
 
 import hashlib
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -38,6 +39,7 @@ from optar.label import printed_label
 from optar.layout import channel_xy
 from optar.pdf import write_pdf
 from optar.tag import FINGERPRINT_DIGITS, Tag, make_tag, tagged_label
+from optar_gui import text
 from optar_gui.document import PageOutcome, ScanInfo
 
 __all__ = [
@@ -51,6 +53,7 @@ __all__ = [
     "prepare_file",
     "process_scan",
     "process_unlabelled",
+    "same_file",
 ]
 
 # The reason given when a page assigned by hand decodes badly in every rotation.
@@ -209,8 +212,10 @@ def encode_to_pdf(
     by ``name``. The PDF is written through a temporary file: on failure or
     cancellation an existing ``dest`` is left untouched and nothing is left
     behind. Checks ``cancelled`` before each page. Raises OptarError on
-    failure.
+    failure, and before reading anything when ``dest`` is ``src`` itself.
     """
+    if same_file(src, dest):
+        raise OptarError(text.DEST_IS_SOURCE)
     paper = get_paper(paper_name)
     fmt = PageFormat.for_paper(paper)
     try:
@@ -232,6 +237,16 @@ def encode_to_pdf(
 
     with replacing(dest) as temp:
         return write_pdf(temp, pages(), paper)
+
+
+def same_file(a: str, b: str) -> bool:
+    """Whether the paths name the same file: by the file system when both exist
+    (hard links and symbolic links included), else by their resolved spelling."""
+    try:
+        return os.path.samefile(a, b)
+    except (OSError, ValueError):
+        pass
+    return os.path.normcase(os.path.realpath(a)) == os.path.normcase(os.path.realpath(b))
 
 
 # How much of a file is read at a time while its tag is computed.

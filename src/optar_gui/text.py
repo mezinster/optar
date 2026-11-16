@@ -76,6 +76,8 @@ CREATE_TITLE = "Save the PDF"
 PDF_FILTER = "PDF (*.pdf);;All files (*)"
 PREPARING = "Reading the file…"
 CREATING = "Creating the PDF…"
+# Why a PDF is not created over the file being put on paper.
+DEST_IS_SOURCE = "the PDF would replace the file being put on paper; choose another name"
 
 # What a document without a name is called.
 NO_NAME = "(no name)"

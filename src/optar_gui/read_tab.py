@@ -938,10 +938,12 @@ class ReadTab(QWidget):
         controller = self.controller
         if not controller.can_save:
             return
+        # The warning and the snapshot are taken together, before the dialog: its
+        # event loop delivers background results, which may change the pages.
         warning = controller.save_warning()
+        chunks = controller.snapshot()  # exactly what the warning describes
         if warning is not None and not self.confirm(warning):
             return
-        chunks = controller.snapshot()  # what the warning described
         path = self.ask_save_path(controller.document.suggested_name)
         if not path or not controller.can_save:
             return
