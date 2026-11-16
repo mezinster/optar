@@ -537,10 +537,11 @@ def test_coarse_scan_for_a_known_page():
 
 def test_coarse_scan_of_an_unreadable_scan_lists_every_dot_size():
     message = plain(text.coarse_scan(203.0, None))
-    assert "about 200 dpi" in message
-    for name, dpi in (("Standard", 600), ("Medium", 450), ("Big", 360), ("Large", 300),
-                      ("Extra large", 200)):
-        assert f"{name} dots {dpi}" in message or f"{name} {dpi}" in message, name
+    assert message == (
+        "Scanned at about 200 dpi, which is too coarse to read. Scan at 600 dpi for "
+        "Standard dots, 450 Medium, 360 Big, 300 Large, 200 Extra large."
+    )
+    assert "page" not in message  # any image with an outline gets an estimate
 
 
 def test_repair_line_states_bytes_repaired_and_the_worst_use():

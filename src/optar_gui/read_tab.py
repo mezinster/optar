@@ -22,9 +22,10 @@ Responsiveness.
   document offers a ``RepairJob`` (``Document.repair_job``), the controller runs
   it in the background, shows ``text.REPAIRING`` meanwhile, and hands the result
   to ``Document.accept_repair`` (or the error to ``Document.fail_repair``, which
-  stops it being offered again for the same pages). Saving writes the repaired
-  file (``Document.chunks``), or, when the repair could not give the file, what
-  was recovered (``Document.salvage_bytes``) after the warning says so.
+  stops it being offered again for the same pages). Saving is offered when
+  ``Document.can_save_anyway`` and writes ``Document.save_chunks()``: the
+  repaired file, or, when the repair could not give it, what was recovered,
+  after the warning says so.
 - Saving streams ``Document.chunks()`` (a snapshot taken together with the
   warning, before the user confirms it) through ``optar.fileio.replacing`` in the background,
   so an existing file is untouched by a failed save and a large file never
@@ -247,11 +248,9 @@ class ReadController(QObject):
 
     @property
     def can_save(self) -> bool:
-        """Whether saving can start: the document has a file to save, or (a
-        version-1 document that could not be repaired) what was recovered."""
-        doc = self._doc
-        savable = doc.can_save or doc.salvage_bytes() is not None
-        return savable and not self.saving and not self._closed
+        """Whether saving can start: the document has something to save
+        (``Document.can_save_anyway``) and no save runs."""
+        return self._doc.can_save_anyway and not self.saving and not self._closed
 
     def work_for(self, scan_id: int, format: str | None = None) -> ScanWork | None:
         """The last processing result of a scan (its outcome is in the document): of
@@ -261,17 +260,11 @@ class ReadController(QObject):
         return self._works.get((scan_id, None))
 
     def scan_note(self, work: ScanWork | None) -> str | None:
-        """The note on a scan made too coarsely: for an identified page, too coarse
-        for its dots; for a scan found but not identified, too coarse for the
-        finest dots. None otherwise."""
-        if work is None:
+        """The note on an identified scan made too coarsely for its dots, or None.
+        (An unreadable scan that is too coarse says so in its reason.)"""
+        if work is None or work.info is None or not too_coarse(work.scan_dpi, work.layout):
             return None
-        if work.info is not None:
-            if too_coarse(work.scan_dpi, work.layout):
-                return text.coarse_scan(work.scan_dpi, work.layout)
-        elif work.reason and too_coarse(work.scan_dpi, None, unreadable=True):
-            return text.coarse_scan(work.scan_dpi, None)
-        return None
+        return text.coarse_scan(work.scan_dpi, work.layout)
 
     def save_warning(self) -> str | None:
         """What saving must confirm first, from an up-to-date summary."""
@@ -447,14 +440,11 @@ class ReadController(QObject):
     def snapshot(self) -> Iterator[bytes]:
         """The recovered file as it is now, for ``save``; later changes do not affect it.
 
-        For a version-1 document that could not be repaired it is what was
-        recovered (``Document.salvage_bytes``), which may be wrong in parts: the
-        save warning says so. Raises ValueError when there is nothing to save.
+        It is ``Document.save_chunks()``: for a version-1 document that could not
+        be repaired, what was recovered, which may be wrong in parts (the save
+        warning says so). Raises ValueError when there is nothing to save.
         """
-        salvage = self._doc.salvage_bytes()
-        if salvage is not None:
-            return iter((salvage,))
-        return self._doc.chunks()
+        return self._doc.save_chunks()
 
     def save(self, path: str, chunks: Iterator[bytes] | None = None) -> None:
         """Starts writing ``chunks`` (default: a snapshot taken now) to ``path`` in the
@@ -950,9 +940,6 @@ class ReadTab(QWidget):
                 lines = text.other_group_detail(self._others[key])
             elif kind == Row.UNREADABLE:
                 lines = text.unreadable_detail(doc.scan(key))
-                note = self.controller.scan_note(self.controller.work_for(key))
-                if note is not None:
-                    lines = (*lines, note)
         self.detail.setText("\n".join(lines))
         if work is not None:
             self.preview.show_scan(scan_path, work.rotation, work.marks)

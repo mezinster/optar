@@ -612,12 +612,10 @@ def coarse_scan(scan_dpi: float, layout: Layout | None) -> str:
 
     paper = next(iter(PAPERS))
     needs = [(_DOT_NAMES.get(d, d), get_layout(paper, d).scan_dpi) for d in DOT_SIZES]
-    first, rest = needs[0], needs[1:]
-    listed = ", ".join([f"{first[0]} {first[1]:,} dpi", *(f"{n} {dpi:,}" for n, dpi in rest)])
-    return (
-        f"Scanned too coarsely to read: {_about_dpi(scan_dpi)}. Scan it at the "
-        f"resolution its dots need: {listed}."
-    )
+    (first, first_dpi), rest = needs[0], needs[1:]
+    listed = ", ".join([f"{first_dpi:,} dpi for {first} dots", *(f"{d:,} {n}" for n, d in rest)])
+    # Any image with a page outline has an estimate: this does not claim it is a page.
+    return f"Scanned at {_about_dpi(scan_dpi)}, which is too coarse to read. Scan at {listed}."
 
 
 def _and(items: list[str]) -> str:
