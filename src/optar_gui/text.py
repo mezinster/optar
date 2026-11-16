@@ -85,6 +85,10 @@ PREPARING = "Reading the file…"
 CREATING = "Creating the PDF…"
 # Why a PDF is not created over the file being put on paper.
 DEST_IS_SOURCE = "the PDF would replace the file being put on paper; choose another name"
+# The choices of how the file is put on paper.
+DOTS_FIELD = "Dot size:"
+PROTECT_FIELD = "Protection:"
+COMPATIBLE = "Compatible with optar 0.2 and the C tool"
 
 # What a document without a name is called.
 NO_NAME = "(no name)"
@@ -445,10 +449,6 @@ def file_unreadable(message: str) -> str:
     return f"The file could not be read: {message}"
 
 
-def cannot_put_on_paper(message: str) -> str:
-    return f"This file cannot be put on paper: {message}"
-
-
 def created_message(path: str, pages: int) -> str:
     return f"Created {os.path.basename(path)} · {count(max(pages, 1), 'page')}"
 
@@ -478,3 +478,65 @@ def preview_failed(message: str) -> str:
 
 def too_large_to_show(pixels: int, limit: int) -> str:
     return f"{pixels:,} pixels is more than the {limit:,} a scan may have"
+
+
+# Dot sizes and protection levels as the window shows them, by their names in optar.format.
+_DOT_NAMES = {
+    "standard": "Standard",
+    "medium": "Medium",
+    "big": "Big",
+    "large": "Large",
+    "xlarge": "Extra large",
+}
+_PROTECTION_NAMES = {"none": "None", "standard": "Standard", "high": "High"}
+
+
+def dot_size_label(dots: str, scan_dpi: int) -> str:
+    """A dot size in its selector: its name and the scan resolution to use."""
+    return f"{_DOT_NAMES.get(dots, dots)} (scan at {scan_dpi:,} dpi)"
+
+
+def protection_label(protect: str) -> str:
+    return _PROTECTION_NAMES.get(protect, protect)
+
+
+def promise(promised: int, total: int) -> str:
+    """How many of a protected printout's pages may be lost without losing the file.
+
+    The promise (``optar.container.pages_promised``) is for adjacent pages.
+    """
+    in_a_row = " in a row" if promised > 1 else ""
+    return f"can lose {count(promised, 'page')} of {total:,}{in_a_row} and still be read in full"
+
+
+DAMAGE_REPAIRED = "damage within pages is repaired, but no whole page may be lost"
+
+
+def print_summary(total: int, size: int, promised: int, protected: bool) -> str:
+    """Pages and size of a file to put on paper, and what its protection allows."""
+    line = file_info(total, size)
+    if promised > 0:
+        return f"{line} · {promise(promised, total)}"
+    if protected:
+        return f"{line} · {DAMAGE_REPAIRED}"
+    return line
+
+
+def too_large(reason: str, limit: int) -> str:
+    """Why a file cannot be put on paper with the chosen dot size and protection.
+
+    ``reason`` is ``work.TOO_MANY_PAGES`` or ``work.TOO_LARGE_TO_PROTECT``;
+    ``limit`` the most pages a printout of that kind may have.
+    """
+    # Imported here: the work module imports this one.
+    from optar_gui.work import TOO_LARGE_TO_PROTECT
+
+    if reason == TOO_LARGE_TO_PROTECT:
+        return (
+            "This file is too large to protect with this dot size: a protected "
+            f"printout may have at most {count(limit, 'page')}."
+        )
+    return (
+        "This file is too large to put on paper with these choices: a printout "
+        f"may have at most {count(limit, 'page')}."
+    )

@@ -9,6 +9,7 @@ def test_self_test_passes(qapp, capsys):
     lines = capsys.readouterr().out.splitlines()
     assert len(lines) >= 3
     assert all(line.startswith("ok ") for line in lines)
+    assert any("Large" in line and "protection" in line for line in lines)
 
 
 def test_self_test_fails_when_a_check_fails(qapp, capsys, monkeypatch):
@@ -23,6 +24,22 @@ def test_self_test_fails_when_a_check_fails(qapp, capsys, monkeypatch):
     assert run_self_test() == 1
     out = capsys.readouterr().out
     assert "FAIL" in out
+
+
+def test_self_test_fails_when_protected_pages_do_not_verify(qapp, capsys, monkeypatch):
+    import dataclasses
+
+    import optar_gui.selftest as selftest
+
+    real = selftest.unwrap
+
+    def unverified(*args, **kw):
+        return dataclasses.replace(real(*args, **kw), verified=False)
+
+    monkeypatch.setattr(selftest, "unwrap", unverified)
+    assert run_self_test() == 1
+    fails = [line for line in capsys.readouterr().out.splitlines() if line.startswith("FAIL")]
+    assert len(fails) == 1 and "Large" in fails[0]
 
 
 def test_without_a_console_the_report_goes_to_a_log_file(qapp, monkeypatch, tmp_path):

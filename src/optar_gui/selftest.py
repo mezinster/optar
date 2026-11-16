@@ -2,7 +2,8 @@
 """The hidden self-test (``optar-gui --self-test``) that release builds must pass.
 
 It runs an encode and a decode through the application's own background jobs
-and document code, without showing a window, in a temporary directory. It
+and document code, without showing a window, in a temporary directory, and
+wraps, encodes, decodes and unwraps a small protected document with large dots. It
 prints one line per check; a windowed program on Windows has no console
 (``sys.stdout`` is None), so there the lines go to ``SELF_TEST_LOG`` in the
 system's temporary directory instead.
@@ -18,8 +19,10 @@ import time
 
 import numpy as np
 
+from optar.container import page_payload, read_header, unwrap, wrap
+from optar.decoder import decode_page
 from optar.encoder import encode
-from optar.format import PageFormat, get_paper
+from optar.format import PARITY, PageFormat, get_layout, get_paper
 from optar.imageio import write_png
 from optar.tag import make_tag, tagged_label
 from optar_gui.document import DocState, Health
@@ -30,6 +33,10 @@ __all__ = ["run_self_test"]
 SELF_TEST_BYTES = 250_000
 SELF_TEST_NAME = "self-test.bin"
 SELF_TEST_PAPER = "a4"
+# The protected document: dot size, protection and size.
+SELF_TEST_DOTS = "large"
+SELF_TEST_PROTECT = "standard"
+SELF_TEST_PROTECTED_BYTES = 60_000
 # Where the report goes when there is no console, in tempfile.gettempdir().
 SELF_TEST_LOG = "optar-gui-self-test.log"
 # How long reading the scans may take: generous, for slow or loaded machines.
@@ -84,6 +91,34 @@ def _wait_checked(controller, deadline: float) -> bool:
     return True
 
 
+def _protected_check() -> bool:
+    """Wrap a file for Large dots with Standard protection, encode it, decode
+    each page image exactly as encoded, and unwrap it: it must verify."""
+    data = _seeded_bytes(SELF_TEST_PROTECTED_BYTES)
+    fmt = get_layout(SELF_TEST_PAPER, SELF_TEST_DOTS).fmt
+    stream = wrap(data, SELF_TEST_NAME, fmt, PARITY[SELF_TEST_PROTECT])
+    header = None
+    payloads = {}
+    for page in encode(stream, fmt, SELF_TEST_NAME):
+        image = np.pad(page.pixels, _MARGIN, constant_values=255)
+        payload = page_payload(decode_page(image, fmt, detail=True), fmt)
+        found = read_header(payload.data)
+        if found is None or (header is not None and found.total != header.total):
+            return _report("read the headers of the Large, Standard-protection pages", False)
+        header = found
+        payloads[found.page] = payload
+    out = unwrap(header, fmt, payloads)
+    ok = (
+        len(payloads) == header.total > 1
+        and out.verified
+        and out.data == data
+        and out.name == SELF_TEST_NAME
+    )
+    return _report(
+        f"verified a {header.total}-page Large, Standard-protection document", ok
+    )
+
+
 def _checks(folder: str) -> bool:
     from optar_gui.read_tab import ReadController
 
@@ -124,6 +159,7 @@ def _checks(folder: str) -> bool:
     with open(pdf, "rb") as f:
         head = f.read(4)
     results.append(_report("created a PDF", head == b"%PDF"))
+    results.append(_protected_check())
     return all(results)
 
 

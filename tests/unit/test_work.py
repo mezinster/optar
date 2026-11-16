@@ -18,12 +18,16 @@ import numpy as np
 import pytest
 from PIL import Image
 
+import optar.container
 import optar.encoder
 import optar_gui.work as work
-from optar import PAPERS, PageFormat, encode
+from optar import DOT_SIZES, PAPERS, PARITY, PageFormat, encode, get_layout
+from optar.container import pages_promised, plan, wrap
 from optar.decoder import PageGrid
+from optar.encoder import page_count
 from optar.errors import DecodeError, OptarError
 from optar.layout import channel_xy
+from optar.pdf import write_pdf
 from optar.tag import make_tag, tagged_label
 from optar_gui import text
 from optar_gui.document import PageOutcome, ScanInfo
@@ -396,7 +400,8 @@ def write_source(tmp_path, data):
 def test_encode_to_pdf_round_trip(tmp_path):
     data = seeded_bytes(7, 250_000)
     dest = tmp_path / "out.pdf"
-    assert encode_to_pdf(write_source(tmp_path, data), str(dest), "a4", "my file") == 2
+    src = write_source(tmp_path, data)
+    assert encode_to_pdf(src, str(dest), "a4", "my file", compatible=True) == 2
     pdf = parse_pdf(dest)
     tag = make_tag(data)
     want = list(encode(data, A4, lambda p, t: tagged_label(tag, "my file", p, t)))
@@ -408,7 +413,8 @@ def test_encode_to_pdf_round_trip(tmp_path):
 
 def test_encode_to_pdf_letter_empty_file(tmp_path):
     dest = tmp_path / "out.pdf"
-    assert encode_to_pdf(write_source(tmp_path, b""), str(dest), "letter", "empty") == 1
+    src = write_source(tmp_path, b"")
+    assert encode_to_pdf(src, str(dest), "letter", "empty", compatible=True) == 1
     letter = PageFormat.for_paper(PAPERS["letter"])
     want = next(encode(b"", letter, lambda p, t: tagged_label(make_tag(b""), "empty", p, t)))
     assert np.array_equal(parse_pdf(dest)[0]["pixels"], want.pixels)
@@ -432,7 +438,9 @@ def test_encode_to_pdf_too_many_pages(tmp_path, monkeypatch):
     monkeypatch.setattr(optar.encoder, "MAX_PAGES", 1)
     dest = tmp_path / "out.pdf"
     with pytest.raises(OptarError, match="too many pages"):
-        encode_to_pdf(write_source(tmp_path, seeded_bytes(2, 250_000)), str(dest), "a4", "x")
+        encode_to_pdf(
+            write_source(tmp_path, seeded_bytes(2, 250_000)), str(dest), "a4", "x",
+            compatible=True)
     assert sorted(os.listdir(tmp_path)) == ["source.bin"]
 
 
@@ -444,7 +452,7 @@ def test_encode_to_pdf_cancelled_midway(tmp_path, existing):
     src = write_source(tmp_path, seeded_bytes(2, 250_000))
     cancelled = turns_true_after(1)  # the first page is written, the second is not
     with pytest.raises(Cancelled):
-        encode_to_pdf(src, str(dest), "a4", "x", cancelled)
+        encode_to_pdf(src, str(dest), "a4", "x", cancelled, compatible=True)
     assert len(cancelled.calls) == 2
     if existing:
         assert dest.read_bytes() == b"precious"
@@ -466,6 +474,127 @@ def test_encode_to_pdf_refuses_the_source_as_destination(tmp_path):
     assert (tmp_path / "source.bin").read_bytes() == data
     expected = ["hard.bin", "source.bin"] if hasattr(os, "link") else ["source.bin"]
     assert sorted(os.listdir(tmp_path)) == expected
+
+
+# --- Dot size and protection ----------------------------------------------------------
+
+
+def test_encode_to_pdf_large_dots_with_protection(tmp_path):
+    data = seeded_bytes(21, 120_000)
+    dest = tmp_path / "out.pdf"
+    layout = get_layout("a4", "large")
+    fmt = layout.fmt
+    parity = PARITY["standard"]
+    total = plan(len(data), "my file", fmt, parity).total
+    assert total > 1
+    src = write_source(tmp_path, data)
+    got = encode_to_pdf(src, str(dest), "a4", "my file", dots="large", protect="standard")
+    assert got == total
+    pdf = parse_pdf(dest)
+    assert len(pdf) == total
+    # Pages of the wrapped stream, labelled with the name only (no tag).
+    want = list(encode(wrap(data, "my file", fmt, parity), fmt, "my file"))
+    w = fmt.width * 72 * layout.dots.printer_dots / 600
+    h = fmt.height * 72 * layout.dots.printer_dots / 600
+    for page, expected in zip(pdf, want, strict=True):
+        assert page["cm"] == pytest.approx(
+            (w, 0, 0, h, layout.offset_x_pt, layout.offset_y_pt), abs=0.01)
+        assert np.array_equal(page["pixels"], expected.pixels)
+    assert sorted(os.listdir(tmp_path)) == ["out.pdf", "source.bin"]
+
+
+def test_encode_to_pdf_defaults_to_standard_dots_and_protection(tmp_path):
+    data = seeded_bytes(22, 5_000)
+    dest = tmp_path / "out.pdf"
+    assert encode_to_pdf(write_source(tmp_path, data), str(dest), "letter", "d") == 1
+    letter = get_layout("letter").fmt
+    (want,) = encode(wrap(data, "d", letter, PARITY["standard"]), letter, "d")
+    (page,) = parse_pdf(dest)
+    assert np.array_equal(page["pixels"], want.pixels)
+
+
+@pytest.mark.parametrize(("paper", "nbytes"), [("a4", 250_000), ("letter", 0)])
+def test_encode_to_pdf_compatible_is_the_0_2_0_printout(tmp_path, paper, nbytes):
+    data = seeded_bytes(23, nbytes)
+    src = write_source(tmp_path, data)
+    dest = tmp_path / "out.pdf"
+    # Dot size and protection are ignored for a compatible printout.
+    encode_to_pdf(src, str(dest), paper, "my file", dots="xlarge", protect="high",
+                  compatible=True)
+    tag = make_tag(data)
+    old = tmp_path / "old.pdf"
+    fmt = PageFormat.for_paper(PAPERS[paper])
+    pages = encode(data, fmt, lambda p, t: tagged_label(tag, "my file", p, t))
+    write_pdf(old, (page.pixels for page in pages), PAPERS[paper])
+    assert dest.read_bytes() == old.read_bytes()
+
+
+def test_encode_to_pdf_too_large_to_protect_reads_nothing(tmp_path, monkeypatch):
+    monkeypatch.setattr(optar.container, "PROTECTED_MAX_BYTES", 100_000)
+    monkeypatch.setattr(work, "wrap", lambda *a: pytest.fail("the file was wrapped"))
+    dest = tmp_path / "out.pdf"
+    with pytest.raises(OptarError, match="too large to protect"):
+        encode_to_pdf(write_source(tmp_path, seeded_bytes(24, 1000)), str(dest), "a4", "x")
+    assert sorted(os.listdir(tmp_path)) == ["source.bin"]
+
+
+def test_encode_to_pdf_protected_cancelled(tmp_path):
+    src = write_source(tmp_path, seeded_bytes(25, 120_000))
+    with pytest.raises(Cancelled):
+        encode_to_pdf(src, str(tmp_path / "out.pdf"), "a4", "x", turns_true_after(1),
+                      dots="large")
+    assert sorted(os.listdir(tmp_path)) == ["source.bin"]
+
+
+SIZE = 300_000
+
+
+@pytest.mark.parametrize("dots", list(DOT_SIZES))
+@pytest.mark.parametrize("protect", list(PARITY))
+def test_print_plan_follows_the_container_plan(dots, protect):
+    fmt = get_layout("a4", dots).fmt
+    want = plan(SIZE, "data.bin", fmt, PARITY[protect])
+    got = work.print_plan(SIZE, "data.bin", "a4", dots, protect)
+    assert got.total == want.total
+    assert got.promised == pages_promised(want)
+    assert got.protected == (protect != "none")
+    assert got.too_large is None
+
+
+def test_print_plan_compatible_counts_0_2_0_pages():
+    for paper in ("a4", "letter"):
+        fmt = PageFormat.for_paper(PAPERS[paper])
+        got = work.print_plan(SIZE, "x", paper, "large", "high", compatible=True)
+        assert (got.total, got.promised, got.protected, got.too_large) == (
+            page_count(SIZE, fmt), 0, False, None)
+    assert work.print_plan(0, "x", "a4", compatible=True).total == 0
+
+
+def test_print_plan_promises_pages_of_a_long_document():
+    got = work.print_plan(3_000_000, "x", "a4", "standard", "high")
+    assert got.promised >= 1
+    assert got.promised == pages_promised(plan(3_000_000, "x", A4, PARITY["high"]))
+
+
+def test_print_plan_too_many_pages(monkeypatch):
+    monkeypatch.setattr(optar.container, "MAX_PAGES", 1)
+    monkeypatch.setattr(optar.encoder, "MAX_PAGES", 1)
+    for kw in ({"protect": "none"}, {"compatible": True}):
+        got = work.print_plan(SIZE, "x", "a4", **kw)
+        assert (got.too_large, got.limit) == (work.TOO_MANY_PAGES, 1)
+    assert work.print_plan(1000, "x", "a4", protect="none").too_large is None
+
+
+def test_print_plan_too_large_to_protect(monkeypatch):
+    monkeypatch.setattr(optar.container, "PROTECTED_MAX_BYTES", 3 * (A4.net_bits // 8))
+    got = work.print_plan(1_000_000, "x", "a4", "standard", "standard")
+    assert (got.too_large, got.limit) == (work.TOO_LARGE_TO_PROTECT, 3)
+    assert work.print_plan(1_000_000, "x", "a4", "standard", "none").too_large is None
+
+
+def test_dot_choices_name_each_size_and_its_scan_resolution():
+    assert work.dot_choices() == [
+        ("standard", 600), ("medium", 450), ("big", 360), ("large", 300), ("xlarge", 200)]
 
 
 def test_same_file_compares_files_and_spellings(tmp_path):
@@ -639,9 +768,10 @@ def traced_peak(fn):
     return peak
 
 
-@pytest.mark.parametrize("function", ["prepare_file", "encode_to_pdf"])
+@pytest.mark.parametrize("function", ["prepare_file", "encode_to_pdf", "encode_compatible"])
 def test_a_file_too_large_is_refused_before_it_is_read(tmp_path, monkeypatch, function):
     monkeypatch.setattr(optar.encoder, "MAX_PAGES", 1)
+    monkeypatch.setattr(optar.container, "MAX_PAGES", 1)
     src = write_source(tmp_path, seeded_bytes(13, 3 * 2**20))  # far more than one page
     facts = []
 
@@ -650,7 +780,8 @@ def test_a_file_too_large_is_refused_before_it_is_read(tmp_path, monkeypatch, fu
             facts.append(work.prepare_file(src))  # the size, and no tag: not read
         else:
             with pytest.raises(OptarError, match="too many pages"):
-                encode_to_pdf(src, str(tmp_path / "out.pdf"), "a4", "x")
+                encode_to_pdf(src, str(tmp_path / "out.pdf"), "a4", "x",
+                              compatible=function == "encode_compatible")
 
     assert traced_peak(refused) < 2**19  # nothing near a chunk of the file was read
     if function == "prepare_file":

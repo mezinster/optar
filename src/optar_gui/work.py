@@ -35,12 +35,15 @@ from dataclasses import dataclass
 
 import numpy as np
 
+import optar.container
+import optar.encoder
+from optar.container import pages_promised, plan, plan_for, wrap
 from optar.decoder import PageResult, decode_located, page_to_scan
 from optar.encoder import check_encodable, encode, page_count
 from optar.errors import DecodeError, IdentifyError, OptarError
 from optar.fileio import io_error, replacing
 from optar.font import FIRST_CHAR, GLYPH_CELLS, label_text
-from optar.format import PAPERS, PageFormat, get_paper
+from optar.format import DOT_SIZES, PAPERS, PARITY, PageFormat, get_layout, get_paper
 from optar.identify import decode_unlabelled, identify_scan
 from optar.imageio import read_scan
 from optar.label import printed_label
@@ -56,10 +59,16 @@ __all__ = [
     "Cancelled",
     "FileFacts",
     "NamePreview",
+    "PrintPlan",
     "ScanWork",
+    "TOO_LARGE_TO_PROTECT",
+    "TOO_MANY_PAGES",
+    "dot_choices",
     "encode_to_pdf",
+    "name_only_preview",
     "name_preview",
     "prepare_file",
+    "print_plan",
     "process_scan",
     "process_unlabelled",
     "regular_file",
@@ -295,17 +304,28 @@ def encode_to_pdf(
     paper_name: str,
     name: str,
     cancelled: Callable[[], bool] = _never,
+    *,
+    dots: str = "standard",
+    protect: str = "standard",
+    compatible: bool = False,
 ) -> int:
     """Encode the file ``src`` as a print-ready PDF at ``dest``; return the page count.
 
-    Every page's label is the document tag (with that page's check) followed
-    by ``name``. The PDF is written through a temporary file: on failure or
-    cancellation an existing ``dest`` is left untouched and nothing is left
-    behind. Checks ``cancelled`` before each page. Raises OptarError on
-    failure, and before reading anything when ``dest`` is ``src`` itself.
+    With ``compatible`` the printout is optar 0.2.0's (Standard dots, no
+    protection; ``dots`` and ``protect`` are ignored): every page's label is
+    the document tag (with that page's check) followed by ``name``. Otherwise
+    the file and ``name`` are wrapped with page headers and ``protect``'s
+    parity (``optar.container.wrap``) and printed at the dot size ``dots``;
+    each label is ``name`` alone. The PDF is written through a temporary
+    file: on failure or cancellation an existing ``dest`` is left untouched
+    and nothing is left behind. Checks ``cancelled`` before each page.
+    Raises OptarError on failure, before reading anything when ``dest`` is
+    ``src`` itself, and before reading the file when it is too large.
     """
     if same_file(src, dest):
         raise OptarError(text.DEST_IS_SOURCE)
+    if not compatible:
+        return _encode_wrapped(src, dest, paper_name, name, cancelled, dots, protect)
     paper = get_paper(paper_name)
     fmt = PageFormat.for_paper(paper)
     with _open_regular(src) as f:
@@ -328,6 +348,115 @@ def encode_to_pdf(
 
     with replacing(dest) as temp:
         return write_pdf(temp, pages(), paper)
+
+
+def _encode_wrapped(
+    src: str,
+    dest: str,
+    paper_name: str,
+    name: str,
+    cancelled: Callable[[], bool],
+    dots: str,
+    protect: str,
+) -> int:
+    """encode_to_pdf of a version-1 printout."""
+    layout = get_layout(paper_name, dots)
+    fmt = layout.fmt
+    parity = _parity(protect)
+    with _open_regular(src) as f:
+        try:
+            plan(os.fstat(f.fileno()).st_size, name, fmt, parity)  # before reading it
+            data = f.read()
+        except OSError as e:
+            raise io_error("read", src, e) from e
+    stream = wrap(data, name, fmt, parity)  # plans again: the file may have grown
+    del data
+    _check(cancelled)
+
+    def pages():
+        pending = encode(stream, fmt, name)
+        while True:
+            _check(cancelled)
+            page = next(pending, None)
+            if page is None:
+                return
+            yield page.pixels
+
+    with replacing(dest) as temp:
+        return write_pdf(temp, pages(), layout)
+
+
+def _parity(protect: str) -> int:
+    try:
+        return PARITY[protect]
+    except KeyError:
+        raise OptarError(
+            f"unknown protection {protect!r}; known: {', '.join(PARITY)}"
+        ) from None
+
+
+# Why a file cannot be put on paper with the chosen dot size and protection.
+TOO_MANY_PAGES = "too many pages"
+TOO_LARGE_TO_PROTECT = "too large to protect"
+
+
+@dataclass(frozen=True)
+class PrintPlan:
+    """How a file of a given size prints with the chosen paper, dot size and protection.
+
+    ``total`` is the page count (0 for an empty file printed compatibly: its
+    one page is labelled 1/0; 0 too when the file is too large). ``promised``
+    is how many pages may be lost, from ``optar.container.pages_promised``;
+    ``protected`` is whether damage within pages is repaired. ``too_large``
+    is None, ``TOO_MANY_PAGES`` or ``TOO_LARGE_TO_PROTECT``, and ``limit``
+    then the most pages a printout of that kind may have.
+    """
+
+    total: int
+    promised: int = 0
+    protected: bool = False
+    too_large: str | None = None
+    limit: int = 0
+
+
+def print_plan(
+    size: int,
+    name: str,
+    paper_name: str,
+    dots: str = "standard",
+    protect: str = "standard",
+    compatible: bool = False,
+) -> PrintPlan:
+    """What ``encode_to_pdf`` makes of a file of ``size`` bytes named ``name``.
+
+    Reads nothing and builds nothing: cheap enough for the interface thread.
+    A compatible printout ignores ``dots`` and ``protect``.
+    """
+    if compatible:
+        fmt = PageFormat.for_paper(get_paper(paper_name))
+        try:
+            return PrintPlan(check_encodable(size, fmt))
+        except OptarError:
+            return PrintPlan(0, too_large=TOO_MANY_PAGES, limit=optar.encoder.MAX_PAGES)
+    fmt = get_layout(paper_name, dots).fmt
+    parity = _parity(protect)
+    try:
+        p = plan(size, name, fmt, parity)
+    except OptarError:
+        # The tighter of the two limits is the one the file is over.
+        limit = optar.container.MAX_PAGES
+        if parity:
+            page_bytes = plan_for(1, fmt, parity).page_bytes
+            protected = optar.container.PROTECTED_MAX_BYTES // page_bytes
+            if protected < limit:
+                return PrintPlan(0, too_large=TOO_LARGE_TO_PROTECT, limit=protected)
+        return PrintPlan(0, too_large=TOO_MANY_PAGES, limit=limit)
+    return PrintPlan(p.total, pages_promised(p), parity > 0)
+
+
+def dot_choices() -> list[tuple[str, int]]:
+    """Each dot size, in order, with the scan resolution advised for it (dpi)."""
+    return [(dots, get_layout(next(iter(PAPERS)), dots).scan_dpi) for dots in DOT_SIZES]
 
 
 def native_path(path: str) -> str:
@@ -416,7 +545,12 @@ def _drawable(ch: str) -> bool:
 
 def _free_text(fmt: PageFormat, tag: Tag, name: str, page: int, total: int) -> str:
     """What page ``page`` of ``total`` prints after its format string and page number."""
-    printed = printed_label(fmt, label_text(fmt, page, total, tagged_label(tag, name, page, total)))
+    return _printed_free_text(fmt, tagged_label(tag, name, page, total), page, total)
+
+
+def _printed_free_text(fmt: PageFormat, free: str, page: int, total: int) -> str:
+    """What page ``page`` of ``total`` prints of the free text ``free``."""
+    printed = printed_label(fmt, label_text(fmt, page, total, free))
     prefix = f"  {fmt.to_string()} {page}/{total} "
     return printed[len(prefix):] if printed.startswith(prefix) else ""
 
@@ -432,3 +566,14 @@ def name_preview(paper_name: str, tag: Tag, name: str) -> NamePreview:
     wanted = "".join(ch for ch in tagged_label(tag, name, last, total) if _drawable(ch))
     cut = len(_free_text(fmt, tag, name, last, total)) < len(wanted.rstrip(" "))
     return NamePreview(total, _free_text(fmt, tag, name, 1, total), dropped, cut)
+
+
+def name_only_preview(paper_name: str, dots: str, name: str, total: int) -> NamePreview:
+    """What the ``total`` pages of a wrapped printout at dot size ``dots`` print
+    for ``name``: the name alone, as much as the layout's label holds."""
+    fmt = get_layout(paper_name, dots).fmt
+    dropped = "".join(dict.fromkeys(ch for ch in name if not _drawable(ch)))
+    last = max(total, 1)
+    wanted = "".join(ch for ch in name if _drawable(ch))
+    cut = len(_printed_free_text(fmt, name, last, total)) < len(wanted.rstrip(" "))
+    return NamePreview(total, _printed_free_text(fmt, name, 1, total), dropped, cut)

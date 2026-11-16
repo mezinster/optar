@@ -477,3 +477,28 @@ def test_replace_rejected_never_gives_an_empty_reason():
         message = text.replace_rejected(2, fit, ScanView(4, "/x/new.png", "done", None, None, ""))
         assert ". ." not in message and not message.endswith(": .")
         assert "could not be read" in message
+
+
+def test_putting_on_paper_choices_and_summary():
+    assert text.dot_size_label("xlarge", 200) == "Extra large (scan at 200 dpi)"
+    assert text.dot_size_label("standard", 600) == "Standard (scan at 600 dpi)"
+    assert [text.protection_label(p) for p in ("none", "standard", "high")] == [
+        "None", "Standard", "High"]
+    assert text.print_summary(12, 2_000_000, 1, True) == (
+        "12 pages · 2,000,000 bytes · can lose 1 page of 12 and still be read in full")
+    assert text.print_summary(40, 9_000_000, 3, True).endswith(
+        "can lose 3 pages of 40 in a row and still be read in full")
+    assert text.print_summary(1, 10, 0, True) == f"1 page · 10 bytes · {text.DAMAGE_REPAIRED}"
+    assert text.print_summary(0, 0, 0, False) == "1 page · 0 bytes"
+    for words in (text.DOTS_FIELD, text.PROTECT_FIELD, text.COMPATIBLE, text.DAMAGE_REPAIRED,
+                  text.print_summary(12, 1, 1, True)):
+        assert "parity" not in words.lower() and "container" not in words.lower()
+
+
+def test_too_large_gives_the_reason_and_the_limit():
+    from optar_gui.work import TOO_LARGE_TO_PROTECT, TOO_MANY_PAGES
+
+    protect = text.too_large(TOO_LARGE_TO_PROTECT, 1_343)
+    assert "protect" in protect and "at most 1,343 pages" in protect
+    pages = text.too_large(TOO_MANY_PAGES, 9_999)
+    assert "protect" not in pages and "at most 9,999 pages" in pages
