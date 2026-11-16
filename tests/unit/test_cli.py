@@ -480,3 +480,214 @@ def test_decode_cli_matches_library_when_net_bits_not_byte_aligned(tmp_path):
     got = out.read_bytes()
     assert got == decode(iter(pages), fmt).data
     assert got.startswith(data) and len(got) == 2 * fmt.net_bits // 8
+
+
+# Version-1 pages: dot size and protection
+
+
+def _protected_input(tmp_path, pages, dots="large", parity="standard", name="in.bin", seed=11):
+    """An input file a little smaller than the most `pages` pages hold with these options."""
+    from optar.container import plan
+    from optar.format import PARITY, get_layout
+
+    fmt = get_layout("a4", dots).fmt
+    size = next(
+        s for s in range(0, 4_000_000, 1000) if plan(s, name, fmt, PARITY[parity]).total > pages
+    ) - 1000
+    path = tmp_path / name
+    path.write_bytes(seeded_bytes(seed, size))
+    return path
+
+
+def _encode_v1(tmp_path, src, base="p", *extra):
+    out = tmp_path / base
+    args = ["encode", str(src), "-o", str(out), "--to", "png", *extra]
+    assert main(args) == 0
+    return out
+
+
+def test_protected_round_trip_any_order_and_orientation(tmp_path, capsys):
+    src = _protected_input(tmp_path, 3)
+    base = _encode_v1(tmp_path, src, "p", "--dots", "large", "--protect", "standard")
+    err = capsys.readouterr().err
+    assert "Scan at 300 dpi" in err and "actual size" in err
+    assert sorted(p.name for p in tmp_path.glob("p_*.png")) == [
+        "p_0001.png", "p_0002.png", "p_0003.png"
+    ]
+    one, two = tmp_path / "p_0001.png", tmp_path / "p_0002.png"
+    one.rename(tmp_path / "swap")
+    two.rename(one)
+    (tmp_path / "swap").rename(two)
+    upside = tmp_path / "p_0003.png"
+    with Image.open(upside) as im:
+        im.rotate(180).save(upside)
+    out = tmp_path / "out.bin"
+    assert main(["decode", str(base), "-o", str(out)]) == 0
+    assert out.read_bytes() == src.read_bytes()
+    err = capsys.readouterr().err
+    assert "p_0001.png: page 2 of 3" in err and "verified" in err
+
+
+def test_protected_decode_to_stdout(tmp_path, capsysbinary):
+    src = _protected_input(tmp_path, 1, dots="xlarge")
+    base = _encode_v1(tmp_path, src, "p", "--dots", "xlarge", "--protect", "high")
+    capsysbinary.readouterr()
+    assert main(["decode", str(base)]) == 0
+    assert capsysbinary.readouterr().out == src.read_bytes()
+
+
+def test_one_page_lost_from_twelve_is_repaired(tmp_path, capsys):
+    src = _protected_input(tmp_path, 12)
+    base = _encode_v1(tmp_path, src, "p", "--dots", "large", "--protect", "standard")
+    assert "can lose 1 page of 12" in capsys.readouterr().err
+    (tmp_path / "p_0005.png").unlink()
+    out = tmp_path / "out.bin"
+    assert main(["decode", str(base), "-o", str(out)]) == 0
+    assert out.read_bytes() == src.read_bytes()
+    err = capsys.readouterr().err
+    assert "missing page 5" in err and "repaired" in err
+
+
+def test_one_page_lost_from_three_is_not_saved(tmp_path, capsys):
+    src = _protected_input(tmp_path, 3)
+    base = _encode_v1(tmp_path, src, "p", "--dots", "large", "--protect", "standard")
+    capsys.readouterr()
+    (tmp_path / "p_0002.png").unlink()
+    out = tmp_path / "out.bin"
+    assert main(["decode", str(base), "-o", str(out)]) == 1
+    assert not out.exists()
+    err = capsys.readouterr().err
+    assert "missing page 2" in err
+    assert "Rescan page" in err and "2" in err and "--force" in err
+
+
+def test_force_saves_what_was_recovered(tmp_path, capsys):
+    src = _protected_input(tmp_path, 3)
+    base = _encode_v1(tmp_path, src, "p", "--dots", "large", "--protect", "standard")
+    capsys.readouterr()
+    (tmp_path / "p_0002.png").unlink()
+    out = tmp_path / "out.bin"
+    assert main(["decode", str(base), "-o", str(out), "--force"]) == 1
+    got, want = np.frombuffer(out.read_bytes(), np.uint8), np.frombuffer(src.read_bytes(), np.uint8)
+    assert len(got) == len(want) and (got != want).any()
+    assert (got == want).mean() > 0.5  # the two pages read are in it
+    err = capsys.readouterr().err
+    assert "did not verify" in err and "may be damaged" in err
+
+
+def test_pages_of_another_document_are_ignored(tmp_path, capsys):
+    src = _protected_input(tmp_path, 1, dots="xlarge")
+    base = _encode_v1(tmp_path, src, "p", "--dots", "xlarge", "--protect", "standard")
+    other = _protected_input(tmp_path, 1, dots="xlarge", name="other.bin", seed=12)
+    _encode_v1(tmp_path, other, "q", "--dots", "xlarge", "--protect", "standard")
+    (tmp_path / "q_0001.png").rename(tmp_path / "p_0002.png")
+    (tmp_path / "p_0003.png").write_bytes((tmp_path / "p_0001.png").read_bytes())  # again
+    capsys.readouterr()
+    out = tmp_path / "out.bin"
+    assert main(["decode", str(base), "-o", str(out)]) == 0
+    assert out.read_bytes() == src.read_bytes()
+    err = capsys.readouterr().err
+    assert "1 scan from another document was ignored: p_0002.png" in err
+    assert "p_0003.png: page 1 of 1 again" in err
+
+
+def test_unidentified_scan_counts_as_missing_and_names_resolution(tmp_path, capsys, monkeypatch):
+    import optar.cli
+    from optar.errors import IdentifyError
+
+    src = _protected_input(tmp_path, 12)
+    base = _encode_v1(tmp_path, src, "p", "--dots", "large", "--protect", "standard")
+    real = optar.cli.identify_scan
+    calls = []
+
+    def flaky(image, *a, **k):
+        calls.append(1)
+        if len(calls) == 7:
+            raise IdentifyError("label unreadable", scan_dpi=201.3)
+        return real(image, *a, **k)
+
+    monkeypatch.setattr(optar.cli, "identify_scan", flaky)
+    capsys.readouterr()
+    out = tmp_path / "out.bin"
+    assert main(["decode", str(base), "-o", str(out)]) == 0
+    assert out.read_bytes() == src.read_bytes()
+    err = capsys.readouterr().err
+    assert "p_0007.png: not identified (label unreadable)" in err
+    assert "scanned at about 200 dpi" in err
+    assert "Standard 600, Medium 450, Big 360, Large 300, Extra large 200" in err
+    assert "missing page 7" in err
+
+
+def test_version1_label_is_the_name_only(tmp_path, infile, monkeypatch):
+    labels = _spy_labels(monkeypatch)
+    assert main(_encode_args(infile, tmp_path / "x", "--to", "pgm", "--dots", "xlarge")) == 0
+    assert main(_encode_args(infile, tmp_path / "y", "--to", "pgm", "--protect", "none",
+                             "--label", "mine")) == 0  # fmt: skip
+    assert labels == [["x"], ["mine"]]
+
+
+def test_dots_alone_selects_the_container_and_pdf_uses_its_scale(tmp_path, infile, capsys):
+    from optar.format import get_layout
+
+    assert main(_encode_args(infile, tmp_path / "x", "--dots", "xlarge")) == 0
+    page = parse_pdf(tmp_path / "x.pdf")[0]
+    assert page["mediabox"][2:] == pytest.approx((595.28, 841.89), abs=0.01)
+    assert "Scan at 200 dpi" in capsys.readouterr().err
+    assert main(_encode_args(infile, tmp_path / "y", "--to", "png", "--dots", "xlarge")) == 0
+    layout = get_layout("a4", "xlarge")
+    with Image.open(tmp_path / "y_0001.png") as im:
+        assert im.size == (layout.fmt.width, layout.fmt.height)
+        assert im.info["dpi"][0] == pytest.approx(float(layout.pixels_per_inch), abs=0.01)
+
+
+def test_compatible_and_dots_standard_are_the_default(tmp_path, infile):
+    runs = {"a": [], "b": ["--compatible"], "c": ["--dots", "standard"]}
+    for folder, extra in runs.items():
+        (tmp_path / folder).mkdir()
+        assert main(_encode_args(infile, tmp_path / folder / "x", "--to", "pgm", *extra)) == 0
+    want = (tmp_path / "a" / "x_0001.pgm").read_bytes()
+    assert (tmp_path / "b" / "x_0001.pgm").read_bytes() == want
+    assert (tmp_path / "c" / "x_0001.pgm").read_bytes() == want
+
+
+def test_default_encode_message_names_scan_resolution(tmp_path, infile, capsys):
+    assert main(_encode_args(infile, tmp_path / "a")) == 0
+    err = capsys.readouterr().err
+    assert "actual size" in err and "Scan at 600 dpi" in err and "lose" not in err
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ["--compatible", "--dots", "large"],
+        ["--compatible", "--dots", "standard"],
+        ["--compatible", "--protect", "none"],
+        ["--format", "0-65-93-24-3-1-2-24", "--dots", "large"],
+        ["--format", "0-65-93-24-3-1-2-24", "--protect", "standard"],
+        ["--dots", "huge"],
+        ["--protect", "max"],
+    ],
+)
+def test_conflicting_options_are_usage_errors(tmp_path, infile, capsys, extra):
+    with pytest.raises(SystemExit) as e:
+        main(_encode_args(infile, tmp_path / "x", *extra))
+    assert e.value.code == 2
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["in.bin"]
+
+
+def test_protect_over_size_limit_fails_before_reading(tmp_path, capsys, monkeypatch):
+    import builtins
+
+    big = tmp_path / "big.bin"
+    with open(big, "wb") as f:
+        f.truncate(300 * 1024 * 1024)  # sparse
+    real_open = builtins.open
+
+    def no_read(path, *a, **k):
+        assert os.fspath(path) != str(big), "the input was read"
+        return real_open(path, *a, **k)
+
+    monkeypatch.setattr(builtins, "open", no_read)
+    assert main(_encode_args(big, tmp_path / "o", "--protect", "standard", "--to", "png")) == 2
+    assert "too large to protect" in capsys.readouterr().err
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["big.bin"]
