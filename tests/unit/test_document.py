@@ -98,6 +98,20 @@ def test_scans_fill_their_slots_in_any_order():
     assert (doc.current.format, doc.current.total) == (A, 3)
 
 
+def test_same_file_spelled_in_another_case_is_one_scan_where_case_is_ignored(monkeypatch):
+    # The test machine's file system tells case apart, so stand in for Windows,
+    # whose os.path.normcase folds case.
+    import os
+
+    monkeypatch.setattr(os.path, "normcase", str.lower)
+    doc = Document()
+    first = doc.add_scan("/scans/Page-1.PNG")
+    assert doc.add_scan("/scans/page-1.png") is None
+    assert doc.scan_id_of("/SCANS/PAGE-1.png") == first
+    doc.remove_scan(first)
+    assert doc.add_scan("/scans/page-1.png") is not None
+
+
 def test_same_path_added_twice_is_ignored(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     doc = Document()
@@ -671,9 +685,31 @@ def test_switch_to_a_scan_in_no_group_raises():
         doc.switch_to(bad)
 
 
-def test_tagged_group_title_is_the_longest_name():
+def test_tagged_group_title_is_the_longest_name_on_a_tie():
     doc, (a, b) = build(info(1, name="holiday-photos.t"), info(2, name="holiday-photos.tar"))
     assert doc.current.title == "holiday-photos.tar"
+
+
+def test_tagged_group_title_is_the_most_common_name():
+    # A tagged label is accepted on a plausible reading: one misread scan with a
+    # longer name must not rename the document or its suggested file.
+    doc, _ = build(
+        info(1, name="doc.tar"),
+        info(2, name="doc.tar  "),  # trailing spaces do not count
+        info(3, name="doc.tar.misread"),
+    )
+    assert doc.current.title == "doc.tar"
+    assert doc.suggested_name == "doc.tar"
+    doc, _ = build(info(1, name="doc.tar.misread"), info(2, name="doc.tar"),
+                   info(3, name="doc.tar"), info(1, name="doc,tar", tag=OTHER_TAG))  # fmt: skip
+    assert doc.current.title == "doc.tar"
+    assert doc.others()[0].title == "doc,tar"
+
+
+def test_untagged_group_title_is_still_the_longest_name():
+    doc, _ = build(info(1, name="doc", tag=None), info(2, name="doc", tag=None),
+                   info(3, name="doc.tar", tag=None))  # fmt: skip
+    assert doc.current.title == "doc.tar"
 
 
 # --- User choices are never lost to background results ----------------------------
@@ -1612,6 +1648,9 @@ def test_suggested_name():
         ("aux.", "recovered.bin"),
         ("COM10", "COM10"),
         ("console.txt", "console.txt"),
+        ("con .txt", "recovered.bin"),
+        ("LPT1 .tar.gz", "recovered.bin"),
+        ("nul  ", "recovered.bin"),
     ],
 )
 def test_suggested_name_is_a_plain_file_name(name, suggested):

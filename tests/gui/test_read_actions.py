@@ -434,7 +434,7 @@ def test_assign_unreadable_scan_decodes_it_in_the_best_rotation(qtbot, make_tab,
     wait_settled(qtbot, tab)
     assert tab.rows() == ["doc.tar · A4 · 2 pages", "Page 1 · Good", "Page 2 · Good"]
     assert tab.controller.summary.state == DocState.VERIFIED
-    work = tab.controller.work_for(scan_id(tab, upside_down))
+    work = tab.controller.work_for(scan_id(tab, upside_down), A4.to_string())
     assert work.rotation == 2 and work.info is None
     assert tab.preview.path == upside_down
     assert tab.detail.text().startswith("Page 2 of 2 · page-2-no-label-upside-down.png\n")
@@ -480,7 +480,7 @@ def test_replace_on_a_page_of_a_document_started_by_hand(qtbot, make_tab, scans)
     doc = tab.controller.document
     assert doc.pages()[1].scan_id == scan_id(tab, upside_down)
     assert tab.rows()[2] == "Page 2 · Good"
-    assert tab.controller.work_for(scan_id(tab, upside_down)).rotation == 2
+    assert tab.controller.work_for(scan_id(tab, upside_down), A4.to_string()).rotation == 2
 
 
 def test_names_from_scans_are_shown_as_plain_text(qtbot, make_tab, monkeypatch):
@@ -819,6 +819,121 @@ def test_choosing_one_new_file_for_two_pages_by_hand_keeps_the_later(qtbot, fake
     assert notices == []
 
 
+def test_a_scan_decoded_in_another_format_keeps_its_own_preview(qtbot, fake_controller):
+    a_data = b"a" * 4 + b"b" * 4
+    a_tag = make_tag(a_data)
+    own_marks = np.array([[1, 2]], np.float32)
+    letter_marks = np.array([[3, 4], [5, 6]], np.float32)
+    a1 = ScanWork(ScanInfo(A_FMT, 2, 1, "doc", a_tag), "",
+                  PageOutcome(a_data[:4], (100, 1, 0, 0), 0), 1, own_marks, SIZE)
+    in_letter = ScanWork(None, "", PageOutcome(b"z" * 5, (100, 2, 0, 0), 0), 3,
+                         letter_marks, SIZE)  # fmt: skip
+    fakes = Fakes({"a1.png": a1, "a2.png": identified_work(A_FMT, 2, 2, "doc", a_tag, a_data[4:])},
+                  {("a1.png", L_FMT): in_letter})  # fmt: skip
+    controller, notices = fake_controller(fakes)
+    tab = ReadTab(controller)
+    qtbot.addWidget(tab)
+    shown = []
+    tab.preview.show_scan = lambda path, rotation, marks: shown.append(
+        (path and os.path.basename(path), rotation, None if marks is None else marks.tolist()))
+    controller.add_paths(["/x/a1.png", "/x/a2.png"])
+    idle(qtbot, controller)
+    doc = controller.document
+    sid = doc.scan_id_of("/x/a1.png")
+    controller.start_by_hand("letter", 1)
+    assert controller.assign(sid, 1)
+    idle(qtbot, controller)
+    select(tab, "Page 1 · Repaired · 2")
+    assert shown[-1] == ("a1.png", 3, letter_marks.tolist())  # as decoded for this document
+    controller.switch_document(doc.others()[0].key)  # back to its own document
+    idle(qtbot, controller)
+    assert doc.current.format == A_FMT
+    select(tab, "Page 1 · Repaired · 1")
+    assert shown[-1] == ("a1.png", 1, own_marks.tolist())  # its own reading again
+    assert notices == []
+
+
+def test_a_scan_whose_reading_was_cancelled_by_hand_is_read_again(qtbot, fake_controller):
+    fakes = Fakes(
+        {"damaged.png": unreadable_work(),
+         "other.png": identified_work(A_FMT, 1, 1, "o", make_tag(b"o" * 4), b"o" * 4),
+         "slow.png": unreadable_work(), "x.png": unreadable_work()},
+        {("x.png", A_FMT): decoded_work(b"x" * 4)},
+    )  # fmt: skip
+    controller, notices = fake_controller(fakes, max_workers=1)
+    controller.add_paths(["/x/damaged.png", "/x/other.png"])
+    idle(qtbot, controller)
+    controller.start_by_hand("a4", 2)
+    fakes.held.add("slow.png")
+    controller.add_paths(["/x/slow.png", "/x/x.png"])  # x.png waits behind slow.png
+    controller.replace(2, "/x/x.png")  # decoding it for this page cancels its reading
+    fakes.gate.set()
+    idle(qtbot, controller)
+    doc = controller.document
+    x = doc.scan_id_of("/x/x.png")
+    assert (doc.pages()[1].scan_id, doc.pages()[1].health) == (x, Health.GOOD)
+    controller.switch_document(doc.others()[0].key)  # leaves the document by hand
+    idle(qtbot, controller)
+    # Its own reading was done after all, so it is listed (and could not be added
+    # again, being there already).
+    assert [s.id for s in doc.unreadable()] == [doc.scan_id_of("/x/damaged.png"),
+                                                doc.scan_id_of("/x/slow.png"), x]  # fmt: skip
+    assert notices == []
+
+
+def test_a_new_scan_replaced_by_hand_is_read_with_its_label_too(qtbot, fake_controller):
+    fakes = Fakes(
+        {"damaged.png": unreadable_work(),
+         "other.png": identified_work(A_FMT, 1, 1, "o", make_tag(b"o" * 4), b"o" * 4),
+         "new.png": unreadable_work()},
+        {("new.png", A_FMT): decoded_work(b"n" * 4)},
+    )  # fmt: skip
+    controller, notices = fake_controller(fakes)
+    controller.add_paths(["/x/damaged.png", "/x/other.png"])
+    idle(qtbot, controller)
+    controller.start_by_hand("a4", 1)
+    controller.replace(1, "/x/new.png")  # added for the page: no label to go by
+    idle(qtbot, controller)
+    doc = controller.document
+    new = doc.scan_id_of("/x/new.png")
+    assert (doc.pages()[0].scan_id, doc.pages()[0].health) == (new, Health.GOOD)
+    controller.switch_document(doc.others()[0].key)
+    idle(qtbot, controller)
+    assert new in [s.id for s in doc.unreadable()]  # listed, not lost
+    assert notices == []
+
+
+def test_a_finished_check_keeps_the_saved_note(qtbot, fake_controller, monkeypatch, tmp_path):
+    import optar_gui.document as document_module
+
+    a_data = b"a" * 4 + b"b" * 4
+    a_tag = make_tag(a_data)
+    fakes = Fakes({"a1.png": identified_work(A_FMT, 2, 1, "doc", a_tag, a_data[:4]),
+                   "a2.png": identified_work(A_FMT, 2, 2, "doc", a_tag, a_data[4:])},
+                  {})  # fmt: skip
+    gate = threading.Event()
+    real_check = document_module.VerdictJob.__call__
+
+    def held_check(self, cancelled=lambda: False):
+        gate.wait(TIMEOUT / 1000)
+        return real_check(self, cancelled)
+
+    monkeypatch.setattr(document_module.VerdictJob, "__call__", held_check)
+    controller, _ = fake_controller(fakes)
+    controller.add_paths(["/x/a1.png", "/x/a2.png"])
+    qtbot.waitUntil(lambda: controller.runner.active == 0, timeout=TIMEOUT)
+    controller.refresh()
+    assert controller.checking
+    controller.save(str(tmp_path / "doc"))
+    qtbot.waitUntil(lambda: not controller.saving, timeout=TIMEOUT)
+    assert controller.note == text.saved_message(str(tmp_path / "doc"), 8)
+    gate.set()
+    qtbot.waitUntil(lambda: not controller.checking, timeout=TIMEOUT)
+    controller.refresh()
+    assert controller.summary.state == DocState.VERIFIED
+    assert controller.note == text.saved_message(str(tmp_path / "doc"), 8)  # nothing changed
+
+
 # --- The controller on its own ---------------------------------------------------------
 
 
@@ -848,14 +963,19 @@ def test_actions_clear_the_note_and_do_nothing_after_closing(qtbot):
         assert controller.assign(good, 1)
         assert controller.note == "" and doc.slots()[0] == PageSlot(1, spare, (good,))
         assert controller.shutdown(TIMEOUT)
-        refreshes = controller.refreshes
+        changes = []
+        controller.changed.connect(lambda: changes.append(1))
+        controller.note = "Saved 16 bytes to x.bin"
         controller.use_spare(spare)
         assert not controller.assign(spare, 1)
         controller.start_by_hand("a4", 3)
         controller.switch_document(spare)
         controller.replace(1, "/scans/3.png")
+        controller.remove(good)
+        controller.add_paths(["/scans/4.png"])
         assert doc.slots()[0] == PageSlot(1, spare, (good,)) and not doc.by_hand
-        assert len(doc.scans()) == 2 and controller.refreshes == refreshes
+        assert len(doc.scans()) == 2 and changes == []
+        assert controller.note == "Saved 16 bytes to x.bin"  # every action clears it, if run
     finally:
         controller.shutdown(TIMEOUT)
 

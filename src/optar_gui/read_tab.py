@@ -39,8 +39,16 @@ counts, whichever job finishes last. In a document started by hand, Replace
 assigns the file to the page instead (no label to go by). A scan assigned to a
 page that ``Document.needs_decoding`` says must be decoded (no decoded page, or
 one decoded in another format) is decoded with ``work.process_unlabelled`` in the
-document's format, on the scan runner. Every action clears the "Saved …" note,
-and does nothing once the controller is closed.
+document's format, on the scan runner; if that cancels the scan's own (labelled)
+reading before it reported, the scan is read again once the decode has reported,
+so it is never left neither identified nor unreadable. Every action clears the
+"Saved …" note, and does nothing once the controller is closed; so does any
+background result that changes the document (a finished fingerprint check does
+not).
+
+The preview's rotation and marks are kept per scan and per page format: a scan
+decoded for a document in another format shows, back in its own document, its
+own reading.
 """
 
 from __future__ import annotations
@@ -148,6 +156,8 @@ class ReadController(QObject):
         # page -> the scan last chosen to replace it, until that scan has been read
         self._replacing: dict[int, int] = {}
         self._decoding_in: dict[int, str] = {}  # scan -> format of its unlabelled decode
+        self._reading: set[int] = set()  # scans whose labelled reading has not reported
+        self._read_again: set[int] = set()  # scans to read once their decode reports
         self._runner = JobRunner(self, max_workers)
         self._runner.started.connect(self._on_started)
         self._runner.finished.connect(self._on_finished)
@@ -160,7 +170,8 @@ class ReadController(QObject):
         self._timer.setSingleShot(True)
         self._timer.setInterval(REFRESH_MS)
         self._timer.timeout.connect(self.refresh)
-        self._works: dict[int, ScanWork] = {}
+        # (scan, format of a decode without its label, or None) -> what it gave
+        self._works: dict[tuple[int, str | None], ScanWork] = {}
         self._summary = self._doc.summary()
         self._verdict_key: tuple | None = None  # what the running verdict job hashes
         self._verdict_error: tuple[tuple, str] | None = None  # (key, message) of a failed job
@@ -217,9 +228,12 @@ class ReadController(QObject):
     def can_save(self) -> bool:
         return self._doc.can_save and not self.saving and not self._closed
 
-    def work_for(self, scan_id: int) -> ScanWork | None:
-        """The last processing result of a scan (its outcome is in the document)."""
-        return self._works.get(scan_id)
+    def work_for(self, scan_id: int, format: str | None = None) -> ScanWork | None:
+        """The last processing result of a scan (its outcome is in the document): of
+        its decode in ``format`` if there is one, else of its own reading."""
+        if format is not None and (scan_id, format) in self._works:
+            return self._works[(scan_id, format)]
+        return self._works.get((scan_id, None))
 
     def save_warning(self) -> str | None:
         """What saving must confirm first, from an up-to-date summary."""
@@ -237,15 +251,19 @@ class ReadController(QObject):
         for path in expand_paths(paths):
             scan_id = self._doc.add_scan(path)
             if scan_id is not None:
-                self._runner.submit(scan_id, partial(self._process, path))
+                self._read(scan_id, path)
         self.refresh()
 
     def remove(self, scan_id: int) -> None:
+        if self._closed:
+            return
         self._runner.cancel(scan_id)
         self._doc.remove_scan(scan_id)
         self.note = ""
-        self._works.pop(scan_id, None)
+        self._works = {k: w for k, w in self._works.items() if k[0] != scan_id}
         self._decoding_in.pop(scan_id, None)
+        self._reading.discard(scan_id)
+        self._read_again.discard(scan_id)
         self._replacing = {p: s for p, s in self._replacing.items() if s != scan_id}
         self.refresh()
 
@@ -262,6 +280,8 @@ class ReadController(QObject):
 
         In a document started by hand there are no labels to go by: the file is
         assigned to the page and decoded without its label, then judged the same way.
+        Once that decode has reported, a file added this way is also read with its
+        label, so it is listed where it belongs if the document is left.
         A scan is judged only once its reading for this document has reported
         (the document counts a decode as pending from the moment it is queued);
         until then the page keeps the scan it uses.
@@ -276,11 +296,13 @@ class ReadController(QObject):
             scan_id = doc.scan_id_of(path)
         self._drop_pending(page, scan_id)
         if doc.by_hand:
+            if added:  # read with its label too, after the decode, for other documents
+                self._read_again.add(scan_id)
             doc.assign_page(scan_id, page)
             if doc.needs_decoding(scan_id):
                 self._decode_for_document(scan_id)
         elif added:
-            self._runner.submit(scan_id, partial(self._process, path))
+            self._read(scan_id, path)
         self._settle_replacement(scan_id, page)
         self.refresh()
 
@@ -335,7 +357,7 @@ class ReadController(QObject):
         if scan_id is not None:
             candidates.insert(0, scan_id)
         for candidate in candidates:
-            work = self._works.get(candidate)
+            work = self.work_for(candidate)
             paper = paper_for_size(work.size) if work is not None else None
             if paper is not None:
                 return paper
@@ -347,11 +369,20 @@ class ReadController(QObject):
             p: s for p, s in self._replacing.items() if p != page and s != scan_id
         }
 
+    def _read(self, scan_id: int, path: str) -> None:
+        """Starts the scan's own reading (``process``): identifying and decoding it."""
+        self._reading.add(scan_id)
+        self._runner.submit(scan_id, partial(self._process, path))
+
     def _decode_for_document(self, scan_id: int) -> None:
         """Decodes the scan without its label, in the current document's format; the
-        document knows it is pending from now, before a worker starts it."""
+        document knows it is pending from now, before a worker starts it. A labelled
+        reading this cancels is done again once the decode has reported."""
         doc = self._doc
         fmt = doc.current.format
+        if scan_id in self._reading:
+            self._reading.discard(scan_id)
+            self._read_again.add(scan_id)
         self._runner.cancel(scan_id)  # required before submitting the id again
         earlier = self._decoding_in.pop(scan_id, None)
         if earlier is not None:
@@ -432,9 +463,11 @@ class ReadController(QObject):
         self.refreshes += 1
         self.changed.emit()
 
-    def _schedule(self) -> None:
-        """A background result changed the document: redraw soon, once per burst."""
-        self.note = ""
+    def _schedule(self, changed: bool = True) -> None:
+        """A background result arrived: redraw soon, once per burst. One that
+        ``changed`` the document clears the "Saved …" note."""
+        if changed:
+            self.note = ""
         if not self._closed and not self._timer.isActive():
             self._timer.start()
 
@@ -462,15 +495,28 @@ class ReadController(QObject):
         self._schedule()
 
     def _on_finished(self, scan_id: int, work: ScanWork) -> None:
+        fmt = self._decoding_in.get(scan_id)  # None: the scan's own reading
         try:
             self._apply(scan_id, work)
         except KeyError:
             return  # the scan was removed
-        if work.info is not None or work.outcome is not None or scan_id not in self._works:
+        if work.info is not None or work.outcome is not None or self.work_for(
+            scan_id, fmt
+        ) is None:
             # A decode for a document that failed keeps the preview of what was read.
-            self._works[scan_id] = dataclasses.replace(work, outcome=None)
+            self._works[(scan_id, fmt)] = dataclasses.replace(work, outcome=None)
         self._schedule()
+        self._reported(scan_id, fmt)
         self._settle_pending(scan_id)
+
+    def _reported(self, scan_id: int, fmt: str | None) -> None:
+        """A job for the scan reported: its own reading (``fmt`` None) is done, and
+        after a decode a reading that the decode cancelled starts again."""
+        if fmt is None:
+            self._reading.discard(scan_id)
+        elif scan_id in self._read_again and scan_id not in self._decoding_in:
+            self._read_again.discard(scan_id)
+            self._read(scan_id, self._doc.scan(scan_id).path)
 
     def _settle_pending(self, scan_id: int) -> None:
         """Judges the replacements still waiting for this scan to be read."""
@@ -509,13 +555,14 @@ class ReadController(QObject):
         except KeyError:
             return
         self._schedule()
+        self._reported(scan_id, fmt)
         self._settle_pending(scan_id)
 
     def _on_task_finished(self, job: int, result: object) -> None:
         if job == _VERDICT_JOB:
             self._verdict_key = None
             self._doc.accept_verdict(result)
-            self._schedule()
+            self._schedule(changed=False)  # a verdict does not change the pages
             return
         path, self._save_path = self._save_path, None
         self.note = text.saved_message(path, result)
@@ -527,7 +574,7 @@ class ReadController(QObject):
             if self._verdict_key is not None:
                 self._verdict_error = (self._verdict_key, message)  # not retried
             self._verdict_key = None
-            self._schedule()
+            self._schedule(changed=False)
             return
         self._save_path = None
         self.refresh()
@@ -809,12 +856,12 @@ class ReadTab(QWidget):
                 name = None
                 if page.scan_id is not None:
                     scan_path = doc.scan(page.scan_id).path
-                    work = self.controller.work_for(page.scan_id)
+                    work = self.controller.work_for(page.scan_id, doc.current.format)
                     name = os.path.basename(scan_path)
                 lines = text.detail_text(page, name, len(self._pages))
             elif kind == Row.SPARE and actions.use_spare is not None:
                 scan_path = doc.scan(key).path
-                work = self.controller.work_for(key)
+                work = self.controller.work_for(key, doc.current.format)
                 lines = text.spare_detail(
                     doc.page_with(key), os.path.basename(scan_path), len(self._pages)
                 )

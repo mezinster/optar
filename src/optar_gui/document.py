@@ -12,10 +12,11 @@ which background results (``set_working``, ``set_identified``, ``set_outcome``,
 recomputed from that information after every change, and a user's choice is
 never lost or changed by a passing intermediate state.
 
-Scans. ``add_scan`` refuses a path whose ``os.path.realpath`` is already present;
-``ScanView.path`` is the path as given. Whether the path exists, or is empty, is
-the caller's business. On a case-insensitive file system two spellings of one
-file are not recognised as the same scan.
+Scans. ``add_scan`` refuses a path whose ``os.path.realpath``, after
+``os.path.normcase``, is already present; ``ScanView.path`` is the path as given.
+Whether the path exists, or is empty, is the caller's business. On Windows two
+spellings of one file that differ in case are the same scan; on other systems
+whose file systems ignore case (macOS) they are not recognised as one.
 
 Grouping. A scan is *grouped* when it is identified, not unreadable and its page
 lies in ``1..max(total, 1)``; a page outside that range makes it unreadable with
@@ -36,8 +37,12 @@ the identity for display.
 - A tagged and an untagged scan are never in the same group.
 - A group's key is the id of its earliest-added scan; ``switch_to(key)`` switches
   to the group that now contains that scan, so an old key keeps working.
-- A group's title is the longest name among the grouped scans it shows ("" if
-  none); a scan assigned by hand into another document does not count.
+- A group's title comes from the names of the grouped scans it shows ("" if
+  none), trailing spaces ignored; a scan assigned by hand into another document
+  does not count. A tagged group takes the most common name (on a tie, the
+  longest): its labels are accepted on a plausible reading, so one misread name
+  must not rename it. An untagged group takes the longest name; its names are
+  prefixes of one another by construction.
 
 Remembering a document. User operations remember a document as a *reference*:
 the set of scans in its group at the moment of the operation, plus, for a tagged
@@ -203,6 +208,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+from collections import Counter
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -450,7 +456,7 @@ def _matches(
 class _Scan:
     id: int
     path: str  # as given
-    real: str  # resolved, for spotting the same file added twice
+    real: str  # ``_file_key`` of the path, for spotting the same file added twice
     working: bool = False
     info: ScanInfo | None = None
     outcome: PageOutcome | None = None
@@ -543,11 +549,17 @@ _RESERVED_NAMES = frozenset(
 _BAD_NAME_CHARACTERS = frozenset('<>:"/\\|?*' + "".join(map(chr, range(32))) + chr(127))
 
 
+def _file_key(path: str) -> str:
+    """The same for two paths of one file: resolved, and folded where the system
+    ignores case (``os.path.normcase``; Windows)."""
+    return os.path.normcase(os.path.realpath(path))
+
+
 def _safe_file_name(name: str) -> str:
     """A plain file name, valid on Windows too, made from untrusted label text."""
     name = name.replace("\\", "/").rsplit("/", 1)[-1]
     name = "".join(c for c in name if c not in _BAD_NAME_CHARACTERS).strip(" .")
-    if not name or name.split(".", 1)[0].upper() in _RESERVED_NAMES:
+    if not name or name.split(".", 1)[0].strip().upper() in _RESERVED_NAMES:
         return RECOVERED_NAME
     return name
 
@@ -572,7 +584,7 @@ class Document:
     # --- Adding and reporting on scans ---------------------------------------
 
     def add_scan(self, path: str) -> int | None:
-        real = os.path.realpath(path)
+        real = _file_key(path)
         if real in self._reals:
             return None
         scan_id = self._next_id
@@ -729,7 +741,7 @@ class Document:
 
     def scan_id_of(self, path: str) -> int | None:
         """The scan added for the same file as ``path``, if any."""
-        return self._reals.get(os.path.realpath(path))
+        return self._reals.get(_file_key(path))
 
     def scans(self) -> tuple[ScanView, ...]:
         return tuple(self._view(s) for s in self._scans.values())
@@ -1201,9 +1213,14 @@ class Document:
         return ScanView(s.id, s.path, state, s.info, o, why)
 
     def _group_view(self, g: _Group, shown: list[int], scan_ids: tuple[int, ...]) -> GroupView:
-        """The title comes from the group's own scans that it shows."""
-        names = [self._scans[i].info.name for i in shown]
-        title = max(names, key=lambda n: len(n.rstrip(" ")), default="")
+        """The title comes from the group's own scans that it shows: the most common
+        name of a tagged group (on a tie, the longest), the longest of another."""
+        names = [self._scans[i].info.name.rstrip(" ") for i in shown]
+        if g.tag is not None:
+            counts = Counter(names)
+            title = max(names, key=lambda n: (counts[n], len(n)), default="")
+        else:
+            title = max(names, key=len, default="")
         key = scan_ids[0] if scan_ids else None
         return GroupView(key, title, g.total, g.format, g.tag, scan_ids)
 
