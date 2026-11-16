@@ -1,10 +1,11 @@
 # (c) GPL 2007 Karel 'Clock' Kulhavy, Twibright Labs; Python port 2026
 import hashlib
+import random
 
 import pytest
 
 from optar.encoder import MAX_PAGES
-from optar.font import label_text
+from optar.font import FIRST_CHAR, GLYPH_CELLS, label_text
 from optar.format import PageFormat
 from optar.label import label_capacity, printed_label
 from optar.tag import (
@@ -12,7 +13,7 @@ from optar.tag import (
     FINGERPRINT_DIGITS,
     MAX_SIZE_DIGITS,
     Tag,
-    looks_like_tag,
+    damaged_tag,
     make_tag,
     split_label,
     tagged_label,
@@ -210,37 +211,237 @@ def test_matches_requires_right_length():
     assert not Tag(len(d) + 1, make_tag(d).fingerprint).matches(d)
 
 
-# ---- what a damaged tag looks like -------------------------------------------
+# ---- a tag damaged in one cell -------------------------------------------------
+
+PRINTABLE = "".join(chr(c) for c in range(FIRST_CHAR, FIRST_CHAR + GLYPH_CELLS))
+BIG = Tag(1399271, "9b0d6853")   # eight A4 pages
+SMALL = Tag(5, "0b3d8e9f")       # the shortest size, one page
+BIG_TEXT = BIG.page_text(8, 8)
+SMALL_TEXT = SMALL.page_text(1, 1)
+COLON1, COLON2 = BIG_TEXT.index(":"), BIG_TEXT.rindex(":")
+LAST = len(BIG_TEXT) - 1
+
+
+def put(text, at, glyph):
+    """`text` with the cell `at` read as `glyph`; trailing blanks are not read."""
+    assert text[at] != glyph
+    return (text[:at] + glyph + text[at + 1:]).rstrip(" ")
+
+
+def is_damaged(text, page=8, total=8):
+    return damaged_tag(text, page, total, A4)
+
+
+def test_span_covers_the_longest_tag_and_its_separator():
+    longest = Tag(10 ** MAX_SIZE_DIGITS - 1, "f" * FINGERPRINT_DIGITS)
+    total = -(-longest.size // (A4.net_bits // 8))
+    text = longest.page_text(1, total)
+    for at in range(len(text)):
+        assert damaged_tag(put(text + " x", at, "~"), 1, total, A4)
+    assert damaged_tag(text + "~x", 1, total, A4)   # the separator
+    assert damaged_tag(text + "~", 1, total, A4)
+    assert not damaged_tag(text + " ~", 1, total, A4)
 
 
 @pytest.mark.parametrize("text", [
-    "[0481152:3f9a2c1b:7e] x",   # the first size digit read as 0
-    "[2481152;3f9a2c1b:7e] x",   # a colon read as ";"
-    "[2481152:3f9a2c1b.7e] x",   # or "."
-    "[2481152:3f9a2c1b:7e) x",   # the closing bracket read as ")"
-    "[2481152:3f9a2c1b:7e1 x",   # or as "1"
-    "(2481152:3f9a2c1b:7e] x",   # the opening bracket read as "("
-    " 2481152:3f9a2c1b:7e] x",   # or lost
-    "[2481152:3f9a2c1g:7e] x",   # a hex digit read as a letter
-    "[2481152:3f9a2c1b:7e]`x",   # a stray mark after the tag
-    "[2481152:3f9a2c1b:7e].x",
-    "[3274105;6083b9d1:ae]",
-    "[5:0b3d8e9f.f4]",           # the shortest size
+    put(BIG_TEXT + " x", 1, "0"),           # the first size digit read as 0
+    put(BIG_TEXT + " x", COLON1, ";"),      # a colon read as ";"
+    put(BIG_TEXT + " x", COLON2, "."),      # or "."
+    put(BIG_TEXT + " x", LAST, ")"),        # the closing bracket read as ")"
+    put(BIG_TEXT + " x", LAST, "1"),        # or as "1"
+    put(BIG_TEXT + " x", 0, "("),           # the opening bracket read as "("
+    put(BIG_TEXT + " x", 0, " "),           # or lost
+    put(BIG_TEXT + " x", COLON2 - 1, "g"),  # a hex digit read as a letter
+    put(BIG_TEXT + " x", LAST + 1, "`"),    # a stray mark after the tag
+    put(BIG_TEXT + " x", LAST + 1, "."),
+    BIG_TEXT + "`",                         # a stray mark after a tag with no name
+    put(BIG_TEXT, LAST, " "),               # the closing bracket lost, no name
+    put(BIG_TEXT, COLON1, ";"),
+    # Missed by counting hexadecimal digits in the first word (review).
+    put(BIG_TEXT + " x", COLON1, " "),      # the first colon read as a blank
+    put(BIG_TEXT + " x", 2, "|"),           # a size digit read as "|"
+    put(BIG_TEXT + " x", 3, " "),           # as a blank
+    put(BIG_TEXT + " x", 3, "-"),           # as "-"
+    put(BIG_TEXT + " x", 0, "<"),           # the opening bracket read as "<"
 ])
-def test_looks_like_tag(text):
+def test_tag_with_one_cell_misread_is_damaged(text):
     assert split_label(text)[0] is None
-    assert looks_like_tag(text)
-
-
-def test_real_tag_looks_like_one():
-    assert looks_like_tag(T.page_text(1, 1)) and looks_like_tag(tagged_label(T, "x", 1, 1))
+    assert is_damaged(text)
 
 
 @pytest.mark.parametrize("text", [
+    put(SMALL_TEXT + " x", 2, " "),         # the first colon read as a blank
+    put(SMALL_TEXT + " x", 5, "|"),         # a fingerprint digit read as "|"
+    put(SMALL_TEXT, 4, "."),
+])
+def test_short_tag_with_one_cell_misread_is_damaged(text):
+    assert split_label(text)[0] is None
+    assert is_damaged(text, 1, 1)
+
+
+NAMES = [
     "", "x", "doc.tar", "holiday photos.tar", "3f9a2c1b0011.tar", "[", "[]",
     "[draft] report.pdf", "[2024] taxes.zip", "[2024.08.31] photos", "[2024.08.31 holiday] x",
     "[backup 2024-08-31]", "[20240831-1] x", "(2024) x", "[deadbeef] x",
-    "[2481152:3f9a2c1b] x", "[0:00000000]",  # the unreleased two-field form
-])
-def test_names_do_not_look_like_tags(text):
-    assert not looks_like_tag(text)
+    # Refused by counting hexadecimal digits in the first word (review).
+    "[202411161230] backup.tar", "[1700000000] log.tar", "[2024.08.31.2] x", "(20241116123) x",
+    "[0123456789] list", "[a1b2c3d4e5] x", "[deadbeef01] x",
+    # The unreleased two-field form.
+    f"[{BIG.size}:{BIG.fingerprint}] x", f"[{BIG.size}:{BIG.fingerprint}]", "[0:00000000]",
+]
+
+
+@pytest.mark.parametrize("text", NAMES)
+def test_name_is_not_a_damaged_tag(text):
+    assert not is_damaged(text)
+    assert not is_damaged(text, 1, 1)
+    assert not is_damaged(text, 1, 0)
+
+
+def test_a_tag_is_not_a_damaged_tag():
+    # Text in which split_label finds a tag is for the caller to check.
+    assert not is_damaged(BIG_TEXT) and not is_damaged(BIG_TEXT + " x")
+    wrong = BIG.page_text(7, 8)
+    assert wrong != BIG_TEXT and split_label(wrong)[0] == BIG
+    assert not is_damaged(wrong) and not is_damaged(wrong + " x")
+
+
+def test_damage_is_judged_against_the_page_and_total_read():
+    text = put(BIG_TEXT + " x", COLON1, ";")
+    assert is_damaged(text, 8, 8)
+    assert BIG.check(7, 8) != BIG.check(8, 8) and not is_damaged(text, 7, 8)
+    # The repaired tag must fit the total, as a tag read whole must.
+    assert BIG.check(8, 9) != BIG.check(8, 8)
+    other = put(BIG.page_text(8, 9) + " x", COLON1, ";")
+    assert not BIG.fits(9, A4) and not is_damaged(other, 8, 9)
+
+
+def test_two_cells_misread_are_not_detected():
+    # The known limit: such a page passes for an untagged page of its own.
+    text = put(put(BIG_TEXT + " x", COLON1, ";"), COLON2, ";")
+    assert not is_damaged(text)
+
+
+def random_case(rng):
+    """(tag, page, total) of a file the encoder could print on A4."""
+    capacity = A4.net_bits // 8
+    digits = rng.randint(1, len(str(MAX_PAGES * capacity)))
+    size = min(rng.randrange(10 ** (digits - 1) if digits > 1 else 0, 10 ** digits),
+               MAX_PAGES * capacity)
+    total = -(-size // capacity)
+    tag = Tag(size, f"{rng.getrandbits(4 * FINGERPRINT_DIGITS):0{FINGERPRINT_DIGITS}x}")
+    assert tag.fits(total, A4)
+    return tag, rng.randint(1, max(total, 1)), total
+
+
+def single_cell_misreads(tags, seed):
+    """Every glyph in every cell of `tags` random tags: (cells tried, still valid,
+    refused by the check, detected as damaged). None may pass for a name."""
+    rng = random.Random(seed)
+    tried = valid = refused = damaged = 0
+    for _ in range(tags):
+        tag, page, total = random_case(rng)
+        printed = tag.page_text(page, total)
+        # With a name the separator can be misread too; without one a stray
+        # mark can appear in the blank cell after the tag.
+        for whole, cells in ((printed + " x", len(printed) + 1), (printed + " ", len(printed) + 1)):
+            for at in range(cells):
+                for glyph in PRINTABLE:
+                    if glyph == whole[at]:
+                        continue
+                    text = put(whole, at, glyph)
+                    tried += 1
+                    got, check, _ = split_label(text)
+                    if got is None:
+                        assert damaged_tag(text, page, total, A4), (text, page, total)
+                        damaged += 1
+                    elif got.fits(total, A4) and got.check(page, total) == check:
+                        valid += 1
+                    else:
+                        refused += 1
+    return tried, valid, refused, damaged
+
+
+def check_single_cell_misreads(tags, seed):
+    tried, valid, refused, damaged = single_cell_misreads(tags, seed)
+    print(f"single-cell misreads: {tried} tried, {valid} still valid tags, "
+          f"{refused} refused by the check, {damaged} detected as damaged")
+    assert tried == valid + refused + damaged
+    # A misread that leaves a well-formed tag passes about once in 16**CHECK_DIGITS.
+    assert valid < 3 * (valid + refused) / 16 ** CHECK_DIGITS + 5
+
+
+def test_every_single_cell_misread_is_caught():
+    check_single_cell_misreads(12, 1)
+
+
+@pytest.mark.slow
+def test_every_single_cell_misread_is_caught_in_many_tags():
+    check_single_cell_misreads(400, 2)
+
+
+def ordinary_names(rng, count):
+    hexdigits = "0123456789abcdef"
+    for _ in range(count):
+        y, mo, d = rng.randint(1990, 2099), rng.randint(1, 12), rng.randint(1, 28)
+        h, mi, s = rng.randint(0, 23), rng.randint(0, 59), rng.randint(0, 59)
+        word = "".join(rng.choice(hexdigits) for _ in range(rng.randint(1, 24)))
+        yield f"[{y}-{mo:02}-{d:02}] backup.tar"
+        yield f"[{y}.{mo:02}.{d:02}.{rng.randint(0, 9)}] x"
+        yield f"[{y}{mo:02}{d:02}{h:02}{mi:02}] backup.tar"
+        yield f"[{y}{mo:02}{d:02}:{h:02}{mi:02}{s:02}] x"
+        yield f"[{h:02}:{mi:02}:{s:02}] log"
+        yield f"({y}{mo:02}{d:02}{h:02}{mi}) x"
+        yield f"[{rng.randint(0, 2 ** 32)}] log.tar"
+        yield f"[{word}] x"
+        yield f"{word}.tar"
+        yield f"[v{rng.randint(0, 20)}.{rng.randint(0, 99)}.{rng.randint(0, 99)}] release"
+        yield f"{rng.randint(0, 20)}.{rng.randint(0, 99)}.{rng.randint(0, 99)}-rc{d}"
+        # The two-field form with any size.
+        yield f"[{rng.randrange(10 ** rng.randint(1, MAX_SIZE_DIGITS))}:{word[:8]:0<8}] x"
+
+
+def random_text(rng, first=""):
+    return first + "".join(rng.choice(PRINTABLE) for _ in range(rng.randint(0, 60)))
+
+
+def check_names(count, seed):
+    rng = random.Random(seed)
+    for text in ordinary_names(rng, count):
+        page, total = random_case(rng)[1:]
+        assert not damaged_tag(text, page, total, A4), (text, page, total)
+    refused = 0
+    for _ in range(12 * count):
+        page, total = random_case(rng)[1:]
+        assert not damaged_tag(random_text(rng), page, total, A4)
+        refused += damaged_tag(random_text(rng, "["), page, total, A4)
+    print(f"random printable text starting with '[': {refused} of {12 * count} refused")
+    assert refused <= 12 * count // 1000
+
+
+def test_names_are_not_damaged_tags():
+    check_names(1000, 3)
+
+
+@pytest.mark.slow
+def test_many_names_are_not_damaged_tags():
+    check_names(20000, 4)
+
+
+# Text that has a tag's form but for one cell and carries a random check: the
+# chance that some repair's check matches bounds how often a name is refused.
+def test_tag_shaped_text_is_refused_about_once_per_check_match():
+    rng = random.Random(5)
+    refused = tried = 0
+    for _ in range(300):
+        tag, page, total = random_case(rng)
+        whole = tag.page_text(page, total) + " x"
+        junk = whole[:-5] + f"{rng.getrandbits(4 * CHECK_DIGITS):0{CHECK_DIGITS}x}" + whole[-3:]
+        if junk == whole:
+            continue
+        at = rng.randrange(len(whole) - 2)
+        text = put(junk, at, rng.choice([g for g in "~|;.-" if g != junk[at]]))
+        tried += 1
+        refused += damaged_tag(text, page, total, A4)
+    print(f"tag-shaped text with a random check: {refused} of {tried} refused")
+    assert refused < tried / 4

@@ -27,7 +27,7 @@ from optar.label import (
     printed_label,
     read_label,
 )
-from optar.tag import Tag, looks_like_tag, make_tag, split_label, tagged_label
+from optar.tag import Tag, damaged_tag, make_tag, split_label, tagged_label
 from tests.helpers import DEGRADED, fake_scan, save_scan, seeded_bytes
 from tests.unit import test_label as label_tests
 
@@ -558,11 +558,11 @@ def test_misread_scan_is_refused_or_right(paper, family):
 
 # ---- damaged tags --------------------------------------------------------------
 
-def candidate(text):
+def candidate(text, page=8, total=8):
     """The A4 candidate for a label reading `text` as page 8 of 8, perfectly
     and with every score at its best: only the text decides."""
     fmt = PageFormat.for_paper(PAPERS["a4"])
-    reading = LabelReading(printed_label(fmt, label_text(fmt, 8, 8, text)), 1.0, 1.0)
+    reading = LabelReading(printed_label(fmt, label_text(fmt, page, total, text)), 1.0, 1.0)
     assert reading.reliable
     grid = mock.Mock(fmt=fmt)
     with mock.patch.object(optar.identify, "locate_page", lambda image, f, o=None: grid), \
@@ -570,32 +570,65 @@ def candidate(text):
         return optar.identify._identify_upright(None, 0, PAPERS["a4"], None)
 
 
-# A tag (of a file that fits 8 A4 pages) that a misread has broken must not
-# pass for a name: such a page would join no document, or the wrong one.
+# A tag (of a file that fits 8 A4 pages) that a misread has broken in one cell
+# must not pass for a name: such a page would join no document, or the wrong one.
+WHOLE = Tag(1399271, "9b0d6853").page_text(8, 8)
+SHORT = Tag(5, "0b3d8e9f")
+
+
+def misread(text, at, glyph):
+    assert text[at] != glyph
+    return text[:at] + glyph + text[at + 1:]
+
+
 @pytest.mark.parametrize("text", [
-    "[0399271:9b0d6853:7f] x",       # the first size digit read as 0
-    "[1399271;9b0d6853:7f] x",       # a colon read as ";"
-    "[1399271:9b0d6853.7f] x",       # a colon read as "."
-    "[1399271:9b0d6853:7f) x",       # the bracket read as ")"
-    "[1399271:9b0d6853:7f1 x",       # the bracket read as "1"
-    "(1399271:9b0d6853:7f] x",       # the opening bracket read as "("
-    "[1399271:9b0d68s3:7f] x",       # a hex digit read as a letter
-    "[1399271:9b0d6853:7f]`x",       # a stray mark after the tag
-    "[1399271:9b0d6853:7f].x",
-    "[0399271:9b0d6853:7f]",         # one of them with no name
-    "[3274105;6083b9d1:ae]",         # from review
+    misread(WHOLE + " x", 1, "0"),                     # the first size digit read as 0
+    misread(WHOLE + " x", WHOLE.index(":"), ";"),      # a colon read as ";"
+    misread(WHOLE + " x", WHOLE.rindex(":"), "."),     # a colon read as "."
+    misread(WHOLE + " x", len(WHOLE) - 1, ")"),        # the bracket read as ")"
+    misread(WHOLE + " x", len(WHOLE) - 1, "1"),        # the bracket read as "1"
+    misread(WHOLE + " x", 0, "("),                     # the opening bracket read as "("
+    misread(WHOLE + " x", 0, "<"),
+    misread(WHOLE + " x", 0, " "),                     # the opening bracket lost
+    misread(WHOLE + " x", WHOLE.rindex(":") - 2, "s"),  # a hex digit read as a letter
+    misread(WHOLE + " x", len(WHOLE), "`"),            # a stray mark after the tag
+    misread(WHOLE + " x", len(WHOLE), "."),
+    misread(WHOLE, 1, "0"),                            # one of them with no name
+    misread(WHOLE, len(WHOLE) - 1, " "),               # the closing bracket lost, no name
+    misread(WHOLE + " x", WHOLE.index(":"), " "),      # the first colon read as a blank
+    misread(WHOLE + " x", 2, "|"),                     # a size digit read as "|"
+    misread(WHOLE + " x", 3, " "),                     # as a blank
+    misread(WHOLE + " x", 3, "-"),                     # as "-"
 ])
 def test_damaged_tag_is_unreadable(text):
-    assert split_label(text)[0] is None and looks_like_tag(text)
+    assert split_label(text)[0] is None
+    assert damaged_tag(text.rstrip(" "), 8, 8, PageFormat.for_paper(PAPERS["a4"]))
     assert candidate(text) is None
+
+
+@pytest.mark.parametrize("at, glyph", [(2, " "), (2, ";"), (5, "|"), (0, "<")])
+@pytest.mark.parametrize("name", ["", " x"])
+def test_damaged_short_tag_is_unreadable(at, glyph, name):
+    text = misread(SHORT.page_text(1, 1), at, glyph) + name
+    assert split_label(text)[0] is None
+    assert candidate(text, 1, 1) is None
+    assert candidate(SHORT.page_text(1, 1) + name, 1, 1).tag == SHORT
+
+
+def test_tag_with_a_wrong_check_is_unreadable():
+    wrong = Tag(1399271, "9b0d6853").page_text(7, 8)
+    assert wrong != WHOLE and candidate(wrong + " x") is None
+    assert candidate(WHOLE + " x").tag == Tag(1399271, "9b0d6853")
 
 
 @pytest.mark.parametrize("text", [
     "[draft] report.pdf", "[2024] taxes.zip", "[2024.08.31] photos", "[backup 2024-08-31]",
     "[61:9b8d0e3f] x",  # the unreleased two-field form is a name
+    # Names with many digits: only a tag one cell away from a right check is refused.
+    "[202411161230] backup.tar", "[1700000000] log.tar", "[2024.08.31.2] x", "(20241116123) x",
+    "[0123456789] list", "[a1b2c3d4e5] x", "[deadbeef01] x",
 ])
 def test_bracketed_name_is_an_untagged_name(text):
-    assert not looks_like_tag(text)
     ident = candidate(text)
     assert (ident.page, ident.total, ident.tag, ident.name) == (8, 8, None, text)
 
@@ -608,7 +641,7 @@ def test_bracketed_name_is_read_from_the_page():
 @pytest.mark.slow
 def test_damaged_tag_is_reported_as_unreadable_label():
     fmt = PageFormat.for_paper(PAPERS["a4"])
-    img = fake_scan(blank_page(fmt, label_text(fmt, 8, 8, "[0399271:9b0d6853:7f] x")),
+    img = fake_scan(blank_page(fmt, label_text(fmt, 8, 8, misread(WHOLE, 1, "0") + " x")),
                     scale=1, margin=40)
     with mock.patch.object(optar.identify, "_papers_by_shape", lambda c: [PAPERS["a4"]]):
         with pytest.raises(IdentifyError) as e:

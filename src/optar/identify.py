@@ -22,7 +22,7 @@ from optar.encoder import MAX_PAGES
 from optar.errors import DecodeError, IdentifyError
 from optar.format import PAPERS, PageFormat, Paper
 from optar.label import parse_label, read_label
-from optar.tag import Tag, looks_like_tag, split_label
+from optar.tag import Tag, damaged_tag, split_label
 
 __all__ = ["ScanIdentity", "candidate_rotations", "decode_unlabelled", "identify_scan"]
 
@@ -117,7 +117,7 @@ def _identify_upright(
             return None
     # Without a tag nothing checks the reading but the stroke and cell rules;
     # and a tag that a misread has broken must not pass for a name.
-    elif not reading.reliable or looks_like_tag(info.text):
+    elif not reading.reliable or damaged_tag(info.text, info.page, info.total, fmt):
         return None
     return ScanIdentity(
         paper, fmt, rotation, info.page, info.total, tag, name,
@@ -135,8 +135,8 @@ def identify_scan(image: np.ndarray, options: DecodeOptions | None = None) -> Sc
     (at most MAX_PAGES), and either
     - a tag that fits the total and whose check is right for the page number
       and total read, in a reading that is plausible (LabelReading), or
-    - no tag, in a reading that is reliable, with free text that does not
-      begin with a damaged tag (tag.looks_like_tag).
+    - no tag, in a reading that is reliable, with free text that is not a tag
+      of that page and total with one cell misread (tag.damaged_tag).
 
     The check code is the error detector for tagged labels, so their
     acceptance does not rest on the stroke heuristics, which can reject exact

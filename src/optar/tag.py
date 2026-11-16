@@ -82,38 +82,6 @@ def tagged_label(tag: Tag, name: str, page: int, total: int) -> str:
     return f"{text} {name}" if name else text
 
 
-# What a tag damaged by a misread can look like: an opening bracket (or a
-# glyph it is misread as), then a run of the tag's glyphs and those its colons
-# and digits are misread as, ending at a space or a closing bracket (or its
-# misreads). A leading space is skipped: the "[" may itself have been lost.
-# Only the run up to the first space or bracket is weighed.
-_TAG_SHAPE = re.compile(r" ?([\[({|])?([0-9A-Za-z:;.,'`!]+)([\])}|])?", re.ASCII)
-_HEX = frozenset("0123456789abcdef")
-# A tag has at least 11 hexadecimal digits (one of the size, eight of the
-# fingerprint, two of the check), so a tag with two of them misread still has
-# 9. A name's first bracketed word seldom has as many: "[draft]" has 3,
-# "[2024]" 4, "[2024.08.31]" 8.
-_MIN_TAG_HEX = 9
-# The unreleased two-field form [SIZE:FINGERPRINT] is a name, not a damaged
-# tag: no misread of one cell makes it out of a three-field tag.
-_TWO_FIELDS = re.compile(r"\[(0|[1-9][0-9]*):[0-9a-f]{8}\](?: |\Z)", re.ASCII)
-
-
-def looks_like_tag(text: str) -> bool:
-    """Whether free text begins with something a misread could have made of a tag.
-
-    True when the text begins with a bracket-like glyph (or its first word
-    ends in one) and its first word holds at least _MIN_TAG_HEX lower-case
-    hexadecimal digits, unless it begins with the two-field form, which is a
-    name. A real tag looks like one too: callers ask only about text in which
-    split_label found no tag.
-    """
-    m = _TAG_SHAPE.match(text)
-    if m is None or not (m[1] or m[3]) or _TWO_FIELDS.match(text):
-        return False
-    return sum(c in _HEX for c in m[2]) >= _MIN_TAG_HEX
-
-
 def split_label(text: str) -> tuple[Tag | None, str, str]:
     """(tag, check, name) from a label's free text, or (None, "", text) without a tag.
 
@@ -124,3 +92,45 @@ def split_label(text: str) -> tuple[Tag | None, str, str]:
     if m is None:
         return None, "", text
     return Tag(int(m.group(1)), m.group(2)), m.group(3), text[m.end():]
+
+
+# The cells a tag can take at the start of the free text: the longest tag and
+# the separator after it.
+_LONGEST = Tag(10 ** MAX_SIZE_DIGITS - 1, "0" * FINGERPRINT_DIGITS)
+_TAG_CELLS = len(_LONGEST.page_text(1, 1) + " ")
+# The glyphs a tag and its separator are printed with.
+_TAG_GLYPHS = "[]: 0123456789abcdef"
+
+
+def damaged_tag(text: str, page: int, total: int, fmt: PageFormat) -> bool:
+    """Whether free text without a tag is a tag of this page with one cell misread.
+
+    True when split_label finds no tag in `text`, and putting one of a tag's
+    glyphs in one of the cells a tag can take makes text in which it finds a
+    tag that fits `total` pages of `fmt` and whose check is right for `page`
+    of `total`, the numbers read from the same label. Cells have a fixed
+    width, so a misread changes a character and never adds or removes one;
+    the cells after the text as read are blank.
+
+    Text in which split_label already finds a tag is never damaged in this
+    sense: its check is for the caller to compare. Nor is the two-field form
+    [SIZE:FINGERPRINT], which no single cell turns into a tag.
+
+    A name that is not a tag passes for a damaged one only if it is one cell
+    away from a tag's form and the check then happens to match, which a name
+    people write does not do. The known limit is the other way: a tag with
+    two or more cells misread is not detected. Such a page passes for an
+    untagged page of a document of its own (a split, never a wrong merge), so
+    the caller must still ask of it all that it asks of an untagged label.
+    """
+    if _TAG.match(text):
+        return False
+    cells = text[:_TAG_CELLS].ljust(_TAG_CELLS)
+    for at, read in enumerate(cells):
+        for glyph in _TAG_GLYPHS:
+            if glyph == read:
+                continue
+            tag, check, _ = split_label(cells[:at] + glyph + cells[at + 1:])
+            if tag is not None and tag.fits(total, fmt) and tag.check(page, total) == check:
+                return True
+    return False
