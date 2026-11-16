@@ -39,6 +39,20 @@ The larger-dot grids are the largest that fit each paper with today's 12-point m
 
 The last column decides part of the design. The label's fixed part (`0-33-46-24-3-1-2-24 12/12`) takes 25 characters, and up to 29 with large page counts. A large-dot label has 10 to 14 left, too few for the 20-character tag; an extra-large label cannot hold even the 19-character format string, so it shows a cut-off one. **The printed label cannot identify these pages**, so the document's details must travel in the page data.
 
+## Evidence from real scans (2026-11-16)
+
+The owner then scanned the same 0.2.0 Standard-dot printout at 300 dpi in colour (three pages, ADS-1100W). The decoder found the grid on all three, so cross tracking works on a sheet-fed scan, but lost 19% of codewords on each full page. The simulator reproduces that error pattern at a blur of about 1.8 printer dots, not the 1.0 assumed above. At that fitted blur:
+
+| Dots | 600 dpi | 300 dpi | 200 dpi |
+|---|---|---|---|
+| Standard | 15% of bytes wrong | 32% | 68% |
+| Medium | clean | 0.06% of bytes wrong | 1.5% |
+| Big | clean | clean | clean |
+| Large | clean | clean | clean |
+| Extra large | clean | clean | clean |
+
+This is a fit to three scans from one printer and one scanner. It replaces the table above as the basis for the claims: the binding simulated-scan tests use blur 1.8, and blur 1.0 is kept as a second, milder level. The Standard-dot claims at 300 and 250 dpi are withdrawn. The claims are: Medium at 300 dpi and at 200 dpi with Standard protection; Big at 200 dpi; Large at 300 and 200 dpi; Extra large at 200 dpi; one lost page of twelve.
+
 ## Goals
 
 - A choice of **dot size** when putting a file on paper: Standard, Large, Extra large. Large is meant for 300 dpi scans, Extra large for 200 dpi.
@@ -208,8 +222,8 @@ From the located grid the program knows how many scan pixels cover one dot. This
 
 What the owner's scanner app produces is not known beyond the first three scans (about 200 dpi), so acceptance covers both sizes:
 
-- **Extra large dots, Standard protection,** scanned with the ADS-1100W as the phone app delivers it (about 200 dpi): the application shows Verified. This one must pass.
-- **Large dots, Standard protection,** at the same settings (2 pixels per dot, the edge): the result is recorded. It must pass if the app can be set to 300 dpi.
+- **Big dots, Standard protection,** scanned with the ADS-1100W at 200 dpi and at 300 dpi: the application shows Verified. This one must pass.
+- **Medium dots, Standard protection,** at 300 dpi: must pass; at 200 dpi the result is recorded.
 - **A lost page:** a document of 12 pages or more with one page left out shows Verified.
 
 Scans that fail go into `tests/scans/`, and the work is not done until they read or the claim is withdrawn.
