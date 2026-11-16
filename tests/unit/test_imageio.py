@@ -342,3 +342,16 @@ def test_unidentified_file_names_accepted_formats(tmp_path):
     (tmp_path / "t.txt").write_text("hello")
     with pytest.raises(OptarError, match=r"t\.txt: not a PNG, TIFF, BMP, PGM/PPM or JPEG image"):
         read_scan(tmp_path / "t.txt")
+
+
+def test_scan_pixel_limit_raises_pillows_limit_under_the_read_lock():
+    normal = Image.MAX_IMAGE_PIXELS
+    with optar.imageio.scan_pixel_limit():
+        assert Image.MAX_IMAGE_PIXELS == optar.imageio.MAX_SCAN_PIXELS
+        assert optar.imageio._OPEN_LOCK.locked()  # read_scan waits meanwhile
+    assert Image.MAX_IMAGE_PIXELS == normal
+    assert not optar.imageio._OPEN_LOCK.locked()
+    with pytest.raises(RuntimeError), optar.imageio.scan_pixel_limit():
+        raise RuntimeError("restored on error too")
+    assert Image.MAX_IMAGE_PIXELS == normal
+    assert not optar.imageio._OPEN_LOCK.locked()

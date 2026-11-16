@@ -385,3 +385,12 @@ def test_check_failed_and_save_refusals():
     )
     assert text.SAVE_RUNNING == "a save is already running"
     assert "closed" in text.SAVE_AFTER_CLOSE
+
+
+def test_preview_messages():
+    assert text.preview_failed("cannot identify image file") == (
+        "This scan cannot be shown: cannot identify image file"
+    )
+    assert text.too_large_to_show(700_000_000, 600_000_000) == (
+        "700,000,000 pixels is more than the 600,000,000 a scan may have"
+    )

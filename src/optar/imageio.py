@@ -2,6 +2,8 @@
 """Reading and writing page and scan images."""
 
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 import numpy as np
 from PIL import Image, UnidentifiedImageError
@@ -68,6 +70,24 @@ def _to_gray8(im: Image.Image) -> tuple[np.ndarray, bool]:
 def _accepted_formats() -> str:
     names = [{"PPM": "PGM/PPM"}.get(f, f) for f in SCAN_FORMATS]
     return ", ".join(names[:-1]) + " or " + names[-1]
+
+
+@contextmanager
+def scan_pixel_limit() -> Iterator[None]:
+    """Lets Pillow open images of up to MAX_SCAN_PIXELS while the block runs.
+
+    For code that opens scans with Pillow itself (to show one, say). The limit is
+    process-wide, so the block holds the lock read_scan takes: reads in other
+    threads wait meanwhile and never see the raised limit. Keep the block short:
+    open the image (and, for formats other than PNG, load it) inside it.
+    """
+    with _OPEN_LOCK:
+        pillow_limit = Image.MAX_IMAGE_PIXELS
+        Image.MAX_IMAGE_PIXELS = MAX_SCAN_PIXELS
+        try:
+            yield
+        finally:
+            Image.MAX_IMAGE_PIXELS = pillow_limit
 
 
 def read_scan(path) -> np.ndarray:

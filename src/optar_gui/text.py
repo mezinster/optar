@@ -363,3 +363,12 @@ def scan_filter() -> str:
     """The file dialog's filter for scans."""
     patterns = " ".join(f"*{ext}" for ext in SCAN_EXTENSIONS)
     return f"Scans ({patterns});;All files (*)"
+
+
+def preview_failed(message: str) -> str:
+    """Shown in the preview instead of a scan it could not load."""
+    return f"This scan cannot be shown: {message}"
+
+
+def too_large_to_show(pixels: int, limit: int) -> str:
+    return f"{pixels:,} pixels is more than the {limit:,} a scan may have"

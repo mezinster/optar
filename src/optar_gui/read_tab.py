@@ -24,9 +24,11 @@ Responsiveness.
   freezes the window.
 - Scans are read and decoded only by background jobs. Saving and checking run on
   a second runner, so they never wait behind scans being decoded.
-- Closing cancels every scan and check, lets a running save finish, and waits
-  for all of it within one time budget; a save still running when the budget
-  runs out is told to stop and leaves no file.
+- The preview loads the selected scan on a third runner the controller owns
+  (``preview_runner``), so closing stops it with everything else.
+- Closing cancels every scan, check and preview load, lets a running save
+  finish, and waits for all of it within one time budget; a save still running
+  when the budget runs out is told to stop and leaves no file.
 """
 
 from __future__ import annotations
@@ -43,7 +45,6 @@ from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFileDialog,
-    QFrame,
     QHBoxLayout,
     QLabel,
     QListView,
@@ -59,6 +60,7 @@ from optar.fileio import replacing
 from optar_gui import text
 from optar_gui.document import DocState, Document, Summary, expand_paths
 from optar_gui.jobs import JobRunner
+from optar_gui.preview import ScanPreview
 from optar_gui.work import Cancelled, ScanWork, process_scan
 
 __all__ = ["REFRESH_MS", "SHUTDOWN_MS", "ReadController", "ReadTab"]
@@ -119,6 +121,7 @@ class ReadController(QObject):
         self._tasks = JobRunner(self, max_workers=2)  # saving and checking
         self._tasks.finished.connect(self._on_task_finished)
         self._tasks.failed.connect(self._on_task_failed)
+        self._previews = JobRunner(self, max_workers=1)  # the preview's image loads
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.setInterval(REFRESH_MS)
@@ -143,6 +146,11 @@ class ReadController(QObject):
     def runner(self) -> JobRunner:
         """The runner that reads and decodes scans."""
         return self._runner
+
+    @property
+    def preview_runner(self) -> JobRunner:
+        """The runner the preview loads images on; ``shutdown`` stops it."""
+        return self._previews
 
     @property
     def summary(self) -> Summary:
@@ -230,13 +238,15 @@ class ReadController(QObject):
         self.refresh()
 
     def shutdown(self, timeout_ms: int = SHUTDOWN_MS) -> bool:
-        """Cancels the scans and the check, lets a running save finish, and waits for
-        all of it within ``timeout_ms`` in all. A save still running then is told to
-        stop (it leaves no file). Returns whether everything stopped in time."""
+        """Cancels the scans, the check and the preview's load, lets a running save
+        finish, and waits for all of it within ``timeout_ms`` in all. A save still
+        running then is told to stop (it leaves no file). Returns whether everything
+        stopped in time."""
         deadline = time.monotonic() + max(0, timeout_ms) / 1000
         self._closed = True
         self._timer.stop()
         self._runner.cancel_all()  # every scan stops at its next check from now on
+        self._previews.cancel_all()
         self._tasks.cancel(_VERDICT_JOB)  # the save ignores cancelling: see _write_chunks
 
         def left() -> int:
@@ -246,7 +256,8 @@ class ReadController(QObject):
         if not tasks_done:
             self._save_stop.set()
         scans_done = self._runner.shutdown(left())
-        return tasks_done and scans_done
+        previews_done = self._previews.shutdown(left())
+        return tasks_done and scans_done and previews_done
 
     # --- Redrawing ---------------------------------------------------------------
 
@@ -429,8 +440,7 @@ class ReadTab(QWidget):
         self.add_button = QPushButton(text.ADD_SCANS, objectName="addButton")
         self.add_button.clicked.connect(self._on_add)
 
-        self.preview = QFrame(objectName="previewPlaceholder")  # the preview goes here
-        self.preview.setFrameShape(QFrame.Shape.StyledPanel)
+        self.preview = ScanPreview(self.controller.preview_runner)
         self.preview.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.detail = QLabel(objectName="detailLabel")
         self.detail.setTextFormat(Qt.TextFormat.PlainText)
@@ -563,19 +573,26 @@ class ReadTab(QWidget):
     def _show_selection(self) -> None:
         lines: tuple[str, ...] = ()
         doc = self.controller.document
+        scan_path, work = None, None  # the selected page's scan, for the preview
         if self._selected is not None:
             kind, key = self._selected
             if kind == "page":
                 page = self._pages[key - 1]
                 name = None
                 if page.scan_id is not None:
-                    name = os.path.basename(doc.scan(page.scan_id).path)
+                    scan_path = doc.scan(page.scan_id).path
+                    work = self.controller.work_for(page.scan_id)
+                    name = os.path.basename(scan_path)
                 lines = text.detail_text(page, name, len(self._pages))
             elif kind == "other":
                 lines = text.other_group_detail(self._others[key])
             elif kind == "unreadable":
                 lines = text.unreadable_detail(doc.scan(key))
         self.detail.setText("\n".join(lines))
+        if work is not None:
+            self.preview.show_scan(scan_path, work.rotation, work.marks)
+        else:
+            self.preview.show_scan(scan_path, 0, None)
         self.remove_button.setEnabled(self._selected_scan() is not None)
 
     # --- User actions --------------------------------------------------------------
