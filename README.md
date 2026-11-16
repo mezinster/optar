@@ -26,8 +26,8 @@ and give the file a name. Then choose the dot size and the protection (see
 Standard protection. The line "Prints as:" shows the text that will be
 printed on each page, and a second line shows how many pages the file needs
 and, with protection, how many of those pages can be lost. Ticking "Compatible
-with optar 0.2 and the C tool" makes the printout 0.2.0 made, with Standard
-dots and no protection. "Create PDF…" saves the PDF. Print it at actual size
+with optar 0.2 and the original optar" makes the printout 0.2.0 made, with
+Standard dots and no protection. "Create PDF…" saves the PDF. Print it at actual size
 (100%), not "fit to page", on a 600 dpi laser printer.
 
 **Read from paper.** Add the scans of the pages ("+ Add scans…", or drop
@@ -134,11 +134,13 @@ Each page in the list has one of these states:
 - Repaired · N: N blocks were damaged and the error correction repaired them.
   The data is intact.
 - Damaged · N lost: N blocks could not be repaired, so the saved file has
-  wrong data there. Rescan the page, preferably at 600 or 1200 dpi in
-  grayscale, and replace the scan.
+  wrong data there. Rescan the page in grayscale at the resolution for its
+  dot size (see "Dot size and protection"), and replace the scan.
 - Not readable: the scan could not be identified (for example there is no
-  optar page in the image, or the label could not be read). Rescan it, or
-  assign it to a page by hand.
+  optar page in the image, or the label could not be read). A scan made below
+  400 dpi that cannot be read says so instead, for example "Scanned at about
+  200 dpi, which is too coarse to read", with the resolution each dot size
+  needs. Rescan it, or assign it to a page by hand.
 - Missing: no scan of this page has been added. Add one. In a protected
   document the other pages may still be enough to recover the file, and the bar
   then says so.
@@ -152,11 +154,15 @@ The bar at the bottom shows the state of the whole document:
 - "Does not match the fingerprint on the paper": all pages were read, but the
   file is not the original, because some data was decoded wrongly. Rescan
   the pages, starting with those marked Repaired.
-- "Recoverable: 1 page missing, ...": for a protected
-  document, pages are missing but the pages that were read are enough to
-  rebuild them.
+- "Recoverable: page 3 missing, can be repaired from the others": for a
+  protected document, pages are missing but the pages that were read should be
+  enough to rebuild them. Once that has been done and checked, the bar says
+  "Recoverable: page 3 missing, repaired from the others · matches the
+  fingerprint", followed by the size and what the repair did.
 - "Working…": scans are still being read.
-- "Checking the fingerprint…": the check is running in the background.
+- "Checking the fingerprint…": the check is running in the background. For
+  pages that identify themselves from their data it reads "Repairing and
+  checking the fingerprint…".
 - "All N pages read · cannot be verified (no tag)": the pages have no tag.
 - Otherwise, a count such as "4 of 6 pages good · 1 damaged · 1 missing".
 
@@ -168,7 +174,10 @@ of the recovered file matched the one on the paper. It never means only that
 the repair reported no failure.
 
 "Save file…" asks for confirmation when the file is not verified, and says
-what is wrong with it.
+what is wrong with it. A protected document that could not be repaired can
+still be saved as far as it was recovered, after a warning that the file may
+contain wrong parts, but only when at least half of its pages were read: from
+fewer, nothing is saved.
 
 ### Scan formats
 
@@ -210,11 +219,14 @@ The window and `optar encode` promise that a lost page can be recovered only
 for documents long enough, and then say "can lose N page(s) of T". With
 Standard protection that is 1 page from 12 pages and 2 pages from 24 pages.
 With High protection it is 1 page from 6 pages and 2 pages from 12 pages.
-Below that, damage within pages is repaired, but no whole page may be lost.
+Below that, damage within pages is repaired, but losing a whole page loses the
+file.
 The promise is deliberately cautious, and a document may recover more than it
 promises.
 
 A file whose protected printout would be more than 256 MiB on paper is refused.
+The window then says whether the file would fit without protection or with
+smaller dots.
 
 The pages of a printout made with protection, or with any dot size but
 Standard, carry the details of the document in their data: which printout they
@@ -244,8 +256,9 @@ What is not shown:
 - No real scan of a larger-dot page has been read yet.
 - Sheet-fed scanners are untested beyond the program finding the grid of dots
   on three real scans.
-- Printing must be at actual size (100%). A printout scaled to about 95% was
-  measured.
+- Three real 300 dpi scans of one printout measured about 286 dpi, which means
+  that printout came out at about 95% of actual size. Smaller dots are harder
+  to read, so print at actual size (100%).
 
 ### What is not proven
 
@@ -292,11 +305,15 @@ always zero-padded to a whole page. The desktop application does both.
 
 For self-identifying pages (see "Dot size and protection") `decode` finds out
 from the scans themselves what they are. It takes the scans in any order and
-any orientation, and a scan it cannot read counts as a missing page. It
+any orientation, and a scan it cannot read counts as a missing page. (It
+decides from the first three scans: if none of them can be identified, it
+treats the set as a printout from 0.2.0 or earlier.) It
 repairs the data, cuts it to its true size and checks the fingerprint. It
 writes the file only if the fingerprint matches, unless you give `--force`,
-which saves what was recovered even if it did not verify. The exit status is 0
-only when the file verified.
+which saves what was recovered even if it did not verify. Even with `--force`
+nothing is saved when fewer than half of the pages were read. The exit status
+is 0 only when the file verified. For printouts from 0.2.0 or earlier `--force`
+changes nothing, and `decode` says so.
 
 From 0.2.0, `encode` prints the tag (see "The tag" above) on every page of a
 compatible printout; add `--no-tag` to leave it out.
@@ -340,8 +357,9 @@ tar if it is sensitive to this.** Self-identifying pages store the size.
 One A4 page holds 1,598,184 bits (199,773 bytes) with the default code and
 Standard dots; one Letter page holds 1,540,728 bits (192,591 bytes). Larger
 dots hold less (see the table in "Dot size and protection"). With protection,
-part of the pages carries the protection data and the page headers, so the
-file gets less than the pages hold.
+part of the pages carries the protection data, and every page repeats a short
+record that says which document and which page it is, so the file gets less
+than the pages hold.
 
 The default is the Golay 24/12 code. Hamming codes of order 2 to 5 are also
 supported, selected through `--format` (the sixth field of the format string).
