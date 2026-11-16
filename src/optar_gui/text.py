@@ -501,12 +501,9 @@ def protection_label(protect: str) -> str:
 
 
 def promise(promised: int, total: int) -> str:
-    """How many of a protected printout's pages may be lost without losing the file.
-
-    The promise (``optar.container.pages_promised``) is for adjacent pages.
-    """
-    in_a_row = " in a row" if promised > 1 else ""
-    return f"can lose {count(promised, 'page')} of {total:,}{in_a_row} and still be read in full"
+    """How many of a protected printout's pages, any of them, may be lost
+    without losing the file (``optar.container.pages_promised``)."""
+    return f"can lose {count(promised, 'page')} of {total:,}"
 
 
 DAMAGE_REPAIRED = "damage within pages is repaired, but no whole page may be lost"

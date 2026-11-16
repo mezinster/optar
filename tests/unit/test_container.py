@@ -195,23 +195,26 @@ def test_pages_promised():
 
     assert promised(11, 32) == 0
     assert promised(12, 32) == 1
-    assert promised(22, 32) == 1
-    assert promised(23, 32) == 2
+    assert promised(23, 32) == 1
+    assert promised(24, 32) == 2
     assert promised(5, 64) == 0
     assert promised(6, 64) == 1
+    assert promised(11, 64) == 1
+    assert promised(12, 64) == 2
     assert promised(50, 0) == 0
 
 
-@pytest.mark.parametrize(("total", "parity"), [(12, 32), (23, 32), (6, 64)])
+@pytest.mark.parametrize(("total", "parity"), [(12, 32), (24, 32), (6, 64), (12, 64)])
 def test_promised_pages_fit_the_budget(total, parity):
+    """Any n promised pages, adjacent or not, cost no codeword more than the budget."""
     p = plan_for(total, A4, parity)
     n = pages_promised(p)
     assert n >= 1
     page = positions(p) // p.page_body  # (m, CODEWORD) page index of each byte
     counts = np.zeros((p.codewords, total), dtype=np.int64)
     np.add.at(counts, (np.arange(p.codewords)[:, None], page), 1)
-    windows = np.cumsum(np.pad(counts, ((0, 0), (1, 0))), axis=1)
-    worst = int((windows[:, n:] - windows[:, :-n]).max())
+    # The worst n pages for a codeword are the n holding most of its bytes.
+    worst = int(np.sort(counts, axis=1)[:, -n:].sum(axis=1).max())
     assert worst <= PROMISE_NUM * parity // PROMISE_DEN
 
 

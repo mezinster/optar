@@ -485,9 +485,8 @@ def test_putting_on_paper_choices_and_summary():
     assert [text.protection_label(p) for p in ("none", "standard", "high")] == [
         "None", "Standard", "High"]
     assert text.print_summary(12, 2_000_000, 1, True) == (
-        "12 pages · 2,000,000 bytes · can lose 1 page of 12 and still be read in full")
-    assert text.print_summary(40, 9_000_000, 3, True).endswith(
-        "can lose 3 pages of 40 in a row and still be read in full")
+        "12 pages · 2,000,000 bytes · can lose 1 page of 12")
+    assert text.print_summary(40, 9_000_000, 3, True).endswith(" · can lose 3 pages of 40")
     assert text.print_summary(1, 10, 0, True) == f"1 page · 10 bytes · {text.DAMAGE_REPAIRED}"
     assert text.print_summary(0, 0, 0, False) == "1 page · 0 bytes"
     for words in (text.DOTS_FIELD, text.PROTECT_FIELD, text.COMPATIBLE, text.DAMAGE_REPAIRED,

@@ -217,17 +217,19 @@ def _positions(p: Plan, first: int, stop: int) -> np.ndarray:
 
 
 def pages_promised(p: Plan) -> int:
-    """Whole adjacent pages the window may promise can be lost: the largest n
-    with ceil(n * page_body / codewords) + 1 <= 3 * parity // 4; 0 without parity.
+    """Whole pages the window may promise can be lost, any n of them, adjacent
+    or not: the largest n with n * (ceil(page_body / codewords) + 1) <= 3 *
+    parity // 4; 0 without parity.
 
-    n adjacent pages cover n * page_body body bytes, which touch at most
-    ceil(n * page_body / codewords) + 1 slices, and a codeword has one byte
-    in each slice.
+    One page covers page_body body bytes, which touch at most
+    ceil(page_body / codewords) + 1 slices, and a codeword has one byte in
+    each slice: each lost page can cost a codeword that many bytes.
     """
     budget = PROMISE_NUM * p.parity // PROMISE_DEN
     if budget < 1 or p.codewords == 0:
         return 0
-    return min(p.total, (budget - 1) * p.codewords // p.page_body)
+    per_page = -(-p.page_body // p.codewords) + 1
+    return min(p.total, budget // per_page)
 
 
 def _codewords(data: bytes, name: str, p: Plan) -> np.ndarray:
