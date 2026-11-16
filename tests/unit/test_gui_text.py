@@ -10,6 +10,7 @@ from optar_gui.document import (
     SIZE_MISMATCH,
     DocState,
     Document,
+    Fit,
     GroupView,
     Health,
     PageOutcome,
@@ -396,3 +397,47 @@ def test_preview_messages():
     )
     assert text.PREVIEW_LOADING == "Loading…"
     assert text.size_changed() == "the image's size changed while it was loading"
+
+
+def test_spare_row_and_detail():
+    spare = PageView(2, Health.DAMAGED, 7, (3,), 9, 22, (1000, 9, 0, 0))
+    assert text.spare_row(spare, "page-2.png") == "    Spare · page-2.png · Damaged · 22 lost"
+    assert text.spare_detail(spare, "page-2.png", 3) == (
+        "Page 2 of 3 · page-2.png · spare",
+        "1,031 blocks · 9 repaired · 22 lost",
+        "Repairs: 9 one-bit, 0 two-bit, 0 three-bit",
+        "Not in use: the page uses another scan",
+    )
+
+
+def test_replace_rejected_says_what_the_scan_is():
+    def scan(info, reason=""):
+        return ScanView(4, "/x/new.png", "done", info, None, reason)
+
+    other = ScanInfo(A, 1, 1, "other.tar", make_tag(b"x"))
+    assert text.replace_rejected(2, Fit.OTHER_DOCUMENT, scan(other)) == (
+        "new.png was not used for page 2: it is page 1 of another printout, "
+        "other.tar · A4 · 1 page."
+    )
+    mine = ScanInfo(A, 3, 1, "doc.tar", None)
+    assert text.replace_rejected(2, Fit.OTHER_PAGE, scan(mine)) == (
+        "new.png was not used for page 2: it is page 1 of this document."
+    )
+    assert text.replace_rejected(2, Fit.UNREADABLE, scan(None, "label unreadable")) == (
+        "new.png was not used for page 2. "
+        "The label at the bottom of the page could not be read."
+    )
+    assert text.replace_rejected(1_205, Fit.UNREADABLE, scan(None, "bad file.")) == (
+        "new.png was not used for page 1,205. bad file."
+    )
+
+
+def test_action_captions_and_dialog_wording():
+    for caption in (text.REPLACE_SCAN, text.USE_SPARE, text.SWITCH_DOCUMENT,
+                    text.ASSIGN_PAGE, text.START_BY_HAND, text.REPLACE_REJECTED_TITLE,
+                    text.ASSIGN_TITLE, text.PAGE_FIELD, text.START_BY_HAND_TITLE,
+                    text.START_BY_HAND_PROMPT, text.TOTAL_FIELD):
+        assert caption.strip()
+    assert text.replace_title(1_205) == "Choose a scan of page 1,205"
+    assert text.assign_prompt("scan 7.png") == "Which page of this document is scan 7.png?"
+    assert text.of_pages(1_205) == " of 1,205"

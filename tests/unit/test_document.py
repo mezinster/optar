@@ -18,15 +18,19 @@ import pytest
 from optar.tag import Tag, make_tag
 from optar_gui.document import (
     MAX_TOTAL_PAGES,
+    NO_ACTIONS,
     SCAN_EXTENSIONS,
     SIZE_MISMATCH,
+    Actions,
     DocState,
     Document,
+    Fit,
     GroupView,
     Health,
     PageOutcome,
     PageSlot,
     PageView,
+    Row,
     ScanInfo,
     ScanState,
     ScanView,
@@ -1770,3 +1774,130 @@ def test_scan_extensions():
 
 def test_expand_paths_keeps_a_missing_path(tmp_path):
     assert expand_paths([str(tmp_path / "gone.png")]) == [str(tmp_path / "gone.png")]
+
+
+# --- What the window offers for a selected row -------------------------------------
+
+
+def test_actions_for_a_page():
+    doc, (a, b) = build(info(1), info(1))
+    doc.set_outcome(a, out())
+    doc.set_outcome(b, out(lost=2))
+    assert doc.actions(Row.PAGE, 1) == Actions(remove=a, replace=1)
+    assert doc.actions(Row.PAGE, 2) == Actions(replace=2)  # missing: nothing to remove
+    assert doc.actions(Row.PAGE, 4) == NO_ACTIONS  # no such page
+    assert doc.actions(Row.SPARE, b) == Actions(remove=b, use_spare=b)
+    assert doc.actions(Row.SPARE, a) == NO_ACTIONS  # in use, not a spare
+    doc.use_scan(b)
+    assert doc.actions(Row.SPARE, a) == Actions(remove=a, use_spare=a)
+    assert doc.actions(Row.SPARE, b) == NO_ACTIONS
+
+
+def test_actions_for_other_documents():
+    doc, (a, one, two, three) = build(
+        info(1), info(1, tag=OTHER_TAG), info(1, total=2, name="x", tag=None),
+        info(2, total=2, name="x", tag=None)
+    )
+    single, double = doc.others()
+    assert doc.actions(Row.OTHER, single.key) == Actions(switch=single.key, assign=one)
+    # A group of several scans is switched to, not assigned to a page as a whole.
+    assert doc.actions(Row.OTHER, double.key) == Actions(switch=double.key)
+    assert doc.actions(Row.OTHER, a) == NO_ACTIONS  # the current document
+    assert doc.actions(Row.OTHER, three) == NO_ACTIONS  # not a group's key
+
+
+def test_actions_for_unreadable_scans():
+    doc, (bad,) = build(None)
+    doc.set_unreadable(bad, "label unreadable")
+    # No document to assign it to: it must be started by hand first.
+    assert doc.actions(Row.UNREADABLE, bad) == Actions(remove=bad)
+    assert doc.can_start_by_hand
+    doc.start_by_hand(A, 2)
+    assert not doc.can_start_by_hand
+    assert doc.actions(Row.UNREADABLE, bad) == Actions(remove=bad, assign=bad)
+    doc.assign_page(bad, 2)
+    assert doc.actions(Row.UNREADABLE, bad) == NO_ACTIONS  # now page 2
+    assert doc.actions(Row.PAGE, 2) == Actions(remove=bad, replace=2)
+    assert doc.actions(Row.UNREADABLE, 99) == NO_ACTIONS
+    assert doc.actions("title", None) == NO_ACTIONS
+
+
+def test_start_by_hand_is_offered_only_without_a_document_and_with_unreadable_scans():
+    doc = Document()
+    assert not doc.can_start_by_hand  # nothing to put in it
+    waiting = add(doc, 1)
+    assert not doc.can_start_by_hand
+    doc.set_unreadable(waiting, "no page found")
+    assert doc.can_start_by_hand
+    good = add(doc, 2)
+    doc.set_identified(good, info(1))
+    assert not doc.can_start_by_hand
+
+
+def test_replacement_fit():
+    doc, (a, same, other_page, foreign, bad, waiting) = build(
+        info(2), info(2), info(1), info(2, tag=OTHER_TAG), info(2), None
+    )
+    doc.set_unreadable(bad, "decoding failed")
+    assert doc.replacement_fit(same, 2) == Fit.THIS_PAGE
+    assert doc.replacement_fit(same, 3) == Fit.OTHER_PAGE
+    assert doc.replacement_fit(other_page, 2) == Fit.OTHER_PAGE
+    assert doc.replacement_fit(foreign, 2) == Fit.OTHER_DOCUMENT
+    assert doc.replacement_fit(bad, 2) == Fit.UNREADABLE
+    assert doc.replacement_fit(waiting, 2) == Fit.PENDING
+    # A scan assigned to the page by hand is in that page.
+    doc.assign_page(foreign, 3)
+    assert doc.replacement_fit(foreign, 3) == Fit.THIS_PAGE
+
+
+def test_page_with_shows_a_spare_as_if_it_were_in_use():
+    doc, (a, b) = build(info(1), info(1))
+    doc.set_outcome(a, out(repaired=3))
+    doc.set_outcome(b, out(lost=5))
+    spare = doc.page_with(b)
+    assert (spare.number, spare.health, spare.scan_id, spare.lost) == (1, Health.DAMAGED, b, 5)
+    assert doc.pages()[0].health == Health.REPAIRED  # unchanged
+    with pytest.raises(KeyError):
+        doc.page_with(99)
+    foreign = add(doc, "foreign")
+    doc.set_identified(foreign, info(1, tag=OTHER_TAG))
+    with pytest.raises(ValueError):
+        doc.page_with(foreign)  # not a page of the current document
+
+
+def test_suggested_page():
+    doc, (a, foreign, bad) = build(info(1), info(3, tag=OTHER_TAG), None)
+    doc.set_unreadable(bad, "label unreadable")
+    assert doc.suggested_page(foreign) == 3  # what its own label says
+    assert doc.suggested_page(bad) == 2  # the first page with no scan
+    for scan_id in (foreign, bad):
+        doc.assign_page(scan_id, doc.suggested_page(scan_id))
+    assert doc.suggested_page(a) == 1  # every page has a scan, own label
+    alone, (lost,) = build(None)
+    alone.set_unreadable(lost, "label unreadable")
+    with pytest.raises(ValueError):
+        alone.suggested_page(lost)  # no document to suggest a page of
+
+
+def test_scan_id_of_a_path(tmp_path):
+    doc = Document()
+    scan = tmp_path / "s.png"
+    scan.write_bytes(b"")
+    scan_id = doc.add_scan(str(scan))
+    assert doc.scan_id_of(str(tmp_path / "." / "s.png")) == scan_id
+    assert doc.scan_id_of(str(tmp_path / "t.png")) is None
+
+
+def test_assigned_scan_that_fails_to_decode_after_working_is_unreadable():
+    doc, (a, bad) = build(info(1), None)
+    doc.set_working(bad)
+    doc.set_unreadable(bad, "label unreadable")
+    doc.set_working(bad, False)
+    doc.assign_page(bad, 2)
+    doc.set_working(bad)  # decoding it without a label
+    assert doc.scan(bad).state == ScanState.WORKING
+    doc.set_unreadable(bad, "could not be decoded in any orientation")
+    assert doc.scan(bad).state == ScanState.WORKING  # its work has not reported yet
+    doc.set_working(bad, False)
+    assert doc.scan(bad).state == ScanState.UNREADABLE
+    assert doc.pages()[1].health == Health.UNREADABLE

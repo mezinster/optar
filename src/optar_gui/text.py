@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from optar_gui.document import (
     SCAN_EXTENSIONS,
     DocState,
+    Fit,
     GroupView,
     Health,
     PageView,
@@ -41,6 +42,22 @@ ADD_SCANS_TITLE = "Add scans"
 SAVE_TITLE = "Save the recovered file"
 CONFIRM_SAVE_TITLE = "Save anyway?"
 ERROR_TITLE = "Could not save"
+
+# The actions on the selected row and their dialogs.
+REPLACE_SCAN = "Replace scan…"
+USE_SPARE = "Use this scan"
+SWITCH_DOCUMENT = "Switch to this document"
+ASSIGN_PAGE = "Assign to page…"
+START_BY_HAND = "Start a document by hand…"
+REPLACE_REJECTED_TITLE = "Scan not used"
+ASSIGN_TITLE = "Assign to a page"
+PAGE_FIELD = "Page:"
+START_BY_HAND_TITLE = "Start a document by hand"
+START_BY_HAND_PROMPT = (
+    "No scan could be identified. Give the paper and the number of pages of the "
+    "printout, then assign each scan to its page."
+)
+TOTAL_FIELD = "Pages:"
 
 # Why a save cannot start (programming errors, never shown in a dialog).
 SAVE_RUNNING = "a save is already running"
@@ -292,6 +309,53 @@ def other_group_detail(group: GroupView) -> tuple[str, ...]:
         _group_line(group),
         f"{count(len(group.scan_ids), 'scan')} of another printout, not part of this file",
     )
+
+
+def spare_row(page: PageView, scan_name: str) -> str:
+    """A row under its page: a spare scan, shown with the health it would give."""
+    return f"    Spare · {scan_name} · {health_label(page)}"
+
+
+def spare_detail(page: PageView, scan_name: str, pages: int) -> tuple[str, ...]:
+    """The detail panel for a spare; ``page`` is the page as it would be with it in use."""
+    lines = detail_text(page, scan_name, pages)
+    return (f"{lines[0]} · spare", *lines[1:], "Not in use: the page uses another scan")
+
+
+def replace_title(page: int) -> str:
+    return f"Choose a scan of page {page:,}"
+
+
+def _sentence(words: str) -> str:
+    words = words.rstrip()
+    return words if words.endswith(".") else f"{words}."
+
+
+def replace_rejected(page: int, fit: str, scan: ScanView) -> str:
+    """Why a scan chosen to replace ``page`` was not used; ``fit`` is a ``Fit``."""
+    name = os.path.basename(scan.path)
+    if fit == Fit.UNREADABLE or scan.info is None:
+        return f"{name} was not used for page {page:,}. {_sentence(unreadable_reason(scan.reason))}"
+    info = scan.info
+    if fit == Fit.OTHER_PAGE:
+        return f"{name} was not used for page {page:,}: it is page {info.page:,} of this document."
+    printout = (
+        f"{info.name.rstrip(' ') or NO_NAME} · {paper_name(info.format)} · "
+        f"{count(max(info.total, 1), 'page')}"
+    )
+    return (
+        f"{name} was not used for page {page:,}: it is page {info.page:,} of another "
+        f"printout, {printout}."
+    )
+
+
+def assign_prompt(scan_name: str) -> str:
+    return f"Which page of this document is {scan_name}?"
+
+
+def of_pages(total: int) -> str:
+    """After the page number in the page field: how many pages there are."""
+    return f" of {total:,}"
 
 
 def unreadable_row(scan: ScanView) -> str:

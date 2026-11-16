@@ -145,6 +145,28 @@ The verdict is computed by hashing the chunks as they are produced.
 no directories, no characters Windows refuses, no device names; otherwise
 ``"recovered.bin"``.
 
+What the window offers. The window lists the pages of the document (each followed
+by its spares), the other groups and the unreadable scans; ``Row`` names these
+kinds of row. ``actions(kind, key)`` says which actions apply to a row, as an
+``Actions`` whose fields are what each action acts on (None: not offered):
+
+- a page (key: its number) can have its scan replaced, and its scan in use, if
+  any, removed;
+- a spare (key: its scan) can be put in use or removed;
+- another group (key: its key) can be switched to; one with a single scan can
+  also have that scan assigned to a page of the document;
+- an unreadable scan (key: its scan) can be removed, and assigned to a page when
+  there is a document.
+
+``can_start_by_hand`` is true when there is no document but there are unreadable
+scans to put into one. ``replacement_fit(scan_id, page)`` says whether a scan
+added to replace a page identifies as that page of the current document (same
+group: same format, total and tag or name), and if not, what it is instead.
+``page_with(scan_id)`` is the page a scan of the document is in, as it would be
+with that scan in use, so a spare's health can be shown. ``suggested_page``
+offers a page to assign a scan to: the page its own label names if the document
+has it, else the first page with no scan, else page 1.
+
 Scan files. ``expand_paths`` turns the paths a user drops or picks into scans to
 add: a folder gives the files directly inside it with a ``SCAN_EXTENSIONS``
 extension (any case), sorted by name, without recursing; any other path is kept.
@@ -296,6 +318,39 @@ class DocState:
     VERIFIED = "verified"
     MISMATCH = "mismatch"
     CHECKING = "checking"  # summary(verify=False) only: complete, verdict not known yet
+
+
+class Row:
+    """The kinds of row of the window's list that ``Document.actions`` knows."""
+
+    PAGE = "page"  # key: page number
+    SPARE = "spare"  # key: scan id
+    OTHER = "other"  # key: group key
+    UNREADABLE = "unreadable"  # key: scan id
+
+
+@dataclass(frozen=True)
+class Actions:
+    """What each action applies to for a selected row; None when it is not offered."""
+
+    remove: int | None = None  # the scan Remove removes
+    replace: int | None = None  # the page whose scan is replaced
+    use_spare: int | None = None  # the spare put in use
+    switch: object | None = None  # the key of the group switched to
+    assign: int | None = None  # the scan assigned to a page
+
+
+NO_ACTIONS = Actions()
+
+
+class Fit:
+    """How a scan added to replace a page fits; see ``Document.replacement_fit``."""
+
+    PENDING = "pending"  # not identified yet
+    THIS_PAGE = "this page"
+    OTHER_PAGE = "other page"  # another page of the current document
+    OTHER_DOCUMENT = "other document"
+    UNREADABLE = "unreadable"
 
 
 @dataclass(frozen=True)
@@ -482,8 +537,13 @@ class Document:
         self._changed()
         return scan_id
 
-    def set_working(self, scan_id: int) -> None:
-        self._get(scan_id).working = True
+    def set_working(self, scan_id: int, working: bool = True) -> None:
+        """Records that the scan's work started, or (``working=False``) that it ended.
+
+        Only a scan assigned by hand that is unreadable needs the end: its work is
+        decoding it without a label, and until that reports it shows as working.
+        """
+        self._get(scan_id).working = working
         self._changed()
 
     def set_identified(self, scan_id: int, info: ScanInfo) -> None:
@@ -591,6 +651,10 @@ class Document:
 
     def scan(self, scan_id: int) -> ScanView:
         return self._view(self._get(scan_id))
+
+    def scan_id_of(self, path: str) -> int | None:
+        """The scan added for the same file as ``path``, if any."""
+        return self._reals.get(os.path.realpath(path))
 
     def scans(self) -> tuple[ScanView, ...]:
         return tuple(self._view(s) for s in self._scans.values())
@@ -743,6 +807,88 @@ class Document:
         """A plain file name made from the label, which is untrusted text."""
         cur = self.current
         return _safe_file_name(cur.title if cur is not None else "")
+
+    # --- What the window offers ---------------------------------------------------
+
+    def actions(self, kind: str, key: object) -> Actions:
+        """The actions that apply to a row of the window's list (see the module
+        docstring); ``NO_ACTIONS`` for a row that is not or no longer there."""
+        lay = self._layout
+        if lay.current is None:
+            if kind == Row.UNREADABLE and self._listed_unreadable(key):
+                return Actions(remove=key)
+            return NO_ACTIONS
+        if kind == Row.PAGE:
+            slots = self.slots()
+            if not isinstance(key, int) or not 1 <= key <= len(slots):
+                return NO_ACTIONS
+            return Actions(remove=slots[key - 1].scan_id, replace=key)
+        if kind == Row.SPARE:
+            page = self._page_in_current(key) if key in self._scans else None
+            if page is None or key not in self.slots()[page - 1].spare_ids:
+                return NO_ACTIONS
+            return Actions(remove=key, use_spare=key)
+        if kind == Row.OTHER:
+            shown = next((shown for _, shown in lay.others if shown[0] == key), None)
+            if shown is None:
+                return NO_ACTIONS
+            return Actions(switch=key, assign=shown[0] if len(shown) == 1 else None)
+        if kind == Row.UNREADABLE and self._listed_unreadable(key):
+            return Actions(remove=key, assign=key)
+        return NO_ACTIONS
+
+    def _listed_unreadable(self, scan_id: object) -> bool:
+        s = self._scans.get(scan_id) if isinstance(scan_id, int) else None
+        return (
+            s is not None
+            and s.id not in self._layout.assigned
+            and self._unreadable_reason(s) is not None
+        )
+
+    @property
+    def can_start_by_hand(self) -> bool:
+        """No document, but unreadable scans that could be put into one by hand."""
+        return self._layout.current is None and any(
+            self._unreadable_reason(s) is not None for s in self._scans.values()
+        )
+
+    def replacement_fit(self, scan_id: int, page: int) -> str:
+        """Whether the scan is page ``page`` of the current document; a ``Fit``."""
+        s = self._get(scan_id)
+        in_page = self._page_in_current(scan_id)
+        if in_page == page:
+            return Fit.THIS_PAGE
+        if in_page is not None:
+            return Fit.OTHER_PAGE
+        if self._unreadable_reason(s) is not None:
+            return Fit.UNREADABLE
+        if s.info is None:
+            return Fit.PENDING
+        return Fit.OTHER_DOCUMENT
+
+    def page_with(self, scan_id: int) -> PageView:
+        """The page of the current document the scan is in, as it would be with this
+        scan in use. Raises ValueError when it is not a page of the current document."""
+        self._get(scan_id)
+        page = self._page_in_current(scan_id)
+        if page is None:
+            raise ValueError(f"scan {scan_id} is not a page of the current document")
+        slot = self.slots()[page - 1]
+        spares = tuple(i for i in (slot.scan_id, *slot.spare_ids) if i != scan_id)
+        view, _ = self._page_view(PageSlot(page, scan_id, spares), self.page_bytes)
+        return view
+
+    def suggested_page(self, scan_id: int) -> int:
+        """The page to offer when assigning the scan; see the module docstring.
+
+        Raises ValueError when there is no document."""
+        s = self._get(scan_id)
+        slots = self.slots()
+        if not slots:
+            raise ValueError("there is no document")
+        if s.info is not None and 1 <= s.info.page <= len(slots):
+            return s.info.page
+        return next((slot.number for slot in slots if slot.scan_id is None), 1)
 
     def others(self) -> tuple[GroupView, ...]:
         return tuple(self._group_view(g, shown, tuple(shown)) for g, shown in self._layout.others)
