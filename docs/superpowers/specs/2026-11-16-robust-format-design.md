@@ -30,6 +30,8 @@ Page geometry for larger dots, computed with the existing format code (cell pitc
 | Dots | A4 crosses | A4 bytes per page | Letter crosses | Letter bytes per page | Label characters |
 |---|---|---|---|---|---|
 | Standard (1/200 in) | 65 × 93 | 199,773 | 67 × 87 | 192,591 | 98 / 101 |
+| Medium (1/150 in) | 50 × 70 | 114,904 | 51 × 66 | 110,463 | 70 / 72 |
+| Big (1/120 in) | 40 × 56 | 73,027 | 41 × 52 | 69,463 | 52 / 53 |
 | Large (1/100 in) | 33 × 46 | 49,119 | 34 × 44 | 48,403 | 39 / 41 |
 | Extra large (1/67 in) | 22 × 31 | 21,606 | 23 × 29 | 21,127 | 18 / 20 |
 
@@ -232,7 +234,7 @@ Scans that fail go into `tests/scans/`, and the work is not done until they read
 
 ## Calls made by the author, not the owner
 
-- Dot sizes are exactly 1×, 2× and 3× today's dot; cell pitch and grid rules are unchanged.
+- Dot sizes are whole numbers of 600 dpi printer dots: 3 (Standard, today's), 4 (Medium), 5 (Big), 6 (Large) and 9 (Extra large); cell pitch and grid rules are unchanged. Medium and Big were added at the owner's request (2026-11-16) for more capacity per page at in-between scan resolutions; wherever this document lists three sizes, all five are offered. Advised scan resolutions: 600, 450, 360, 300, 200 dpi.
 - Parity is Reed-Solomon over 255-byte codewords with 32 or 64 parity bytes.
 - Losing a page is not a separate protection level; the window states what the chosen level allows for the document at hand.
 - Larger-dot pages and protected pages always use the container; the label tag is dropped on them.

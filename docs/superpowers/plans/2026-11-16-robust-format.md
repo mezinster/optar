@@ -25,13 +25,15 @@
 
 **Reference values**
 
-| Dots | name | scale | A4 grid | A4 format string | A4 page bytes | Letter grid | Letter format string | Letter page bytes |
-|---|---|---|---|---|---|---|---|---|
-| Standard | `standard` | 1 | 65 × 93 | `0-65-93-24-3-1-2-24` | 199,773 | 67 × 87 | `0-67-87-24-3-1-2-24` | 192,591 |
-| Large | `large` | 2 | 33 × 46 | `0-33-46-24-3-1-2-24` | 49,119 | 34 × 44 | `0-34-44-24-3-1-2-24` | 48,403 |
-| Extra large | `xlarge` | 3 | 22 × 31 | `0-22-31-24-3-1-2-24` | 21,606 | 23 × 29 | `0-23-29-24-3-1-2-24` | 21,127 |
+| Dots | name | printer dots | printed dpi | advised scan dpi | A4 grid | A4 format string | A4 page bytes | Letter grid | Letter format string | Letter page bytes |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Standard | `standard` | 3 | 200 | 600 | 65 × 93 | `0-65-93-24-3-1-2-24` | 199,773 | 67 × 87 | `0-67-87-24-3-1-2-24` | 192,591 |
+| Medium | `medium` | 4 | 150 | 450 | 50 × 70 | `0-50-70-24-3-1-2-24` | 114,904 | 51 × 66 | `0-51-66-24-3-1-2-24` | 110,463 |
+| Big | `big` | 5 | 120 | 360 | 40 × 56 | `0-40-56-24-3-1-2-24` | 73,027 | 41 × 52 | `0-41-52-24-3-1-2-24` | 69,463 |
+| Large | `large` | 6 | 100 | 300 | 33 × 46 | `0-33-46-24-3-1-2-24` | 49,119 | 34 × 44 | `0-34-44-24-3-1-2-24` | 48,403 |
+| Extra large | `xlarge` | 9 | 66.67 | 200 | 22 × 31 | `0-22-31-24-3-1-2-24` | 21,606 | 23 × 29 | `0-23-29-24-3-1-2-24` | 21,127 |
 
-"Page bytes" is `fmt.net_bits // 8`. Printed resolution is `200 / scale` dots per inch. Parity bytes per 255-byte codeword: `none` 0, `standard` 32, `high` 64.
+"Page bytes" is `fmt.net_bits // 8`. A data dot is `printer dots` wide on a 600 dpi printer; `scale = printer_dots / 3` (a `Fraction`); printed resolution is `600 / printer_dots` dots per inch; the advised scan resolution is 3 scan pixels per dot, `1800 // printer_dots`. Wherever a task below says "standard|large|xlarge" or "scale: int", the five names and the fractional scale of this table apply (owner's change of 2026-11-16). Parity bytes per 255-byte codeword: `none` 0, `standard` 32, `high` 64.
 
 Header (38 bytes, big-endian): magic `b"oPt1"` (4), container version `1` (1), parity bytes (1), page number from 1 (2), page count (2), file size (8), first 16 bytes of the file's SHA-256 (16), CRC-32 of the preceding 34 bytes (4). `HEADER_COPIES = 5`; copy *c* starts at byte `c * (page_bytes // 5)` of the page payload. The body of a page is the payload bytes not covered by a header copy, in order.
 
