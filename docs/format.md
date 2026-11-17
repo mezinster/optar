@@ -302,6 +302,7 @@ The symbol of the 12-bit word `d` is `d * 4096 + p(d)`: the word in the upper
 whose faces are numbered 1 to 12. Face `f` stands for the bit of value
 `2 ^ (f - 1)` of `d`. Each face has five neighbours:
 
+<!-- spec-table: golay -->
 | Face | Neighbours | Mask |
 |---|---|---|
 | 1 | 2, 3, 4, 5, 6 | `0xfc1` |

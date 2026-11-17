@@ -17,7 +17,7 @@ The page format is defined by `docs/format.md` and the conformance vectors in `t
 
 Rules:
 
-- Format numbers (65, 93, 24, 3, 2, 13, 200, paper sizes, dot sizes, grids per dot size, header, spread and parity numbers) live only in `src/optar/format.py`.
+- Format numbers (65, 93, 24, 3, 2, 13, 200, paper sizes, dot sizes, grids per dot size, header, spread and parity numbers) live only in `src/optar/format.py`. The few numbers that belong to one algorithm stay with it (`MAX_PAGES` in `encoder.py`, the font and tag sizes, the field polynomial in `rs.py`); the constants table of `docs/format.md` names each one.
 - `docs/format.md` and `tests/vectors` define the format. `tests/unit/test_spec.py` compares the specification's tables and examples with the code: change the document and the code together.
 - The vectors under `tests/vectors/c` were recorded from the C tools once and cannot be recorded again without reviving the C build. Never edit them to make a test pass. `tests/vectors` stays under 2,000,000 bytes (a test checks it).
 - Library modules never print, call `sys.exit` or read `sys.argv`; only `cli.py` does.

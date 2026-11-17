@@ -21,7 +21,7 @@ conformance vectors in `tests/vectors`. The original C program, kept in
 Desktop application
 -------------------
 
-From 0.2.0 the Python port also comes with `optar-gui`, a desktop application
+From 0.2.0 optar also comes with `optar-gui`, a desktop application
 with two tabs.
 
 **Put on paper.** Choose a file or drop it on the tab, pick A4 or US Letter
@@ -279,8 +279,8 @@ What is not shown:
 Python version
 --------------
 
-A Python port, `optar`, encodes a file into page images and decodes scans
-back, in one command-line program (the desktop application above uses the same
+The `optar` command, written in Python, encodes a file into page images and
+decodes scans back, in one command-line program (the desktop application above uses the same
 code). It needs no C compiler, no libpng and no ImageMagick.
 
 ### Installation
@@ -418,8 +418,7 @@ them any more. Run the commands below from inside `lega-c`. The C encoder is als
 `optar`: `make` builds it there as `./optar`, so run it as `./optar` to avoid
 confusion with the Python command.
 
-Building
---------
+### Building
 
 You need to install [ImageMagick](https://www.imagemagick.org) so that the 
 resulting .pgm image can be converted into PostScript with the right dimensions:
@@ -439,8 +438,7 @@ Note that there may be some hardcoded configuration values that you may need to
 change, for example the page size defaults to A4 instead of US Letter. Read on
 to learn where to change that.
 
-Installing locally
-------------------
+### Installing locally
 
 It's easiest to install your local build with
 
@@ -452,8 +450,7 @@ To uninstall, run
 
     sudo make uninstall
 
-Encoding (writing)
-------------------
+### Encoding (writing)
 
 Run
 
@@ -482,8 +479,7 @@ Please note that the file will be padded by zeroes and the original length will
 be lost. **Pack your data with tar if you store data that are sensitive to
 this.**
 
-Decoding (reading)
-------------------
+### Decoding (reading)
 
 Clean and polish the scanner glass with rubbing alcohol and paper towel. Put
 yellow pages on the scanner lid to get sharper picture˚. Insert the
@@ -518,14 +514,12 @@ Please note the data are padded with zeroes so the original information
 about file length is lost. **If your data format doesn't like this then first
 pack your data with `tar`.**
 
-A4 <-> US Letter
-----------------
+### A4 <-> US Letter
 Change the convert parameters in pgm2ps (see comments). Change XCROSSES
 and YCROSSES in optar.h (see comments). Recompile. Then you can use US Letter
 instead of A4.
 
-Changing the format
--------------------
+### Changing the format
 If your printer is low quality and you are getting irreparable bits, you can
 try to format the media to lower capacity.  Unfortunately, setting by
 commandline is not implemented yet.  Change XCROSSES and YCROSSES in optar.h to
@@ -537,8 +531,7 @@ You can also change the decoding parameters in unoptar.c (look for MAGIC
 CONSTANTS) in attempt to read a difficult recording: unsharp_mask,
 unsharp_dist, sync_white_cut, white_cut, minmax_filter, pixel_blur, cross_trim.
 
-Future improvement
-------------------
+### Future improvement
 - manpage could be written for optar and unoptar
 - commandline help (-h) could be written for optar and unoptar
 - the format could be made configurable. Now it's stored in the optar.h

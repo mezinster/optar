@@ -18,7 +18,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from optar import container, encoder, font, tag
+from optar import container, encoder, fec, font, tag
 from optar import format as fmt_module
 from optar.container import Header, padding, plan, plan_for, positions
 from optar.decoder.options import DecodeOptions
@@ -42,8 +42,10 @@ from optar.rs import _EXP, RSCode
 from optar.tag import make_tag, tagged_label
 
 SPEC = Path(__file__).resolve().parents[2] / "docs" / "format.md"
-TABLE_NAMES = {"constants", "dot-sizes", "layouts", "header-fields", "parity"}
+TABLE_NAMES = {"constants", "dot-sizes", "layouts", "header-fields", "parity", "golay"}
 MM_PER_PT = 25.4 / 72
+# One pixel of the label strip, in points (the specification says 0.36).
+_STRIP_PIXEL_PT = fmt_module.POINTS_PER_INCH / fmt_module.PIXELS_PER_INCH
 # Where a name in the constants table may be defined, in this order.
 CONSTANT_MODULES = (fmt_module, encoder, font, tag)
 
@@ -397,7 +399,9 @@ EXAMPLES = {
     "a4_large_image_height_pt": lambda: f"{A4_LARGE.fmt.height * A4_LARGE.dots.size_pt:.2f}",
     "a4_large_strip_width": lambda: fine_label(A4_LARGE, 1, 1, "").shape[1],
     "a4_large_strip_characters": _strip_text,
-    "a4_large_strip_width_pt": lambda: f"{fine_label(A4_LARGE, 1, 1, '').shape[1] * 0.36:.2f}",
+    "a4_large_strip_width_pt": lambda: (
+        f"{fine_label(A4_LARGE, 1, 1, '').shape[1] * _STRIP_PIXEL_PT:.2f}"
+    ),
     "linear_light_of_128": lambda: int(_gamma_table(DEFAULT_FILE_GAMMA)[128]),
     "linear_light_of_200": lambda: int(_gamma_table(DEFAULT_FILE_GAMMA)[200]),
     **{
@@ -438,6 +442,31 @@ def test_spec_worked_examples():
     assert not absent, f"examples the document no longer gives: {absent}"
     for name, written in pairs:
         assert written == str(EXAMPLES[name]()), name
+
+
+def test_golay_table_matches_the_code():
+    # The faces, their neighbours and the masks an implementer builds the code from.
+    rows = _one("golay")
+    assert [int(row["Face"]) for row in rows] == list(range(1, 13))
+    for row, faces in zip(rows, fec._DODECAHEDRON, strict=True):
+        assert tuple(int(f) for f in row["Neighbours"].split(",")) == faces
+        mask = 0xFFF
+        for face in faces:
+            mask ^= 1 << (face - 1)
+        assert row["Mask"].strip("`") == f"{mask:#05x}"
+    # The table alone gives the whole code: parity bit r is the parity of d AND mask.
+    table = golay_table()
+    for word in (0, 1, 0x800, 0xABC, 0xFFF):
+        parity = 0
+        for row in rows:
+            parity = parity << 1 | bin(word & int(row["Mask"].strip("`"), 16)).count("1") % 2
+        assert int(table[word]) == word << 12 | parity
+
+
+def test_standard_layouts_hold_whole_bytes():
+    # Section 3 relies on this: a tag's size then fits exactly one page count.
+    for paper in ("a4", "letter"):
+        assert fmt_module.get_layout(paper).fmt.net_bits % 8 == 0
 
 
 def test_sections_name_their_vectors():

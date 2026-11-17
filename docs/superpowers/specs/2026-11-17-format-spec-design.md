@@ -1,6 +1,6 @@
 # Format specification and the end of the C comparison: design
 
-Date: 2026-11-17. Status: proposed.
+Date: 2026-11-17. Status: approved and built.
 
 ## Intent
 
@@ -120,7 +120,7 @@ rotated, blurred, noisy, specks, flipped bits, combined), and committed as PNG
 files; they are not regenerated, so that a change in a random number library
 cannot change the inputs. To stay within the budget the degraded scans are of
 small custom page formats, and the full A4 and Letter pages are stored as
-clean two-level scans, which compress well. No real scan is used: the owner's
+clean two-level scans, which compress well. (As built: the full-size and clean cases are made again by the tests from a recipe that uses no randomness, with the page pinned by its hash, and only the degraded scans are stored; `tests/vectors/README.md` explains why.) No real scan is used: the owner's
 scans never enter the repository.
 
 Independence (author's call). The Reed-Solomon vectors are checked once
