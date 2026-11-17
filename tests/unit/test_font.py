@@ -11,7 +11,7 @@ F = PageFormat(65, 93)
 
 
 def test_strip_matches_font_h():
-    src = Path(__file__).parents[2].joinpath("font.h").read_text(errors="replace")
+    src = Path(__file__).parents[2].joinpath("lega-c", "font.h").read_text(errors="replace")
     cmap_txt = src[src.index("header_data_cmap[256][3]") : src.index("header_data[36000]")]
     cmap = [int(m) for m in re.findall(r"\{\s*(-?\d+),", cmap_txt)]
     cmap += [0] * (256 - len(cmap))
