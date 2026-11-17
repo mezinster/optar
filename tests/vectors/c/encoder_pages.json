@@ -83,6 +83,258 @@
     "d34851f809e0ebaf67843c5e79308dc280edee1ba90de59c656fbbac36f5cf59"
    ],
    "size": 300000
+  },
+  {
+   "format": "0-65-93-24-3-1-2-24",
+   "label": "",
+   "name": "a4-0",
+   "seed": 0,
+   "sha256": [
+    "6406406e1312d84c2e57bafb988ac7bd134631dcee7fda22ef9105e43e51dcd4"
+   ],
+   "size": 0
+  },
+  {
+   "format": "0-65-93-24-3-1-2-24",
+   "label": "",
+   "name": "a4-1",
+   "seed": 1,
+   "sha256": [
+    "ac934138473b3a565d9d83283f43f2d96060314ca387f707b7de5d8b297bb1fe"
+   ],
+   "size": 1
+  },
+  {
+   "format": "0-65-93-24-3-1-2-24",
+   "label": "",
+   "name": "a4-2",
+   "seed": 2,
+   "sha256": [
+    "4e5e557a63e2a9ff0c650efa62df79423b69022290cbcdf635c830d760c62eab"
+   ],
+   "size": 777
+  },
+  {
+   "format": "0-65-93-24-3-1-2-24",
+   "label": "",
+   "name": "a4-3",
+   "seed": 3,
+   "sha256": [
+    "d81ceb77421053d1adc02f4d0ab30afaa6c2ed212add66ce48ae8d0087b98aa5",
+    "3d9078e67e9aea6950026c69efa87a961d43768997366fb4a044e1df303546ae",
+    "9a13b987c1a7742c0b25b926bf36e50d04462b4f6bfd75d0d1ea6c32dc784c05"
+   ],
+   "size": 399551
+  },
+  {
+   "format": "0-67-87-24-3-1-2-24",
+   "label": "",
+   "name": "letter-0",
+   "seed": 0,
+   "sha256": [
+    "0c4781351f258c487f7dfb0a2e9d38fa6d7d710ff9d9b7e71ee6d3e4ccea1325"
+   ],
+   "size": 0
+  },
+  {
+   "format": "0-67-87-24-3-1-2-24",
+   "label": "",
+   "name": "letter-1",
+   "seed": 1,
+   "sha256": [
+    "5e78121b1066c8f4450d6aa68a3fd8d77a19d2dbd4f745ab4c9d306f5d2dcbc5"
+   ],
+   "size": 1
+  },
+  {
+   "format": "0-67-87-24-3-1-2-24",
+   "label": "",
+   "name": "letter-2",
+   "seed": 2,
+   "sha256": [
+    "4c16bf51f3253e0124a666bb71419556eef92eba646a97bf11effa214ebe7791"
+   ],
+   "size": 777
+  },
+  {
+   "format": "0-67-87-24-3-1-2-24",
+   "label": "",
+   "name": "letter-3",
+   "seed": 3,
+   "sha256": [
+    "99f53590bb55db8dd9ac89c0629562a2871c407c6d2b0ea831a38dd47c251767",
+    "1ca8087072e29d8a0c1e3775a1ba6a06cf4c04f76081da59fc18e0b52ae36bec",
+    "8b1a7eba336b03097a517701753923247a76099ec776598c76d1d6176e54718e"
+   ],
+   "size": 385187
+  },
+  {
+   "format": "0-65-93-24-3-2-2-24",
+   "label": "",
+   "name": "fec2-0",
+   "seed": 0,
+   "sha256": [
+    "dbc9fd038a88b1594ac52fd8181e21f783683b9e4e37776a21cfb06ea27fa6f4"
+   ],
+   "size": 0
+  },
+  {
+   "format": "0-65-93-24-3-2-2-24",
+   "label": "",
+   "name": "fec2-1",
+   "seed": 1,
+   "sha256": [
+    "055f3f4c565988cb3ff35b10452d8f83f69d41a14c3d4807714e999cf7b478f0"
+   ],
+   "size": 1
+  },
+  {
+   "format": "0-65-93-24-3-2-2-24",
+   "label": "",
+   "name": "fec2-2",
+   "seed": 2,
+   "sha256": [
+    "28262f0fdfec8937a2ffceb9cdc73289da5b5e01f55fada99955226bc7e1a225"
+   ],
+   "size": 777
+  },
+  {
+   "format": "0-65-93-24-3-2-2-24",
+   "label": "",
+   "name": "fec2-3",
+   "seed": 3,
+   "sha256": [
+    "ce0cbce5fb0b2377eb19f52b21c0557c139e5d0bd2c5999e806964133a8c6c81",
+    "e4c1294f3a0e4101a4186b3386df895dc206cd7edede5e07a8299dd09153b216",
+    "6e3302561a32212bff8ed29d38acca22c5f396fa9cc7dea7df82ef3e606efe5d"
+   ],
+   "size": 199777
+  },
+  {
+   "format": "0-65-93-24-3-3-2-24",
+   "label": "",
+   "name": "fec3-0",
+   "seed": 0,
+   "sha256": [
+    "f4ee420ee9ee74f9889f01d5480f3dad725d59accd75925a1b80f15b85b646d8"
+   ],
+   "size": 0
+  },
+  {
+   "format": "0-65-93-24-3-3-2-24",
+   "label": "",
+   "name": "fec3-1",
+   "seed": 1,
+   "sha256": [
+    "2397929000d4fcc37c3547470e9cbb22134fae59f59fd09e5e794649c6df34fc"
+   ],
+   "size": 1
+  },
+  {
+   "format": "0-65-93-24-3-3-2-24",
+   "label": "",
+   "name": "fec3-2",
+   "seed": 2,
+   "sha256": [
+    "9e8c1daff211843b9e0ee19c09f73a91a48d54e328e87f4a2635cb58a2ee53bd"
+   ],
+   "size": 777
+  },
+  {
+   "format": "0-65-93-24-3-3-2-24",
+   "label": "",
+   "name": "fec3-3",
+   "seed": 3,
+   "sha256": [
+    "22ccde36bcc4253c646cb17750d35cdc3b98656fe361f7a4a293fa29723ff8d8",
+    "bf1bd276686dad528f617aad4ff6738d7742f626ba53266f509aa8ddb25cb553",
+    "0480153ed2807e6392af93936cf8385f870ad31a60657b86d059f16d7eccf580"
+   ],
+   "size": 399551
+  },
+  {
+   "format": "0-65-93-24-3-4-2-24",
+   "label": "",
+   "name": "fec4-0",
+   "seed": 0,
+   "sha256": [
+    "5a1c305fd154e19ec74412f193d925828707ff43182fd7bb6abaa6064ba7ea52"
+   ],
+   "size": 0
+  },
+  {
+   "format": "0-65-93-24-3-4-2-24",
+   "label": "",
+   "name": "fec4-1",
+   "seed": 1,
+   "sha256": [
+    "4df3653de6abb73cc972777ae70f4c87a1515d3586b9611ad3d823bc44e4808f"
+   ],
+   "size": 1
+  },
+  {
+   "format": "0-65-93-24-3-4-2-24",
+   "label": "",
+   "name": "fec4-2",
+   "seed": 2,
+   "sha256": [
+    "94898806357100f1a4cdf648c64541b1dce60abc5271b103ad530e6192823a5c"
+   ],
+   "size": 777
+  },
+  {
+   "format": "0-65-93-24-3-4-2-24",
+   "label": "",
+   "name": "fec4-3",
+   "seed": 3,
+   "sha256": [
+    "e04b465296aa2d5eecfecb6f964cf2032aa12ed4a4419b0daa98ec6c133a294b",
+    "e27e21a73e096fd9fefe2775bfa59dac4078f283daf03c1f4380741470ea3956",
+    "b47acd0cd5200b4bbd41e0091668b271e2aa304ecd008e51121c09ef1c8a670e"
+   ],
+   "size": 549379
+  },
+  {
+   "format": "0-65-93-24-3-5-2-24",
+   "label": "",
+   "name": "fec5-0",
+   "seed": 0,
+   "sha256": [
+    "1b9839d649bdec914eef02a9d50beb692ef64816cc7cad8d70cc5a2a8ac85d21"
+   ],
+   "size": 0
+  },
+  {
+   "format": "0-65-93-24-3-5-2-24",
+   "label": "",
+   "name": "fec5-1",
+   "seed": 1,
+   "sha256": [
+    "b973c0ffb632de1858c1cd7863371bac54b38761f715179b6fe6a2127b112040"
+   ],
+   "size": 1
+  },
+  {
+   "format": "0-65-93-24-3-5-2-24",
+   "label": "",
+   "name": "fec5-2",
+   "seed": 2,
+   "sha256": [
+    "ebf2f09ac3a76eb5eb24dbada529ac909f5b955e853d3935ebdf4ed8af4656ba"
+   ],
+   "size": 777
+  },
+  {
+   "format": "0-65-93-24-3-5-2-24",
+   "label": "",
+   "name": "fec5-3",
+   "seed": 3,
+   "sha256": [
+    "87fe1cf84727d73298abfe2cee1a8b589097b99c8eaaec8c93df0dc993a75295",
+    "7f594ff51d5161fc18b2f98e02cb282f6f2b27bc49d1beb81b156bde51272016",
+    "d271f52b555c93f0e9592510de8e459b0f83081ca46db15c0acae4c7aa4ce1e2"
+   ],
+   "size": 649263
   }
  ],
  "pins": "The SHA-256 of each page's PGM bytes equals the C encoder's for the same input.",

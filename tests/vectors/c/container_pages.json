@@ -1,0 +1,44 @@
+{
+ "c_commit": "9c8379c25466bf142459a26b0f34521bdde2af12",
+ "cases": [
+  {
+   "c_output_sha256": "15eb9db55a13b3cd042c2d7243fc4954bced9fe63e88fb67212ff3acb9c8086d",
+   "file_name": "name.bin",
+   "format": "0-33-46-24-3-1-2-24",
+   "label": "doc",
+   "name": "a4-large",
+   "page_sha256": [
+    "c69985194ae5530f57075796eaf1e9aedc4c03cac7af508631d8dc0e8f28b4a7",
+    "9341d9cd69f61e9f8b9e6de53b193d50630aa88581bdafa18584c83726c5c4ce",
+    "7daabd14b302f9264fc1f2659430c0c074b3f01f4c1777eb745d8393c94ff87d"
+   ],
+   "parity": 32,
+   "recipe": {
+    "scale": 1
+   },
+   "seed": 31,
+   "size": 100000,
+   "stream_sha256": "15eb9db55a13b3cd042c2d7243fc4954bced9fe63e88fb67212ff3acb9c8086d"
+  },
+  {
+   "c_output_sha256": "6eaad18413ff53070dc922b1907822843efe5a3217d9af518481a132a1b5957c",
+   "file_name": "name.bin",
+   "format": "0-51-66-24-3-1-2-24",
+   "label": "doc",
+   "name": "letter-medium",
+   "page_sha256": [
+    "394ecf7d2adca65c683f575f96d3213e7abe9b9b6726ba2c3d2413a7f0d063d4",
+    "4f82630b518c0261c0fc91d064faf3361e4d908eda3cdba59456b259ab257111"
+   ],
+   "parity": 32,
+   "recipe": {
+    "scale": 1
+   },
+   "seed": 31,
+   "size": 100000,
+   "stream_sha256": "6eaad18413ff53070dc922b1907822843efe5a3217d9af518481a132a1b5957c"
+  }
+ ],
+ "pins": "Container streams on larger-dot layouts encode to C optar's pages, and C unoptar's reading of the Python pages is known.",
+ "source": "c"
+}
