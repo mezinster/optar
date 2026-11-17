@@ -17,6 +17,13 @@
    },
    "hex": "d518824e181c15b2f69e390066efbfa00d73eb8f0c3d932313396940eedd12863e00f3cffc0c65f64fae00aa23c38c3c633a334d69780ad6d16d148780c37601b0fd700f31960325bcc2c706c7e61c6685ffc0f80ec1b6c3a41819d6fc6ce5b53c07c478"
   },
+  "padding_offset": {
+   "args": {
+    "count": 70,
+    "first": 45
+   },
+   "hex": "c38c3c633a334d69780ad6d16d148780c37601b0fd700f31960325bcc2c706c7e61c6685ffc0f80ec1b6c3a41819d6fc6ce5b53c07c478a90284e43adf9282f58a7b891b7a54"
+  },
   "streams": [
    {
     "codewords": 1565,

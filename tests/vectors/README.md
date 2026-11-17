@@ -6,7 +6,10 @@ Load them with `tests.vectors.load.load("c/golay")`.
 
 ## c/golay.json
 
-Pins the Golay table. `golay_sha256` is the digest of `optar.fec.serialize_table(golay_table())`.
+Pins the Golay table. `golay_sha256` is the SHA-256 of the table written out as a byte
+string: the table's entries in table order (index 0, 1, 2, ...), each entry as a 32-bit
+unsigned integer in 4 bytes, most significant byte first (big-endian), with nothing between
+entries (`optar.fec.serialize_table`).
 
 ## c/bit_placement.json
 
@@ -14,17 +17,26 @@ Pins where each payload bit goes, for the ten layouts of `optar.format.LAYOUTS` 
 formats 4x4, 7x5 and 65x93 with `fec_order` 3 (13 formats). Cases map a format string to:
 
 - `all_sha256`: the SHA-256 of the channel position of every sequence number, as C
-  `seq2xy` gives it: the bytes of `np.stack([x, y]).astype("<i4")` where `x, y =
-  channel_xy(fmt)`, that is all `total_bits` x values then all y values, each a
-  little-endian 32-bit integer.
+  `seq2xy` gives it: first the x values of sequence numbers 0 to `total_bits - 1` in order,
+  then their y values in order, every value a signed 32-bit integer, least significant byte
+  first (little-endian), nothing between values (`np.stack([x, y]).astype("<i4")` with
+  `x, y = channel_xy(fmt)`).
 - `samples`: `[seq, x, y]` for the first 100 of the sequence numbers the old
   `tests/golden/make_fixtures.py` picked (`seeded_bytes(7, 4 * n)` read as big-endian
-  32-bit integers modulo `total_bits`), so that a failure names a bit.
+  32-bit integers modulo `total_bits`), so that a failure names a bit. `seq` is the
+  sequence number of a channel bit, and `x`, `y` are the pixel column and pixel row of that
+  bit counted from 0 in the data area, which excludes the white border: add the border width
+  to both to get page pixel coordinates. `x` increases to the right and `y` downward.
 
 ## c/encoder_pages.json
 
 Pins whole encoded pages. Each case gives a format, a label, `seeded_bytes(seed, size)` as
-input, and one digest per page: the SHA-256 of `optar.imageio.pgm_bytes(page.pixels)`.
+input, and one digest per page: the SHA-256 of the page as a binary PGM file. Its bytes are the ASCII
+text `P5`, a line feed, the page width in decimal, one space, the page height in decimal, a
+line feed, `255`, a line feed (for example `P5\n1000 1400\n255\n`, no other whitespace or
+comment), then the width times height pixel bytes, one byte per pixel (0 black, 255 white),
+row by row from the top row, left to right (`optar.imageio.pgm_bytes`). Wherever this file
+says "PGM bytes" it means exactly this.
 The first eight cases are the old golden fixtures; the others are the inputs of the old
 `tests/oracle/test_encoder_oracle.py` (a4, letter, a4 with `fec_order` 2 to 5; sizes 0, 1,
 777 and two pages plus 5 bytes, seed = position in that list).
@@ -124,17 +136,30 @@ format change.
   the damaged one as received. The cases are errors only at the limit `parity // 2`, erasures only at the
   limit `parity`, 5 errors with `parity - 10` erasures, and one error beyond the limit (expected
   to fail, so the word comes back as received).
-- `py/container.json`: `header` is the packed bytes of a `Header`; `padding` is
-  `padding(0, 100)`; `streams` has one case for every layout (`LAYOUTS`, named `paper-dots`) and
-  every parity (0, 32, 64): a file named `vector.bin` of `seeded_bytes(41, size)` where
-  `size = int(1.5 * plan_for(1, fmt, parity).data_bytes)`, the page and codeword counts, the
-  length and SHA-256 of the stream `wrap()` returns (the bytes given to `encode()`), and
-  `positions(plan)` of codewords 0, 1 and the last: the first 16 positions as a list, and `sha256`,
-  the digest of the whole row of 255 positions, `array_digest(row, np.int64)` (the SHA-256 of its
-  255 little-endian int64 values, 2040 bytes).
+- `py/container.json`: `header` is the packed bytes of a `Header`, as hex. `padding` and
+  `padding_offset` give `args` of `first` and `count` and the hex of bytes `first` to
+  `first + count - 1` of the padding stream (section 4 of the specification: the stream is the
+  concatenation of the 32-byte blocks SHA-256(`"optar padding"` followed by n as 8 bytes,
+  big-endian) for n = 0, 1, 2, ...). `first` is a byte offset into that stream and `count` a
+  number of bytes, not a block index; `padding_offset` starts at byte 45, which is not at a
+  block boundary. `streams` has one case for every layout (`LAYOUTS`, named `paper-dots`) and
+  every parity (0, 32, 64): a file named `vector.bin` whose content is `seeded_bytes(41, size)`
+  (the bytes given to `wrap()`). `size` is 1.5 times the data bytes of a one-page document,
+  rounded down: with `page_bytes = net_bits // 8`, `page_body = page_bytes - 5 * 38`,
+  `m = page_body // 255` and `data_bytes = m * (255 - parity)`, it is `size = (3 * data_bytes) // 2`
+  (`int(1.5 * plan_for(1, fmt, parity).data_bytes)`). The case also gives the page and codeword
+  counts, the length and SHA-256 of the stream `wrap()` returns (the bytes given to `encode()`),
+  and `positions`, keyed by codeword index (0, 1 and the last, `codewords - 1`). A `positions`
+  entry is the row of the spread-position table for that codeword: 255 numbers, entry i (for
+  i = 0 to 254) being the body position `i * m + (j + i * 7919) mod m` of codeword j's byte i,
+  with m the codeword count. `first16` lists entries 0 to 15; `sha256` is the SHA-256 of all
+  255 entries as signed 64-bit integers, little-endian, back to back (2040 bytes).
 - `py/tag.json`: for files of 0 bytes, 1 byte (`x`) and `seeded_bytes(5, 300000)`, the tag's size
-  and fingerprint, the printed tag text and `tagged_label(tag, "name.tar", page, 2)` for pages 1
-  and 2.
+  and fingerprint, the printed tag text (`page_texts`) and the label (`labels`), for pages 1 and 2
+  of a document of `total` pages (the case's `total`, 2). The labels are the free text of the page
+  label, the text that follows the page numbers: the tag, a space, then the name `name.tar`. The
+  empty file is the form the tools print for it, page 1 of `total` 0, so it has one page and no
+  page 2.
 
 ### Outside check of the Reed-Solomon parity
 

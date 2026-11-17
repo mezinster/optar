@@ -137,7 +137,18 @@ FULL = [c for c in DECODER["cases"] if c["group"] == "full_size"]
 STORED = [c for c in DECODER["cases"] if c["group"] == "small"]
 
 
-@pytest.mark.parametrize("case", FULL, ids=_name)
+# Each full-size case takes about 6 s: only the two plain A4 ones run by default.
+FULL_PARAMS = [
+    pytest.param(
+        c, id=_name(c),
+        marks=() if c["name"].startswith("a4-") and "scale" not in c["name"]
+        else pytest.mark.slow,
+    )
+    for c in FULL
+]
+
+
+@pytest.mark.parametrize("case", FULL_PARAMS)
 def test_decodes_like_c_full_size(case, tmp_path):
     _decoder_case(case, tmp_path)
 

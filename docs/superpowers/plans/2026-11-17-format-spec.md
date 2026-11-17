@@ -17,7 +17,7 @@
 - Nothing under `lega-c/` is edited: files may only be added under `lega-c/record_vectors/`.
 - `tests/vectors/` stays under 2 MB in total (`du -sb tests/vectors`).
 - The owner's real scans are never used, copied or referenced.
-- Vector tests carry no `oracle`, `gs` or `slow` marker: they run in the default suite and need no compiler.
+- Vector tests need no compiler and carry no `oracle` or `gs` marker; only the full-size decode cases other than plain A4 are marked `slow`.
 - Vectors recorded from C carry the C commit `9c8379c…` as recorded today by `tests/golden/make_fixtures.py` (`c_commit`).
 - Format numbers live only in `src/optar/format.py`.
 - Commit subjects are capitalised, third-person present, no prefix, no attribution lines.

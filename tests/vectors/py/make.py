@@ -32,6 +32,7 @@ HEADER_ARGS = {
     "parity": 64,
 }
 PADDING_ARGS = {"first": 0, "count": 100}
+PADDING_ARGS_OFFSET = {"first": 45, "count": 70}
 TAG_INPUTS = [
     {"name": "empty", "size": 0, "seed": None},
     {"name": "x", "size": 1, "seed": None},
@@ -171,12 +172,15 @@ def tag_data(spec: dict) -> bytes:
 
 def tag_case(spec: dict) -> dict:
     tag = make_tag(tag_data(spec))
+    # An empty file is printed as page 1 of 0, the only form the tools print for it.
+    total, pages = (TAG_TOTAL, TAG_PAGES) if spec["size"] else (0, (1,))
     return {
         "input": spec,
+        "total": total,
         "size": tag.size,
         "fingerprint": tag.fingerprint,
-        "page_texts": {str(p): tag.page_text(p, TAG_TOTAL) for p in TAG_PAGES},
-        "labels": {str(p): tagged_label(tag, TAG_FILE_NAME, p, TAG_TOTAL) for p in TAG_PAGES},
+        "page_texts": {str(p): tag.page_text(p, total) for p in pages},
+        "labels": {str(p): tagged_label(tag, TAG_FILE_NAME, p, total) for p in pages},
     }
 
 
@@ -200,6 +204,10 @@ def build_container() -> dict:
         "cases": {
             "header": {"args": HEADER_ARGS, "hex": header_hex(HEADER_ARGS)},
             "padding": {"args": PADDING_ARGS, "hex": padding_hex(PADDING_ARGS)},
+            "padding_offset": {
+                "args": PADDING_ARGS_OFFSET,
+                "hex": padding_hex(PADDING_ARGS_OFFSET),
+            },
             "streams": [stream_case(n, p) for n in layout_names() for p in CONTAINER_PARITIES],
         },
     }

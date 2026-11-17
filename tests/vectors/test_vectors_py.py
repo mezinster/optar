@@ -38,8 +38,9 @@ def test_header_bytes():
     assert make.header_hex(case["args"]) == case["hex"]
 
 
-def test_padding_stream():
-    case = CONTAINER["cases"]["padding"]
+@pytest.mark.parametrize("name", ["padding", "padding_offset"])
+def test_padding_stream(name):
+    case = CONTAINER["cases"][name]
     assert make.padding_hex(case["args"]) == case["hex"]
 
 
