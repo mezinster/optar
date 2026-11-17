@@ -27,12 +27,18 @@ the decoded file is held once at full size (8 bits a pixel for a gray scan,
 16 for a 16-bit one, its own depth for colour) until it has been reduced.
 Scans above ``MAX_SCAN_PIXELS`` are refused, as ``read_scan`` refuses them.
 
-Marks are one item drawn in a single ``drawPoints`` call with a cosmetic pen,
-so they keep their size on screen at any zoom and tens of thousands draw fast.
+Marks are one item. An ordinary page's (sparse) are drawn in a single
+``drawPointsNp`` call with a cosmetic pen, straight from two numpy arrays, so
+they keep their size on screen at any zoom (a PySide6 without ``drawPointsNp``
+is given a polygon of points, built once). The few hundred thousand of a page
+read by the slower reader are drawn one dot of the page wide instead
+(``show_scan``'s ``dot``), as an image with a pixel per dot-sized cell: seen
+whole the page shows a tint as dense as the marks, zoomed in single dots.
 """
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable
 from functools import partial
 from typing import NamedTuple
@@ -252,12 +258,20 @@ class _ImageItem(QGraphicsItem):
         painter.drawImage(exposed, self._image, source)
 
 
+# Whether this PySide6 draws points straight from numpy arrays; older ones are
+# given a polygon of points instead (built once per set of marks).
+_POINTS_NP = hasattr(QPainter, "drawPointsNp")
+
+
 class _MarksItem(QGraphicsItem):
     """Every mark as a square of MARK_SIZE screen pixels, in one drawing call."""
 
-    def __init__(self, points: QPolygonF, rect: QRectF, colour: QColor = MARK_COLOUR) -> None:
+    def __init__(
+        self, points: tuple[np.ndarray, np.ndarray], rect: QRectF, colour: QColor = MARK_COLOUR
+    ) -> None:
         super().__init__()
-        self._points = points
+        self._xs, self._ys = points
+        self._polygon = None if _POINTS_NP else _polygon(self._xs, self._ys)
         self._rect = rect
         self._pen = QPen(colour)
         self._pen.setWidthF(MARK_SIZE)
@@ -273,14 +287,70 @@ class _MarksItem(QGraphicsItem):
     ) -> None:
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
         painter.setPen(self._pen)
-        painter.drawPoints(self._points)
+        if self._polygon is None:
+            painter.drawPointsNp(self._xs, self._ys)
+        else:
+            painter.drawPoints(self._polygon)
 
 
-def _points(marks: np.ndarray | None) -> QPolygonF:
+def _polygon(xs: np.ndarray, ys: np.ndarray) -> QPolygonF:
+    return QPolygonF([QPointF(x, y) for x, y in zip(xs.tolist(), ys.tolist(), strict=True)])
+
+
+_NO_POINTS = (np.zeros(0), np.zeros(0))
+
+
+def _points(marks: np.ndarray | None) -> tuple[np.ndarray, np.ndarray]:
+    """The marks' scene points (pixel centres) as contiguous x and y arrays."""
     if marks is None or len(marks) == 0:
-        return QPolygonF()
+        return _NO_POINTS
     centres = np.asarray(marks, np.float64).reshape(-1, 2) + 0.5
-    return QPolygonF([QPointF(x, y) for x, y in centres.tolist()])
+    return np.ascontiguousarray(centres[:, 0]), np.ascontiguousarray(centres[:, 1])
+
+
+class _DotMarksItem(QGraphicsItem):
+    """Marks one dot of the page wide, in scan pixels: they grow and shrink with the
+    zoom. Drawn as an image with one pixel per dot-sized cell of the scan (a mark
+    fills the cell its centre falls in), smoothed when shrunk, so seen whole a
+    dense page shows a tint as dense as its marks are; zoomed in, each is a square
+    of one dot. The image is a byte a cell (an A4 page of Standard dots is about
+    4 MB)."""
+
+    def __init__(
+        self, points: tuple[np.ndarray, np.ndarray], dot: float, rect: QRectF,
+        colour: QColor = MARK_COLOUR,
+    ) -> None:  # fmt: skip
+        super().__init__()
+        xs, ys = points
+        w = max(1, math.ceil(rect.width() / dot))
+        h = max(1, math.ceil(rect.height() / dot))
+        cells = np.zeros((h, w), np.uint8)
+        cx = np.clip((xs / dot).astype(np.intp), 0, w - 1)
+        cy = np.clip((ys / dot).astype(np.intp), 0, h - 1)
+        cells[cy, cx] = 1
+        self._cells = cells  # the QImage below refers to this buffer
+        self._image = QImage(cells.data, w, h, w, QImage.Format.Format_Indexed8)
+        self._image.setColorTable([0, colour.rgba()])
+        self._dot = dot
+        self._rect = rect
+        self.setZValue(1)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemUsesExtendedStyleOption)
+
+    def boundingRect(self) -> QRectF:  # noqa: N802
+        return self._rect
+
+    def paint(
+        self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget | None = None
+    ) -> None:
+        exposed = option.exposedRect & self._rect
+        if exposed.isEmpty():
+            return
+        dot = self._dot
+        source = QRectF(exposed.x() / dot, exposed.y() / dot,
+                        exposed.width() / dot, exposed.height() / dot)  # fmt: skip
+        on_screen = painter.worldTransform().m11() * dot  # screen pixels per dot
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, on_screen < 1)
+        painter.drawImage(exposed, self._image, source)
 
 
 class ScanPreview(QGraphicsView):
@@ -309,9 +379,10 @@ class ScanPreview(QGraphicsView):
         self._rotation = 0
         self._marks: np.ndarray | None = None  # as given, to see whether they changed
         self._mark_colour = MARK_COLOUR
-        self._points = QPolygonF()
+        self._dot = 0.0  # scan pixels per dot for marks sized to the dots; 0: screen size
+        self._points = _NO_POINTS
         self._size: tuple[int, int] | None = None  # upright scan size, once shown
-        self._marks_item: _MarksItem | None = None
+        self._marks_item: QGraphicsItem | None = None
         self._loading = False
         self._message = ""
         self._fitted = True  # whether resizing refits the page
@@ -335,7 +406,7 @@ class ScanPreview(QGraphicsView):
     @property
     def mark_count(self) -> int:
         """How many marks are drawn."""
-        return self._points.size() if self._marks_item is not None else 0
+        return len(self._points[0]) if self._marks_item is not None else 0
 
     @property
     def zoom(self) -> float:
@@ -345,17 +416,27 @@ class ScanPreview(QGraphicsView):
     # --- Showing -----------------------------------------------------------------
 
     def show_scan(
-        self, path: str | None, rotation: int, marks: np.ndarray | None, restored: bool = False
+        self,
+        path: str | None,
+        rotation: int,
+        marks: np.ndarray | None,
+        restored: bool = False,
+        dot: float = 0.0,
     ) -> None:
         """Shows ``path`` turned upright by ``rotation`` counter-clockwise quarter
         turns, with a mark at each (x, y) row of ``marks`` (upright scan pixels).
         ``None`` clears the view. The same scan and rotation are not loaded again.
         ``restored`` draws the marks in RESTORED_COLOUR: the blocks they show were
-        repaired by the document's protection."""
+        repaired by the document's protection. ``dot`` (scan pixels), when given,
+        draws each mark one dot of the page wide, growing with the zoom, as for the
+        dense marks of a page read by the slower reader; otherwise each mark is
+        MARK_SIZE screen pixels at any zoom."""
         rotation %= 4
         colour = RESTORED_COLOUR if restored else MARK_COLOUR
-        changed = colour != self._mark_colour
+        dot = float(dot) if dot and dot > 0 else 0.0
+        changed = colour != self._mark_colour or dot != self._dot
         self._mark_colour = colour
+        self._dot = dot
         if path is not None and path == self._path and rotation == self._rotation:
             if changed or marks is not self._marks:
                 self._set_marks(marks)
@@ -386,7 +467,7 @@ class ScanPreview(QGraphicsView):
         self.resetTransform()
         self._path = None
         self._marks = None
-        self._points = QPolygonF()
+        self._points = _NO_POINTS
         self._size = None
         self._marks_item = None
         self._loading = False
@@ -402,11 +483,13 @@ class ScanPreview(QGraphicsView):
         self._add_marks()
 
     def _add_marks(self) -> None:
-        if self._size is None or self._points.isEmpty():
+        if self._size is None or len(self._points[0]) == 0:
             return
-        self._marks_item = _MarksItem(
-            self._points, QRectF(0, 0, *self._size), self._mark_colour
-        )
+        rect = QRectF(0, 0, *self._size)
+        if self._dot:
+            self._marks_item = _DotMarksItem(self._points, self._dot, rect, self._mark_colour)
+        else:
+            self._marks_item = _MarksItem(self._points, rect, self._mark_colour)
         self._scene.addItem(self._marks_item)
 
     def _on_loaded(self, job: int, result: Loaded) -> None:

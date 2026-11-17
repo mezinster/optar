@@ -19,6 +19,7 @@ from optar_gui.document import (
     GroupView,
     Health,
     PageView,
+    Progress,
     ScanView,
     Summary,
 )
@@ -149,12 +150,21 @@ WIDE_MARGIN = 0.5
 MODERATE_MARGIN = 0.8
 
 
-def health_label(page: PageView, restored: bool = False) -> str:
+def health_label(
+    page: PageView, restored: bool = False, repaired_bytes: int | None = None
+) -> str:
     """``restored``: the document's protection repaired what its pages lost
     (``Summary.restored``), so a damaged page is not a problem any more. A page
-    read by the slower reader says only that: that reader counts no repairs."""
+    read by the slower reader says so and how many dots that reader corrected
+    (it counts no repairs of blocks), then, once the document is verified,
+    ``repaired_bytes``: how many of its bytes the document's protection repaired
+    (``Summary.repaired_bytes``; None before, and nothing is said of it when it
+    is 0)."""
     if page.slow and page.health in (Health.GOOD, Health.REPAIRED):
-        return READ_SLOWLY
+        parts = [READ_SLOWLY_ROW, f"{count(page.corrected_dots, 'dot')} corrected"]
+        if repaired_bytes:
+            parts.append(f"{count(repaired_bytes, 'byte')} repaired {BY_PROTECTION}")
+        return " · ".join(parts)
     if page.health == Health.REPAIRED:
         return f"Repaired · {page.repaired:,}"
     if page.health == Health.DAMAGED:
@@ -164,19 +174,39 @@ def health_label(page: PageView, restored: bool = False) -> str:
     return _HEALTH_LABELS[page.health]
 
 
+# The bottom bar while scans are being read and the document has nothing else to say.
+WORKING = "Working…"
+
+
 def summary_line(s: Summary) -> str:
     """The document's state for the bottom bar.
 
     For a version-1 document an accepted repair result adds what the repair did
     (``repair_line``); one that could not give the file says which pages to add
-    or rescan (``rescan_advice``).
+    or rescan (``rescan_advice``). While scans are being read the count of those
+    read is added after the state (``with_reading``).
     """
+    return with_reading(_state_line(s), s)
+
+
+def with_reading(line: str, s: Summary) -> str:
+    """``line`` (the document's state) with, while scans are being read, how many of
+    them are read after it; when the line says nothing more than that the document
+    is empty or being worked on, the count alone (``reading_line``)."""
+    if not s.reading:
+        return line
+    if line in ("", WORKING):
+        return reading_line(s.reading, s.batch)
+    return f"{line} · {scans_read(s.reading, s.batch)}"
+
+
+def _state_line(s: Summary) -> str:
     pages = s.good + s.repaired + s.damaged + s.unreadable + s.missing
     repair = s.repair
     if s.state == DocState.EMPTY:
         return ""
     if s.state == DocState.WORKING:
-        return "Working…"
+        return WORKING
     if s.state == DocState.CHECKING:
         return "Checking the fingerprint…"
     if s.state == DocState.VERIFIED:
@@ -303,19 +333,24 @@ def unreadable_reason(reason: str) -> str:
 
 
 def detail_text(
-    page: PageView, scan_name: str | None, pages: int, reason: str = "", restored: bool = False
+    page: PageView,
+    scan_name: str | None,
+    pages: int,
+    reason: str = "",
+    restored: bool = False,
+    repaired_bytes: int | None = None,
 ) -> tuple[str, ...]:
     """The detail panel's lines for one page of a document of ``pages`` pages.
 
     ``reason`` defaults to the page's own reason for being unreadable.
-    ``restored`` is as for ``health_label``.
+    ``restored`` and ``repaired_bytes`` are as for ``health_label``.
     """
     reason = reason or page.reason
     title = f"Page {page.number:,} of {pages:,}"
     if scan_name:
         title += f" · {scan_name}"
     if page.histogram is not None and page.slow:
-        return (title, read_by_slow_reader())
+        return (title, *slow_reader_detail(page, repaired_bytes))
     if page.histogram is not None:
         blocks = sum(page.histogram) + page.lost
         lost = f"{page.lost:,} lost"
@@ -380,8 +415,9 @@ def document_title(group: GroupView) -> str:
     return _group_line(group)
 
 
-def page_row(page: PageView, restored: bool = False) -> str:
-    return f"Page {page.number:,} · {health_label(page, restored)}"
+def page_row(page: PageView, restored: bool = False, repaired_bytes: int | None = None) -> str:
+    """A page's row; ``restored`` and ``repaired_bytes`` are as for ``health_label``."""
+    return f"Page {page.number:,} · {health_label(page, restored, repaired_bytes)}"
 
 
 def other_group_row(group: GroupView) -> str:
@@ -683,31 +719,109 @@ def coarse_scan(scan_dpi: float, layout: Layout | None, slow_tried: bool = False
 
 # A scan the ordinary reader could not read, while the slower reader tries it.
 READING_COARSE = "Reading a coarse scan with the slower reader; this takes about a minute"
-# The heading over the scans being read that way.
-READING_COARSE_SECTION = "Coarse scans being read"
 # After "too coarse to read": the slower reader could not read the scan either.
 SLOW_TRIED = "The slower reader for coarse scans was tried too, and could not read it."
-# The health of a page read by the slower reader, in its row.
+# A page read by the slower reader: in its detail, and in its row.
 READ_SLOWLY = "Read by the slower reader for coarse scans"
+READ_SLOWLY_ROW = "Read by the slower reader"
 READ_SLOWLY_SHORT = "read by the slower reader"
 
 
-def read_by_slow_reader() -> str:
-    """The detail line of a page read by the slower reader. That reader gives every
-    block its likeliest value, so it neither counts nor marks repairs on the page;
-    the document's protection corrects what it got wrong."""
-    return (
-        f"{READ_SLOWLY}. That reader does not count repairs within the page or mark "
-        "them on the scan; the document's protection corrects what it got wrong."
-    )
+def _share(part: int, whole: int) -> str:
+    """``8.3%``; ``under 0.1%`` for a small share that is not none."""
+    share = 100 * part / whole
+    return "under 0.1%" if 0 < share < 0.05 else f"{share:.1f}%"
 
 
-def reading_coarse_row(scan: ScanView) -> str:
-    return f"{os.path.basename(scan.path)} · {READING_COARSE}"
+def slow_reader_detail(page: PageView, repaired_bytes: int | None = None) -> tuple[str, ...]:
+    """The detail lines of a page read by the slower reader, after its title: that
+    it was, how many of its dots that reader corrected, and, once the document is
+    verified (``repaired_bytes`` not None), how many of its bytes the document's
+    protection repaired. That reader gives every symbol its likeliest value, so it
+    finds no block beyond repair; what it got wrong is the protection's to repair."""
+    dots = page.corrected_dots
+    corrected = f"Dots corrected within the page: {dots:,}"
+    if page.dots:
+        corrected += f" of {page.dots:,} ({_share(dots, page.dots)})"
+    if repaired_bytes is None:
+        after = (
+            "The document's protection repairs what that reader got wrong; how many of "
+            "this page's bytes it repaired is shown once the document is verified."
+        )
+    elif repaired_bytes == 0:
+        after = "After verification: none of this page's bytes were wrong."
+    elif repaired_bytes == 1:
+        after = (
+            f"After verification: 1 of this page's bytes was wrong and was repaired "
+            f"{BY_PROTECTION}."
+        )
+    else:
+        after = (
+            f"After verification: {repaired_bytes:,} of this page's bytes were wrong and "
+            f"were repaired {BY_PROTECTION}."
+        )
+    return (f"{READ_SLOWLY}.", f"{corrected}.", after)
 
 
-def reading_coarse_detail(scan: ScanView) -> tuple[str, ...]:
-    return (os.path.basename(scan.path), f"{READING_COARSE}.")
+# --- Scans being read --------------------------------------------------------------
+
+# The heading over the scans being read, and the step of one not started yet.
+BEING_READ_SECTION = "Being read"
+WAITING = "Waiting"
+
+# The words of each step of a scan's reading, by its key (``work.STEP_OPEN``,
+# ``optar.identify.STEP_FIND`` and so on; a test checks that they match).
+_STEPS = {
+    "open": "Opening the file",
+    "find": "Finding the page",
+    "identify": "Identifying the page",
+    "read": "Reading the data",
+    "slow-sample": "Slower reader: sampling",
+}
+# The step of a scan whose step key has no words above (none should).
+_SOME_STEP = "Working"
+# The slower reader's fits, one of several.
+_SLOW_FIT = "slow-fit"
+_SLOW_STEPS = ("slow-sample", _SLOW_FIT)
+
+
+def step_text(progress: Progress | None) -> str:
+    """What a scan being read is doing: ``Waiting`` before it starts, then its step
+    (``Slower reader: pass 4 of 5`` while the fourth of five fits runs)."""
+    if progress is None:
+        return WAITING
+    if progress.step == _SLOW_FIT:
+        of = max(progress.of, 1)
+        return f"Slower reader: pass {min(progress.done + 1, of):,} of {of:,}"
+    return _STEPS.get(progress.step, _SOME_STEP)
+
+
+def reading_slowly(progress: Progress | None) -> bool:
+    """Whether the slower reader for coarse scans is reading the scan."""
+    return progress is not None and progress.step in _SLOW_STEPS
+
+
+def being_read_row(name: str, progress: Progress | None) -> str:
+    """The row of a scan being read, as plain text (the list draws a bar too)."""
+    return f"{name} · {step_text(progress)}"
+
+
+def being_read_detail(scan: ScanView, progress: Progress | None) -> tuple[str, ...]:
+    """The detail of a scan being read; one the slower reader reads says that it
+    takes about a minute."""
+    lines = (os.path.basename(scan.path), f"{step_text(progress)}.")
+    return (*lines, f"{READING_COARSE}.") if reading_slowly(progress) else lines
+
+
+def scans_read(reading: int, batch: int) -> str:
+    """How many of a batch of scans are read: ``3 of 6 scans read``."""
+    return f"{batch - reading:,} of {count(batch, 'scan')} read"
+
+
+def reading_line(reading: int, batch: int) -> str:
+    """The bottom bar while scans are being read and the document has nothing else
+    to say: ``Working… 3 of 6 scans read``."""
+    return f"{WORKING} {scans_read(reading, batch)}"
 
 
 def _and(items: list[str]) -> str:

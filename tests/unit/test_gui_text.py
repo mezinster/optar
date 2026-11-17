@@ -15,6 +15,7 @@ from optar_gui.document import (
     Health,
     PageOutcome,
     PageView,
+    Progress,
     ScanInfo,
     ScanView,
     Summary,
@@ -718,27 +719,73 @@ def test_margin_line_says_how_close_the_repair_came_to_failing(used, budget, wan
 # --- The slower reader for coarse scans --------------------------------------------
 
 
-def slow_page(number=2):
-    return PageView(number, Health.GOOD, 1, (), 0, 0, (0, 0, 0, 0), slow=True)
+def slow_page(number=2, corrected=265_112, dots=3_196_368):
+    return PageView(number, Health.GOOD, 1, (), 0, 0, (0, 0, 0, 0), slow=True,
+                    dots=dots, corrected_dots=corrected)  # fmt: skip
 
 
-def test_a_page_read_by_the_slower_reader_says_so_and_claims_no_repairs():
-    p = slow_page()
-    assert text.health_label(p) == text.READ_SLOWLY
-    assert text.health_label(p, restored=True) == text.READ_SLOWLY
-    assert text.page_row(p) == "Page 2 · Read by the slower reader for coarse scans"
+def test_a_page_read_by_the_slower_reader_counts_its_corrected_dots():
+    p = slow_page(3)
+    # Before the document is verified: the dots that reader corrected.
+    row = "Page 3 · Read by the slower reader · 265,112 dots corrected"
+    assert text.page_row(p) == row
+    assert text.page_row(p, restored=True) == row  # no figure from the repair given
+    assert text.health_label(p) == "Read by the slower reader · 265,112 dots corrected"
     lines = text.detail_text(p, "coarse.png", 3)
-    assert lines[0] == "Page 2 of 3 · coarse.png"
-    assert lines[1] == plain(text.read_by_slow_reader())
+    assert lines[0] == "Page 3 of 3 · coarse.png"
+    assert lines[1] == "Read by the slower reader for coarse scans."
+    assert lines[2] == "Dots corrected within the page: 265,112 of 3,196,368 (8.3%)."
+    assert "once the document is verified" in lines[3]
+    for line in lines[1:]:
+        plain(line)
+    # Neither good nor blocks: that reader decides symbols, not blocks, and finds
+    # none beyond repair.
     detail = " ".join(lines[1:]).lower()
-    assert "slower reader for coarse scans" in detail
-    # Neither a count of repairs nor a claim that there were none.
-    assert not any(ch.isdigit() for ch in detail)
-    assert "no repairs" not in detail and "good" not in detail and "block" not in detail
-    assert "Spare" in text.spare_row(p, "coarse.png")
-    assert text.READ_SLOWLY in text.spare_row(p, "coarse.png")
+    assert "good" not in detail and "block" not in detail and "lost" not in detail
+    assert text.spare_row(p, "coarse.png") == (
+        "    Spare · coarse.png · Read by the slower reader · 265,112 dots corrected"
+    )
     # An ordinary page is unchanged.
     assert text.health_label(page(1, Health.GOOD)) == "Good"
+
+
+def test_a_slow_page_once_verified_says_how_many_bytes_the_protection_repaired():
+    p = slow_page(3)
+    assert text.page_row(p, True, 6912) == (
+        "Page 3 · Read by the slower reader · 265,112 dots corrected"
+        " · 6,912 bytes repaired by the document's protection"
+    )
+    lines = text.detail_text(p, "coarse.png", 3, restored=True, repaired_bytes=6912)
+    assert lines[1:] == (
+        "Read by the slower reader for coarse scans.",
+        "Dots corrected within the page: 265,112 of 3,196,368 (8.3%).",
+        "After verification: 6,912 of this page's bytes were wrong and were repaired "
+        "by the document's protection.",
+    )
+    assert text.BY_PROTECTION in text.health_label(p, True, 1)
+    assert text.health_label(p, True, 1).endswith("1 byte repaired by the document's protection")
+    assert text.detail_text(p, None, 3, repaired_bytes=1)[-1] == (
+        "After verification: 1 of this page's bytes was wrong and was repaired by the "
+        "document's protection."
+    )
+    # Nothing to repair: the row says nothing more, the detail says so.
+    assert text.page_row(p, True, 0) == text.page_row(p)
+    assert text.detail_text(p, None, 3, repaired_bytes=0)[-1] == (
+        "After verification: none of this page's bytes were wrong."
+    )
+
+
+def test_the_corrected_share_of_a_slow_page_is_shown_sensibly():
+    def share(corrected, dots):
+        return text.detail_text(slow_page(1, corrected, dots), None, 1)[2]
+
+    assert share(1, 1) == "Dots corrected within the page: 1 of 1 (100.0%)."
+    assert share(0, 1000) == "Dots corrected within the page: 0 of 1,000 (0.0%)."
+    assert share(1, 1_000_000) == "Dots corrected within the page: 1 of 1,000,000 (under 0.1%)."
+    assert share(5, 0) == "Dots corrected within the page: 5."
+    assert text.page_row(slow_page(1, 1, 9)) == (
+        "Page 1 · Read by the slower reader · 1 dot corrected"
+    )
 
 
 def test_a_slow_page_does_not_hide_that_it_is_unreadable_or_missing():
@@ -748,12 +795,105 @@ def test_a_slow_page_does_not_hide_that_it_is_unreadable_or_missing():
 
 def test_a_coarse_scan_being_read_says_it_takes_about_a_minute():
     scan = ScanView(4, "/scans/coarse.png", "working", None, None, "")
-    row = plain(text.reading_coarse_row(scan))
-    assert row.startswith("coarse.png · ") and "about a minute" in row
-    assert "coarse scan" in row and "slower reader" in row
-    assert text.reading_coarse_detail(scan)[0] == "coarse.png"
-    assert "about a minute" in text.reading_coarse_detail(scan)[1]
-    plain(text.READING_COARSE_SECTION)
+    for progress in (Progress("slow-sample", 0, 1, 0.3), Progress("slow-fit", 2, 5, 0.6)):
+        detail = text.being_read_detail(scan, progress)
+        assert detail[0] == "coarse.png"
+        assert "about a minute" in plain(detail[-1])
+        assert "coarse scan" in detail[-1] and "slower reader" in detail[-1]
+    # An ordinary reading says nothing of the kind.
+    detail = text.being_read_detail(scan, Progress("find", 0, 1, 0.1))
+    assert detail == ("coarse.png", "Finding the page.")
+    assert text.being_read_detail(scan, None) == ("coarse.png", "Waiting.")
+
+
+def test_the_steps_of_a_scan_being_read():
+    def step(key, done=0, of=1):
+        return text.step_text(Progress(key, done, of, 0.5))
+
+    assert text.step_text(None) == text.WAITING == "Waiting"
+    assert step("open") == "Opening the file"
+    assert step("find") == "Finding the page"
+    assert step("identify", 3, 12) == "Identifying the page"
+    assert step("read") == "Reading the data"
+    assert step("slow-sample", 2, 9) == "Slower reader: sampling"
+    assert step("slow-fit", 0, 5) == "Slower reader: pass 1 of 5"
+    assert step("slow-fit", 3, 5) == "Slower reader: pass 4 of 5"
+    assert step("slow-fit", 5, 5) == "Slower reader: pass 5 of 5"
+    for key in ("open", "find", "identify", "read", "slow-sample", "slow-fit"):
+        plain(step(key))
+    plain(text.BEING_READ_SECTION)
+    # A step with no words of its own is not passed off as another.
+    assert step("something-new") == "Working"
+
+
+def step_constants():
+    """Every STEP_ constant the readers and the work define: (name, key)."""
+    import optar.identify
+    import optar_gui.work as work
+
+    found = {}
+    for module in (optar.identify, work):
+        for name in dir(module):
+            if name.startswith("STEP_") and isinstance(getattr(module, name), str):
+                found[name] = getattr(module, name)
+    return found
+
+
+def test_every_step_the_readers_report_has_its_words():
+    constants = step_constants()
+    assert {"STEP_OPEN", "STEP_READ", "STEP_FIND", "STEP_IDENTIFY", "STEP_SLOW_SAMPLE",
+            "STEP_SLOW_FIT"} <= set(constants)  # fmt: skip
+    keys = set(constants.values())
+    words = {text.step_text(Progress(k, 0, 1, 0.0)) for k in keys}
+    assert len(words) == len(keys)
+    assert text.WAITING not in words and "Working" not in words
+
+
+def test_the_row_of_a_scan_being_read_is_its_name_and_step():
+    assert text.being_read_row("scan-3.png", None) == "scan-3.png · Waiting"
+    row = text.being_read_row("<b>scan</b>.png", Progress("slow-fit", 3, 5, 0.7))
+    assert row == "<b>scan</b>.png · Slower reader: pass 4 of 5"
+
+
+def test_the_bar_counts_the_scans_read_while_scans_are_being_read():
+    assert text.reading_line(3, 6) == "Working… 3 of 6 scans read"
+    assert text.reading_line(1, 1) == "Working… 0 of 1 scan read"
+    assert text.reading_line(1, 1205) == "Working… 1,204 of 1,205 scans read"
+    # With nothing else to say, the count alone.
+    for state in (D.EMPTY, D.WORKING):
+        s = S(state, 1, 0, 0, 0, 0, 9, reading=3, batch=6)
+        assert text.summary_line(s) == "Working… 3 of 6 scans read"
+    assert text.summary_line(S(D.WORKING, 1, 0, 0, 0, 1, 9)) == "Working…"
+
+
+def test_the_bar_keeps_the_documents_state_and_adds_the_count_while_scans_are_read():
+    from dataclasses import replace
+
+    count = " · 3 of 6 scans read"
+    damaged = unwrapped(data=None, verified=False, failed=3, page_damage={2: 900},
+                        worst_used=40, budget=32)  # fmt: skip
+    states = [
+        S(D.VERIFIED, 2, 0, 0, 0, 0, 1234, protection=32, repair=unwrapped()),
+        S(D.VERIFIED, 2, 0, 0, 0, 0, 9),
+        S(D.CHECKING, 2, 0, 0, 0, 0, 9),
+        S(D.MISMATCH, 2, 0, 0, 0, 0, 9),
+        S(D.MISMATCH, 2, 0, 0, 0, 0, 9, protection=32, repair=unwrapped(verified=False)),
+        S(D.RECOVERABLE, 2, 0, 0, 0, 1, 9, protection=32, missing_pages=(3,)),
+        S(D.INCOMPLETE, 2, 0, 0, 0, 1, 9, protection=32, repair_error="out of memory"),
+        S(D.INCOMPLETE, 1, 0, 0, 0, 1, 9, protection=32, missing_pages=(2,), repair=damaged),
+        S(D.INCOMPLETE, 5, 1, 0, 0, 1, 9),
+        S(D.UNVERIFIABLE, 2, 0, 0, 0, 0, None),
+    ]
+    for s in states:
+        alone = text.summary_line(s)
+        assert alone and not alone.startswith("Working")
+        assert text.summary_line(replace(s, reading=3, batch=6)) == alone + count
+    verified = text.summary_line(replace(states[0], reading=3, batch=6))
+    assert verified.startswith("File recovered and verified · ") and verified.endswith(count)
+    # The lines the window makes itself (a failed check, a repair running) too.
+    s = replace(states[2], reading=1, batch=2)
+    assert text.with_reading(text.REPAIRING, s) == f"{text.REPAIRING} · 1 of 2 scans read"
+    assert text.with_reading(text.REPAIRING, states[2]) == text.REPAIRING
 
 
 def test_an_unreadable_coarse_scan_says_the_slower_reader_was_tried():

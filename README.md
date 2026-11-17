@@ -151,7 +151,15 @@ Each page in the list has one of these states:
   document the other pages may still be enough to recover the file, and the bar
   then says so.
 
-While scans are still being read, a page shows "Waiting" or "Working…".
+Every scan you add is listed under "Being read" until it has been read, with a
+progress bar and the step it is at: "Waiting" (for its turn), "Opening the
+file", "Finding the page", "Identifying the page", "Reading the data", and, for
+a scan the slower reader takes on, "Slower reader: sampling" and "Slower
+reader: pass 4 of 5". The bar counts steps, not seconds: it can rest on a step
+(identifying tries each paper, dot size and orientation until one fits) and
+then jump, but it never moves back. Remove stops reading the scan. Once read,
+the scan becomes its page, or is listed as not readable. While a page of the
+document is still being read, it shows "Waiting" or "Working…".
 
 The bar at the bottom shows the state of the whole document:
 
@@ -165,7 +173,11 @@ The bar at the bottom shows the state of the whole document:
   enough to rebuild them. Once that has been done and checked, the bar says
   "Recoverable: page 3 missing, repaired from the others · matches the
   fingerprint", followed by the size and what the repair did.
-- "Working…": scans are still being read.
+- "Working… 3 of 6 scans read": scans are still being read; the count is of
+  the scans added since the last time none was being read. When the document
+  already has a state to show, the count follows it instead, for example
+  "Verified · N bytes · 3 of 6 scans read". "Working…" alone: a scan assigned
+  to a page by hand is being decoded.
 - "Checking the fingerprint…": the check is running in the background. For
   pages that identify themselves from their data it reads "Repairing and
   checking the fingerprint…".
@@ -212,8 +224,20 @@ sure of, how neighbouring dots blur into each other in each part of the page.
 It then reads every dot with that knowledge and chooses each symbol as a
 whole.
 
-- In the application it runs by itself. The scan's row says while the slower
-  reader is at work, and afterwards that the page was read by it.
+- In the application it runs by itself. The scan's row shows the slower
+  reader's step and progress while it is at work (selecting it says that this
+  takes about a minute), and afterwards that the page was read by it and how
+  many dots it corrected: those whose own impression lost its decision of
+  their symbol, "Page 3 · Read by the slower reader · 265,112 dots corrected".
+  They are marked on the scan preview, each mark one dot wide: on coarse
+  scans that is often several percent of the dots, so seen whole the page
+  shows a tint as dense as the corrections, and zooming in shows single dots.
+  (An ordinary page's few repairs are marked at a fixed size on screen.) Once the document is verified, the row adds how many of the page's
+  bytes the document's protection repaired ("· 6,912 bytes repaired by the
+  document's protection"), and selecting the page shows both figures. Such a
+  page is never called "Good" and is counted apart in the bar at the bottom:
+  the slower reader gives every symbol its best guess, so it cannot say what
+  is beyond repair on the page.
 - `optar decode` also runs it by itself and says so on stderr for each scan
   it is tried on. `--no-slow-reader` turns it off.
 - An A4 page took 40 to 70 seconds in all on the development machine: 20 to

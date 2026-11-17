@@ -69,10 +69,11 @@ import time
 from collections.abc import Callable, Iterable, Iterator
 from functools import partial
 
-from PySide6.QtCore import QAbstractListModel, QModelIndex, QObject, Qt, QTimer, Signal
-from PySide6.QtGui import QFont
+from PySide6.QtCore import QAbstractListModel, QModelIndex, QObject, QRect, Qt, QTimer, Signal
+from PySide6.QtGui import QFont, QFontMetrics, QPainter, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QDialog,
     QFileDialog,
     QHBoxLayout,
@@ -82,6 +83,10 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QSplitter,
+    QStyle,
+    QStyledItemDelegate,
+    QStyleOptionProgressBar,
+    QStyleOptionViewItem,
     QVBoxLayout,
     QWidget,
 )
@@ -96,6 +101,7 @@ from optar_gui.document import (
     DocState,
     Document,
     Fit,
+    Progress,
     Row,
     Summary,
     expand_paths,
@@ -112,7 +118,7 @@ from optar_gui.work import (
     too_coarse,
 )
 
-__all__ = ["REFRESH_MS", "SHUTDOWN_MS", "ReadController", "ReadTab"]
+__all__ = ["FRACTION_ROLE", "REFRESH_MS", "SHUTDOWN_MS", "ReadController", "ReadTab"]
 
 # How long background results are gathered before the view is redrawn.
 REFRESH_MS = 100
@@ -124,8 +130,9 @@ _VERDICT_JOB = 1
 _SAVE_JOB = 2
 _REPAIR_JOB = 3
 
-# What a scan's reading reports when the slower reader for coarse scans starts.
-_SLOW_STARTED = "slow"
+# The model's role for the share of a scan's reading done (a float in [0, 1]), on
+# the rows of scans being read; None on every other row.
+FRACTION_ROLE = Qt.ItemDataRole.UserRole + 1
 
 
 def _reading(
@@ -134,9 +141,9 @@ def _reading(
     cancelled: Callable[[], bool],
     report: Callable[[object], None],
 ) -> ScanWork:
-    """A scan's own reading on a worker: ``process(path, cancelled, on_slow)``,
-    reporting when the slower reader starts."""
-    return process(path, cancelled, on_slow=partial(report, _SLOW_STARTED))
+    """A scan's own reading on a worker: ``process(path, cancelled, on_progress)``,
+    reporting its ``work.Progress``."""
+    return process(path, cancelled, on_progress=report)
 
 
 def _write_chunks(
@@ -166,9 +173,10 @@ class ReadController(QObject):
     ``replace_rejected(message)`` says why a scan chosen with ``replace`` was not
     used. ``process`` and ``unlabelled`` are ``work.process_scan`` and
     ``work.process_unlabelled`` unless tests replace them; ``process`` is called
-    as ``process(path, cancelled, on_slow=...)``. While the slower reader for
-    coarse scans reads a scan, the document lists it (``reading_coarse``) and it
-    can be removed, which cancels the reading.
+    as ``process(path, cancelled, on_progress=...)``. Until a scan is identified
+    or found unreadable the document lists it as being read, with the progress
+    its reading reports (``Document.being_read``); removing it cancels the
+    reading, whether it has started or not.
     """
 
     changed = Signal()
@@ -253,9 +261,9 @@ class ReadController(QObject):
         """The bottom bar's text."""
         s = self._summary
         if s.state == DocState.CHECKING and self.check_error:
-            line = text.check_failed(self.check_error)
+            line = text.with_reading(text.check_failed(self.check_error), s)
         elif self._repair_key is not None and s.repair is None and s.state != DocState.WORKING:
-            line = text.REPAIRING
+            line = text.with_reading(text.REPAIRING, s)
         else:
             line = text.summary_line(self._summary)
         return text.summary_bar(line, self.note)
@@ -421,6 +429,8 @@ class ReadController(QObject):
     def _read(self, scan_id: int, path: str) -> None:
         """Starts the scan's own reading (``process``): identifying and decoding it."""
         self._reading.add(scan_id)
+        # Read before (its reading cancelled for a decode by hand): its last
+        # progress stays until this reading reports, rather than "Waiting".
         self._runner.submit(scan_id, partial(_reading, self._process, path), reports=True)
 
     def _decode_for_document(self, scan_id: int) -> None:
@@ -432,7 +442,8 @@ class ReadController(QObject):
         if scan_id in self._reading:
             self._reading.discard(scan_id)
             self._read_again.add(scan_id)
-            doc.set_reading_coarse(scan_id, False)  # cancelled: it will never report
+            # Cancelled: it will never report. Its last progress is kept, not
+            # shown while the scan is in a page, until its next reading reports.
         self._runner.cancel(scan_id)  # required before submitting the id again
         earlier = self._decoding_in.pop(scan_id, None)
         if earlier is not None:
@@ -561,11 +572,17 @@ class ReadController(QObject):
             return
         self._schedule()
 
-    def _on_progress(self, scan_id: int, what: object) -> None:
-        if what != _SLOW_STARTED or scan_id not in self._reading:
+    def _on_progress(self, scan_id: int, progress: object) -> None:
+        if not isinstance(progress, Progress) or scan_id not in self._reading:
             return
         try:
-            self._doc.set_reading_coarse(scan_id)
+            # A scan read again shows its last reading's progress until this one
+            # reports; its bar never moves back: the new step's words are shown
+            # with the larger fraction.
+            shown = self._doc.progress(scan_id)
+            if shown is not None and shown.fraction > progress.fraction:
+                progress = dataclasses.replace(progress, fraction=shown.fraction)
+            self._doc.set_progress(scan_id, progress)
         except KeyError:
             return
         self._schedule(changed=False)
@@ -674,19 +691,29 @@ class ReadController(QObject):
         self.save_failed.emit(message)
 
 
+# A row of the list: (kind, key, text, bar). ``bar`` is (fraction, name, step) for
+# a scan being read, else None.
+_Line = tuple[str, object, str, "tuple[float, str, str] | None"]
+# The model's role for a being-read row's (name, step), which the delegate draws.
+_PARTS_ROLE = Qt.ItemDataRole.UserRole + 2
+
+
 class _RowModel(QAbstractListModel):
-    """The rows of the page list: (kind, key, text), updated in place when it can be.
+    """The rows of the page list: (kind, key, text, bar), updated in place when it can be.
 
     Kinds: "title" and "section" rows are headings; the kinds of ``Row`` (a page,
-    the spares under it, other groups and unreadable scans) can be selected.
+    the spares under it, other groups, scans being read and unreadable scans) can
+    be selected. ``text`` is the row's plain text (what accessibility reads); a
+    scan being read also gives its fraction (``FRACTION_ROLE``) for the bar.
     """
 
-    SELECTABLE = (Row.PAGE, Row.SPARE, Row.OTHER, Row.READING_COARSE, Row.UNREADABLE)
+    SELECTABLE = (Row.PAGE, Row.SPARE, Row.OTHER, Row.BEING_READ, Row.UNREADABLE)
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
-        self._rows: list[tuple[str, object, str]] = []
+        self._rows: list[_Line] = []
         self._where: dict[tuple[str, object], int] = {}
+        self._names: tuple[str, ...] = ()  # of the scans being read, for the name column
         self._bold = QFont()
         self._bold.setBold(True)
 
@@ -696,11 +723,15 @@ class _RowModel(QAbstractListModel):
     def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole):
         if not index.isValid():
             return None
-        kind, _key, label = self._rows[index.row()]
+        kind, _key, label, bar = self._rows[index.row()]
         if role == Qt.ItemDataRole.DisplayRole:
             return label
         if role == Qt.ItemDataRole.FontRole and kind in ("title", "section"):
             return self._bold
+        if role == FRACTION_ROLE and bar is not None:
+            return bar[0]
+        if role == _PARTS_ROLE and bar is not None:
+            return bar[1:]
         return None
 
     def flags(self, index: QModelIndex) -> Qt.ItemFlag:
@@ -711,31 +742,128 @@ class _RowModel(QAbstractListModel):
         return Qt.ItemFlag.ItemIsEnabled
 
     def row_key(self, row: int) -> tuple[str, object]:
-        kind, key, _ = self._rows[row]
+        kind, key, _, _ = self._rows[row]
         return (kind, key)
 
     def row_of(self, key: tuple[str, object]) -> int | None:
         return self._where.get(key)
 
     def texts(self) -> list[str]:
-        return [label for _, _, label in self._rows]
+        return [label for _, _, label, _ in self._rows]
 
-    def set_rows(self, rows: list[tuple[str, object, str]]) -> bool:
+    def bar_names(self) -> tuple[str, ...]:
+        """The names of the rows drawn with a bar (the scans being read)."""
+        return self._names
+
+    def set_rows(self, rows: list[_Line]) -> bool:
         """Replaces the rows; returns True when the model was reset (not updated in place)."""
         old = self._rows
+        self._names = tuple(bar[1] for _, _, _, bar in rows if bar is not None)
         if len(rows) == len(old) and all(
             a[0] == b[0] and a[1] == b[1] for a, b in zip(rows, old, strict=True)
         ):
-            changed = [i for i, (a, b) in enumerate(zip(rows, old, strict=True)) if a[2] != b[2]]
+            changed = [i for i, (a, b) in enumerate(zip(rows, old, strict=True)) if a[2:] != b[2:]]
             self._rows = rows
             if changed:
                 self.dataChanged.emit(self.index(changed[0]), self.index(changed[-1]))
             return False
         self.beginResetModel()
         self._rows = rows
-        self._where = {(kind, key): i for i, (kind, key, _) in enumerate(rows)}
+        self._where = {(kind, key): i for i, (kind, key, _, _) in enumerate(rows)}
         self.endResetModel()
         return True
+
+
+class _RowDelegate(QStyledItemDelegate):
+    """Draws the row of a scan being read as its name, a bar and its step, within
+    the list's own look (the style draws the row and the bar, in the palette's
+    colours, light or dark); every other row is drawn as usual."""
+
+    # The bar's width at most, and its share of the row at most.
+    BAR_WIDTH = 120
+    BAR_SHARE = 0.3
+    # The name column is as wide as the longest name of the scans being read, up to
+    # this share of the row; a longer name is elided in the middle.
+    NAME_SHARE = 0.45
+    GAP = 8
+    # Room added to a name's measured width, so that text measured to fit is not
+    # elided for a fraction of a pixel.
+    _SLACK = 2
+
+    def __init__(self, parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self._widest: tuple[object, int] | None = None  # (names and font, width)
+
+    def _name_column(self, index: QModelIndex, metrics, font: QFont) -> int:
+        """The width the longest name of the scans being read needs, in this font."""
+        model = index.model()
+        names = model.bar_names() if hasattr(model, "bar_names") else ()
+        key = (names, font.key())
+        if self._widest is None or self._widest[0] != key:
+            widest = max((metrics.horizontalAdvance(n) for n in names), default=0)
+            self._widest = (key, widest + self._SLACK)
+        return self._widest[1]
+
+    def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex) -> None:
+        fraction = index.data(FRACTION_ROLE)
+        parts = index.data(_PARTS_ROLE)
+        if fraction is None or parts is None:
+            super().paint(painter, option, index)
+            return
+        name, step = parts
+        opt = QStyleOptionViewItem(option)
+        self.initStyleOption(opt, index)
+        widget = opt.widget
+        style = widget.style() if widget is not None else QApplication.style()
+        opt.text = ""  # the row's panel, selection and focus only
+        style.drawControl(QStyle.ControlElement.CE_ItemViewItem, opt, painter, widget)
+        area = style.subElementRect(QStyle.SubElement.SE_ItemViewItemText, opt, widget)
+        area = area.adjusted(2, 0, -2, 0)
+        metrics = QFontMetrics(opt.font)
+        width = area.width()
+        column = max(self._name_column(index, metrics, opt.font),
+                     metrics.horizontalAdvance(name) + self._SLACK)  # fmt: skip
+        name_width = max(0, min(column, int(width * self.NAME_SHARE)))
+        bar_width = max(0, min(self.BAR_WIDTH, int(width * self.BAR_SHARE)))
+        selected = bool(opt.state & QStyle.StateFlag.State_Selected)
+        role = QPalette.ColorRole.HighlightedText if selected else QPalette.ColorRole.Text
+        group = (
+            QPalette.ColorGroup.Normal
+            if opt.state & QStyle.StateFlag.State_Enabled
+            else QPalette.ColorGroup.Disabled
+        )
+        painter.save()
+        try:
+            painter.setFont(opt.font)
+            painter.setPen(opt.palette.color(group, role))
+            align = Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft
+            name_rect = QRect(area.left(), area.top(), name_width, area.height())
+            painter.drawText(
+                name_rect, align, metrics.elidedText(name, Qt.TextElideMode.ElideMiddle, name_width)
+            )
+            left = name_rect.right() + 1 + self.GAP
+            height = max(4, min(area.height() - 6, metrics.height()))
+            bar = QStyleOptionProgressBar()
+            if widget is not None:
+                bar.initFrom(widget)
+            enabled = opt.state & QStyle.StateFlag.State_Enabled
+            bar.state = enabled | QStyle.StateFlag.State_Horizontal
+            bar.palette = opt.palette
+            bar.direction = opt.direction
+            bar.rect = QRect(left, area.top() + (area.height() - height) // 2, bar_width, height)
+            bar.minimum, bar.maximum = 0, 1000
+            bar.progress = round(min(max(float(fraction), 0.0), 1.0) * 1000)
+            bar.textVisible = False
+            style.drawControl(QStyle.ControlElement.CE_ProgressBar, bar, painter, widget)
+            left += bar_width + self.GAP
+            step_rect = QRect(left, area.top(), max(0, area.right() + 1 - left), area.height())
+            painter.drawText(
+                step_rect,
+                align,
+                metrics.elidedText(step, Qt.TextElideMode.ElideRight, step_rect.width()),
+            )
+        finally:
+            painter.restore()
 
 
 class ReadTab(QWidget):
@@ -758,6 +886,7 @@ class ReadTab(QWidget):
         self._model = _RowModel(self)
         self.page_list = QListView(objectName="pageList")
         self.page_list.setModel(self._model)
+        self.page_list.setItemDelegate(_RowDelegate(self.page_list))
         self.page_list.setUniformItemSizes(True)
         self.page_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.page_list.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -885,29 +1014,37 @@ class ReadTab(QWidget):
 
     def refresh(self) -> None:
         doc = self.controller.document
-        rows: list[tuple[str, object, str]] = []
+        rows: list[_Line] = []
         cur = doc.current
         if cur is not None:
-            rows.append(("title", None, text.document_title(cur)))
+            rows.append(("title", None, text.document_title(cur), None))
         self._pages = doc.pages()
-        restored = self.controller.summary.restored
+        summary = self.controller.summary
+        restored = summary.restored
         for p in self._pages:
-            rows.append((Row.PAGE, p.number, text.page_row(p, restored)))
+            row = text.page_row(p, restored, summary.repaired_bytes(p.number))
+            rows.append((Row.PAGE, p.number, row, None))
             for spare in p.spare_ids:
                 name = os.path.basename(doc.scan(spare).path)
-                rows.append((Row.SPARE, spare, text.spare_row(doc.page_with(spare), name)))
+                rows.append((Row.SPARE, spare, text.spare_row(doc.page_with(spare), name), None))
         self._others = {g.key: g for g in doc.others()}
         if self._others:
-            rows.append(("section", Row.OTHER, text.NOT_PART_OF_THIS_FILE))
-            rows.extend((Row.OTHER, k, text.other_group_row(g)) for k, g in self._others.items())
-        coarse = doc.reading_coarse()
-        if coarse:
-            rows.append(("section", Row.READING_COARSE, text.READING_COARSE_SECTION))
-            rows.extend((Row.READING_COARSE, s.id, text.reading_coarse_row(s)) for s in coarse)
+            rows.append(("section", Row.OTHER, text.NOT_PART_OF_THIS_FILE, None))
+            rows.extend(
+                (Row.OTHER, k, text.other_group_row(g), None) for k, g in self._others.items()
+            )
+        self._being_read = {s.id: (s, progress) for s, progress in doc.being_read()}
+        if self._being_read:
+            rows.append(("section", Row.BEING_READ, text.BEING_READ_SECTION, None))
+            for scan, progress in self._being_read.values():
+                name = os.path.basename(scan.path)
+                fraction = progress.fraction if progress is not None else 0.0
+                bar = (fraction, name, text.step_text(progress))
+                rows.append((Row.BEING_READ, scan.id, text.being_read_row(name, progress), bar))
         unreadable = doc.unreadable()
         if unreadable:
-            rows.append(("section", Row.UNREADABLE, text.NOT_READABLE))
-            rows.extend((Row.UNREADABLE, s.id, text.unreadable_row(s)) for s in unreadable)
+            rows.append(("section", Row.UNREADABLE, text.NOT_READABLE, None))
+            rows.extend((Row.UNREADABLE, s.id, text.unreadable_row(s), None) for s in unreadable)
         if self._model.set_rows(rows):
             self._reselect()
 
@@ -957,8 +1094,12 @@ class ReadTab(QWidget):
                     scan_path = doc.scan(page.scan_id).path
                     work = self.controller.work_for(page.scan_id, doc.current.format)
                     name = os.path.basename(scan_path)
-                restored = self.controller.summary.restored
-                lines = text.detail_text(page, name, len(self._pages), restored=restored)
+                summary = self.controller.summary
+                restored = summary.restored
+                lines = text.detail_text(
+                    page, name, len(self._pages), restored=restored,
+                    repaired_bytes=summary.repaired_bytes(page.number),
+                )  # fmt: skip
                 note = self.controller.scan_note(work)
                 if note is not None:
                     lines = (*lines, note)
@@ -975,11 +1116,11 @@ class ReadTab(QWidget):
                 lines = text.other_group_detail(self._others[key])
             elif kind == Row.UNREADABLE:
                 lines = text.unreadable_detail(doc.scan(key))
-            elif kind == Row.READING_COARSE:
-                lines = text.reading_coarse_detail(doc.scan(key))
+            elif kind == Row.BEING_READ and key in self._being_read:
+                lines = text.being_read_detail(*self._being_read[key])
         self.detail.setText("\n".join(lines))
         if work is not None:
-            self.preview.show_scan(scan_path, work.rotation, work.marks, restored)
+            self.preview.show_scan(scan_path, work.rotation, work.marks, restored, work.dot)
         else:
             self.preview.show_scan(scan_path, 0, None)
         self.remove_button.setEnabled(actions.remove is not None)

@@ -31,7 +31,15 @@ from optar_gui.document import (
     ScanState,
 )
 from optar_gui.read_tab import ReadController, ReadTab
-from optar_gui.work import NOT_DECODABLE, ScanWork, process_scan, process_unlabelled
+from optar_gui.work import (
+    NOT_DECODABLE,
+    STEP_FIND,
+    Cancelled,
+    Progress,
+    ScanWork,
+    process_scan,
+    process_unlabelled,
+)
 from tests.helpers import fake_scan, save_scan, seeded_bytes
 
 TIMEOUT = 300_000  # ms: decoding is slow on a loaded machine
@@ -59,9 +67,11 @@ def _contents(path):
         return hashlib.sha256(f.read()).hexdigest()
 
 
-def cached_process(path, cancelled=lambda: False, on_slow=None):
+def cached_process(path, cancelled=lambda: False, on_progress=None):
     """``process_scan``, remembering each result by the file's contents."""
-    return _remembered(("scan", _contents(path)), lambda: process_scan(path, cancelled, on_slow))
+    return _remembered(
+        ("scan", _contents(path)), lambda: process_scan(path, cancelled, on_progress=on_progress)
+    )
 
 
 def cached_unlabelled(path, format, cancelled=lambda: False):
@@ -263,7 +273,7 @@ def held_back(gate, slow):
     """A ``process`` that reads ``slow`` only once ``gate`` is set; others at once."""
     slow = os.path.realpath(slow)
 
-    def process(path, cancelled=lambda: False, on_slow=None):
+    def process(path, cancelled=lambda: False, on_progress=None):
         if os.path.realpath(path) == slow:
             gate.wait(TIMEOUT / 1000)
         return cached_process(path, cancelled)
@@ -617,7 +627,7 @@ class Fakes:
         if name in self.held:
             self.gate.wait(TIMEOUT / 1000)
 
-    def process(self, path, cancelled=lambda: False, on_slow=None):
+    def process(self, path, cancelled=lambda: False, on_progress=None):
         name = os.path.basename(path)
         self._hold(name)
         return self.scans[name]
@@ -839,7 +849,7 @@ def test_a_scan_decoded_in_another_format_keeps_its_own_preview(qtbot, fake_cont
     tab = ReadTab(controller)
     qtbot.addWidget(tab)
     shown = []
-    tab.preview.show_scan = lambda path, rotation, marks, restored=False: shown.append(
+    tab.preview.show_scan = lambda path, rotation, marks, restored=False, dot=0.0: shown.append(
         (path and os.path.basename(path), rotation, None if marks is None else marks.tolist()))
     controller.add_paths(["/x/a1.png", "/x/a2.png"])
     idle(qtbot, controller)
@@ -883,6 +893,54 @@ def test_a_scan_whose_reading_was_cancelled_by_hand_is_read_again(qtbot, fake_co
     # again, being there already).
     assert [s.id for s in doc.unreadable()] == [doc.scan_id_of("/x/damaged.png"),
                                                 doc.scan_id_of("/x/slow.png"), x]  # fmt: skip
+    assert notices == []
+
+
+class ReportingFakes(Fakes):
+    """Fakes whose own readings of the names in ``reporting`` report finding the
+    page, then wait until cancelled or until ``gate`` is set."""
+
+    reporting: frozenset = frozenset()
+
+    def process(self, path, cancelled=lambda: False, on_progress=None):
+        name = os.path.basename(path)
+        if name in self.reporting and on_progress is not None:
+            on_progress(Progress(STEP_FIND, 0, 1, 0.1))
+            while not self.gate.is_set():
+                if cancelled():
+                    raise Cancelled()
+                self.gate.wait(0.01)
+        return super().process(path, cancelled, on_progress)
+
+
+def test_a_scan_read_again_keeps_its_last_step_until_it_reports(qtbot, fake_controller):
+    fakes = ReportingFakes(
+        {"damaged.png": unreadable_work(),
+         "other.png": identified_work(A_FMT, 1, 1, "o", make_tag(b"o" * 4), b"o" * 4),
+         "x.png": unreadable_work()},
+        {("x.png", A_FMT): decoded_work(b"x" * 4)},
+    )  # fmt: skip
+    controller, notices = fake_controller(fakes)
+    tab = ReadTab(controller)
+    qtbot.addWidget(tab)
+    controller.add_paths(["/x/damaged.png", "/x/other.png"])
+    idle(qtbot, controller)
+    controller.start_by_hand("a4", 2)
+    fakes.reporting = frozenset({"x.png"})
+    controller.add_paths(["/x/x.png"])
+    qtbot.waitUntil(lambda: "x.png · Finding the page" in tab.rows(), timeout=TIMEOUT)
+    fakes.held.add("x.png")  # its decode for the page waits
+    controller.replace(2, "/x/x.png")  # decoding it for this page cancels its reading
+    doc = controller.document
+    x = doc.scan_id_of("/x/x.png")
+    assert doc.pages()[1].scan_id == x
+    controller.switch_document(doc.others()[0].key)  # leaves the document by hand
+    # Listed as being read again: its last step, not back to "Waiting".
+    assert "x.png · Finding the page" in tab.rows()
+    assert "x.png · Waiting" not in tab.rows()
+    fakes.gate.set()  # the decode reports; its own reading runs again and ends
+    idle(qtbot, controller)
+    assert x in [s.id for s in doc.unreadable()]
     assert notices == []
 
 

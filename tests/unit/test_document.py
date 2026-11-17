@@ -34,6 +34,7 @@ from optar_gui.document import (
     PageOutcome,
     PageSlot,
     PageView,
+    Progress,
     Row,
     ScanInfo,
     ScanState,
@@ -1262,7 +1263,8 @@ def test_summary_counts_and_states():
     doc.set_outcome(p1, page_out(b"1" * PAGE))
     doc.set_outcome(p2, page_out(b"2" * PAGE, repaired=3))
     s = doc.summary()
-    assert s == Summary(DocState.INCOMPLETE, 1, 1, 0, 0, 1, TAG.size)
+    # p3, not identified, is still being read.
+    assert s == Summary(DocState.INCOMPLETE, 1, 1, 0, 0, 1, TAG.size, reading=1, batch=3)
     doc.assign_page(p3, 3)
     doc.set_unreadable(p3, "label unreadable")
     assert counts(doc.summary()) == (1, 1, 0, 1, 0)
@@ -2610,13 +2612,67 @@ def test_version1_choice_follows_its_identity():
 # --- The slower reader for coarse scans --------------------------------------------
 
 
-def add_slow_v1(doc, n, payload):
-    """Adds a version-1 scan read by the slower reader: it counts no repairs."""
+def add_slow_v1(doc, n, payload, corrected_dots=0, dots=0):
+    """Adds a version-1 scan read by the slower reader: it counts no repairs, only
+    the dots it corrected."""
     scan_id = add(doc, n)
     doc.set_identified(scan_id, v1_info(payload, ""))
     doc.set_payload(scan_id, payload)
-    doc.set_outcome(scan_id, PageOutcome(payload.data, (0, 0, 0, 0), 0, slow=True))
+    outcome = PageOutcome(payload.data, (0, 0, 0, 0), 0, slow=True, dots=dots,
+                          corrected_dots=corrected_dots)  # fmt: skip
+    doc.set_outcome(scan_id, outcome)
     return scan_id
+
+
+def spoilt(payload, count, start=1000):
+    """The payload with ``count`` bytes from ``start`` wrong (none marked erased)."""
+    data = bytearray(payload.data)
+    for i in range(start, start + count):
+        data[i] ^= 0x5A
+    return PagePayload(bytes(data), payload.erased.copy())
+
+
+def test_a_slow_page_shows_its_corrected_dots_and_once_verified_its_repaired_bytes():
+    data, payloads = v1_pages(2)
+    doc = Document()
+    add_v1(doc, "a", payloads[1])
+    slow = add_slow_v1(doc, "b", spoilt(payloads[2], 40), corrected_dots=1234, dots=50_000)
+    page = doc.pages()[1]
+    assert page.slow and page.scan_id == slow
+    assert (page.corrected_dots, page.dots) == (1234, 50_000)
+    # The dots it corrected are not repairs: the page stays good, counted apart.
+    assert (page.health, page.repaired, page.histogram) == (Health.GOOD, 0, (0, 0, 0, 0))
+    assert doc.pages()[0].corrected_dots == doc.pages()[0].dots == 0
+    s = doc.summary()
+    assert (s.good, s.slow) == (2, 1)
+    assert s.repaired_bytes(2) is None and s.repaired_bytes(1) is None  # not verified yet
+    result = repaired(doc)
+    s = doc.summary()
+    assert s.state == DocState.VERIFIED and s.slow == 1 and s.good == 2
+    # The bytes of each page the document's protection repaired, from the repair.
+    assert s.repaired_bytes(2) == result.page_damage[2] == 40
+    assert s.repaired_bytes(1) == 0
+    assert doc.save_bytes() == data
+
+
+def test_repaired_bytes_are_not_claimed_for_a_document_that_does_not_verify():
+    _, payloads = v1_pages(3)
+    doc, _ = v1_document(payloads, skip=(2,))
+    result = repaired(doc)
+    assert not result.verified and result.page_damage
+    s = doc.summary()
+    assert all(s.repaired_bytes(n) is None for n in (1, 2, 3))
+
+
+def test_corrected_dots_do_not_rank_two_slow_readings_of_a_page():
+    """A washed-out area reads as a codeword with no dot corrected: fewer corrected
+    dots is not a better reading, so two slow readings keep the add order."""
+    _, payloads = v1_pages(1)
+    doc = Document()
+    first = add_slow_v1(doc, "first", payloads[1], corrected_dots=900)
+    second = add_slow_v1(doc, "second", payloads[1], corrected_dots=300)
+    slot = doc.slots()[0]
+    assert (slot.scan_id, slot.spare_ids) == (first, (second,))
 
 
 def test_a_page_read_by_the_slower_reader_says_so_and_counts_no_repairs():
@@ -2646,33 +2702,80 @@ def test_an_ordinary_reading_of_a_page_is_preferred_to_a_slow_one():
     assert doc.page_with(slow).slow and not doc.pages()[0].slow
 
 
-def test_a_scan_being_read_by_the_slower_reader_is_listed_until_its_work_ends():
+def being_read(doc):
+    return [(scan.id, progress) for scan, progress in doc.being_read()]
+
+
+def test_every_scan_is_listed_as_being_read_until_it_is_identified_or_unreadable():
     doc = Document()
     a, b, c = add(doc, "a"), add(doc, "b"), add(doc, "c")
+    # Listed from the moment it is added: waiting, with no progress yet.
+    assert being_read(doc) == [(a, None), (b, None), (c, None)]
+    assert all(s.state == ScanState.WAITING for s, _ in doc.being_read())
     for scan_id in (a, b, c):
         doc.set_working(scan_id)
-    assert doc.reading_coarse() == ()
-    doc.set_reading_coarse(a)
-    doc.set_reading_coarse(b)
-    doc.set_reading_coarse(c)
-    assert [s.id for s in doc.reading_coarse()] == [a, b, c]
-    assert all(s.state == ScanState.WORKING for s in doc.reading_coarse())
-    assert doc.actions(Row.READING_COARSE, a) == Actions(remove=a)
-    assert doc.actions(Row.READING_COARSE, 99) == NO_ACTIONS
+    assert all(s.state == ScanState.WORKING for s, _ in doc.being_read())
+    step = Progress("find", 0, 1, 0.1)
+    doc.set_progress(b, step)
+    assert being_read(doc) == [(a, None), (b, step), (c, None)]
+    assert doc.actions(Row.BEING_READ, a) == Actions(remove=a)
+    assert doc.actions(Row.BEING_READ, 99) == NO_ACTIONS
+    assert doc.actions(Row.BEING_READ, "a") == NO_ACTIONS
     doc.set_unreadable(a, "label unreadable")
     _, payloads = v1_pages(1)
     doc.set_identified(b, v1_info(payloads[1]))
-    assert [s.id for s in doc.reading_coarse()] == [c]
-    assert doc.actions(Row.READING_COARSE, a) == NO_ACTIONS
+    assert being_read(doc) == [(c, None)]
+    assert doc.actions(Row.BEING_READ, a) == NO_ACTIONS
+    assert doc.actions(Row.BEING_READ, b) == NO_ACTIONS
     # With a document current, the row still offers removing the scan.
     assert doc.current is not None
-    assert doc.actions(Row.READING_COARSE, c) == Actions(remove=c)
+    assert doc.actions(Row.BEING_READ, c) == Actions(remove=c)
+    # Its work ending does not end it: only a result does.
     doc.set_working(c, False)
-    assert doc.reading_coarse() == ()
-    doc.set_working(c)
-    doc.set_reading_coarse(c)
-    doc.set_reading_coarse(c, False)
-    assert doc.reading_coarse() == ()
-    doc.set_reading_coarse(c)
+    assert being_read(doc) == [(c, None)]
     doc.remove_scan(c)
-    assert doc.reading_coarse() == ()
+    assert being_read(doc) == []
+    assert doc.actions(Row.BEING_READ, c) == NO_ACTIONS
+
+
+def test_progress_changes_nothing_but_what_is_shown():
+    doc, ids = build(info(1), None)
+    before = picture(doc), doc.summary()
+    doc.set_progress(ids[1], Progress("identify", 3, 10, 0.4))
+    assert (picture(doc), doc.summary()) == before
+    doc.set_progress(ids[1], None)
+    assert being_read(doc) == [(ids[1], None)]
+    with pytest.raises(KeyError):
+        doc.set_progress(99, None)
+
+
+def test_a_scan_put_into_a_page_by_hand_is_not_listed_as_being_read():
+    doc, ids = build(info(1, total=2), None)
+    assert being_read(doc) == [(ids[1], None)]
+    doc.assign_page(ids[1], 2)
+    assert being_read(doc) == []
+    assert doc.actions(Row.BEING_READ, ids[1]) == NO_ACTIONS
+    assert doc.slots()[1].scan_id == ids[1]
+
+
+def test_the_summary_counts_the_scans_of_the_batch_being_read():
+    doc = Document()
+    assert (doc.summary().reading, doc.summary().batch) == (0, 0)
+    a, b, c = add(doc, "a"), add(doc, "b"), add(doc, "c")
+    assert (doc.summary().reading, doc.summary().batch) == (3, 3)
+    assert doc.summary().state == DocState.EMPTY  # no document yet
+    doc.set_identified(a, info(1, total=2))
+    doc.set_outcome(a, out())
+    doc.set_unreadable(b, "label unreadable")
+    assert (doc.summary().reading, doc.summary().batch) == (1, 3)
+    doc.remove_scan(b)
+    assert (doc.summary().reading, doc.summary().batch) == (1, 2)
+    # Added while scans are being read: the same batch.
+    d = add(doc, "d")
+    assert (doc.summary().reading, doc.summary().batch) == (2, 3)
+    doc.set_unreadable(c, "label unreadable")
+    doc.set_unreadable(d, "label unreadable")
+    assert (doc.summary().reading, doc.summary().batch) == (0, 0)
+    # Added once every scan was read: a new batch.
+    add(doc, "e")
+    assert (doc.summary().reading, doc.summary().batch) == (1, 1)

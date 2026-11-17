@@ -14,6 +14,7 @@ from optar import DOT_SIZES, PAPERS, PARITY, encode
 from optar.container import page_payload, plan_for, read_header, wrap
 from optar.decoder import decode_located, locate_page, soft
 from optar.errors import DecodeError, IdentifyError
+from optar.fec import encode_symbols
 from optar.format import Layout, get_layout
 from optar.identify import ScanIdentity, identify_any, identify_scan
 from tests.helpers import seeded_bytes, simulate_scan
@@ -80,9 +81,37 @@ def test_read_soft_reads_a_scan_the_ordinary_reader_cannot():
     assert result.bits.dtype == np.uint8 and result.bits.shape == (FMT.net_bits,)
     assert result.lost_symbols is not None and result.lost_symbols.dtype == np.int64
     assert len(result.lost_symbols) == 0 and result.stats.uncorrectable == 0
-    assert result.corrected_bits is None and result.grid is grid
+    assert result.grid is grid
     assert sum(result.stats.error_histogram) == FMT.fec_syms == result.stats.symbols
     assert read_header(page_payload(result, FMT).data) is not None
+
+
+def test_read_soft_lists_the_dots_whose_sign_its_choice_overruled():
+    big, grid = enlarged(scan(**COARSE))
+    fits = []
+    real = soft._Reader._fit
+
+    def recording(self):
+        fits.append(real(self))
+        return fits[-1]
+
+    with mock.patch.object(soft._Reader, "_fit", recording):
+        result = soft.read_soft(grid, big)
+    corrected = result.corrected_bits
+    assert corrected.dtype == np.int64 and corrected.ndim == 1
+    assert np.all(np.diff(corrected) > 0)  # ascending, each once
+    histogram = result.stats.error_histogram
+    assert len(corrected) == sum(i * n for i, n in enumerate(histogram)) > 0
+    # Each listed dot's sign in the last fit differs from its chosen codeword's bit,
+    # and every other dot's agrees.
+    words = (result.bits.reshape(FMT.fec_syms, FMT.fec_smallbits).astype(np.uint32)
+             << np.arange(FMT.fec_smallbits - 1, -1, -1, dtype=np.uint32)).sum(axis=1)  # fmt: skip
+    codewords = encode_symbols(words.astype(np.uint32), FMT)
+    shifts = np.arange(FMT.fec_largebits - 1, -1, -1, dtype=np.uint32)
+    chosen = ((codewords[None, :] >> shifts[:, None]) & 1).reshape(-1).astype(bool)
+    dark = fits[-1] > 0
+    assert len(fits) == soft.ROUNDS and dark.shape == chosen.shape
+    assert np.array_equal(np.flatnonzero(dark != chosen), corrected)
 
 
 def test_read_soft_matches_the_ordinary_reader_on_a_clean_scan():
@@ -130,6 +159,8 @@ def check_slow_identity(ident, turns, dpi, page=2):
     again = page_payload(ident.result, FMT)
     assert ident.payload.data == again.data and not ident.payload.erased.any()
     assert ident.scan_dpi == pytest.approx(dpi, rel=0.05)
+    # The grid is on the scan enlarged to about ENLARGE_TO pixels a dot.
+    assert ident.enlarged == pytest.approx(soft.ENLARGE_TO * 200 / dpi, abs=soft.ENLARGE_STEP)
 
 
 @pytest.mark.parametrize("turns", [0, 1, 2, 3])
@@ -306,3 +337,103 @@ def test_cancel_stops_the_slow_reader(only_layout):
     with mock.patch.object(optar.identify, "identify_scan", fails), \
             pytest.raises(soft.Stopped):
         identify_any(scan(**COARSER), cancelled=lambda: True)
+
+
+# --- Progress reports ---------------------------------------------------------------
+
+STEP_FIND = optar.identify.STEP_FIND
+STEP_IDENTIFY = optar.identify.STEP_IDENTIFY
+STEP_SLOW_SAMPLE = optar.identify.STEP_SLOW_SAMPLE
+STEP_SLOW_FIT = optar.identify.STEP_SLOW_FIT
+
+
+def keys(reports):
+    """The step keys reported, each run of one key once."""
+    out = []
+    for step, _, _ in reports:
+        if not out or out[-1] != step:
+            out.append(step)
+    return out
+
+
+def same_identity(a, b):
+    assert (a.paper, a.fmt, a.rotation, a.page, a.total, a.tag, a.name, a.layout, a.reader) == (
+        b.paper, b.fmt, b.rotation, b.page, b.total, b.tag, b.name, b.layout, b.reader
+    )  # fmt: skip
+    assert (a.confidence, a.margin, a.header, a.scan_dpi) == (
+        b.confidence, b.margin, b.header, b.scan_dpi
+    )  # fmt: skip
+    assert np.array_equal(a.grid.positions, b.grid.positions)
+    assert (a.payload is None) == (b.payload is None)
+    if a.payload is not None:
+        assert a.payload.data == b.payload.data
+        assert np.array_equal(a.result.bits, b.result.bits)
+
+
+def test_identify_scan_reports_finding_then_each_candidate(only_layout):
+    img = scan(600, 1.0)
+    reports = []
+    ident = identify_scan(img, on_progress=lambda *r: reports.append(r))
+    same_identity(ident, identify_scan(img))
+    assert keys(reports) == [STEP_FIND, STEP_IDENTIFY]
+    assert reports[0] == (STEP_FIND, 0, 1)
+    tried = [(done, of) for step, done, of in reports if step == STEP_IDENTIFY]
+    # LAYOUT on one paper, in two rotations: the label, then the layouts.
+    assert {of for _, of in tried} == {2 * (1 + 1)}
+    assert [done for done, _ in tried] == list(range(len(tried)))
+
+
+def test_identify_scan_reports_nothing_more_when_it_fails(only_layout):
+    reports = []
+    with pytest.raises(IdentifyError):
+        identify_scan(np.full((60, 40), 255, np.uint8), on_progress=lambda *r: reports.append(r))
+    assert reports == [(STEP_FIND, 0, 1)]
+    reports.clear()
+    with pytest.raises(IdentifyError):
+        identify_scan(scan(**COARSER), on_progress=lambda *r: reports.append(r))
+    assert keys(reports) == [STEP_FIND, STEP_IDENTIFY]
+    assert [r[1] for r in reports[1:]] == list(range(4)) and {r[2] for r in reports[1:]} == {4}
+
+
+def test_read_soft_reports_sampling_then_each_fit():
+    big, grid = enlarged(scan(**COARSE))
+    reports = []
+    result = soft.read_soft(grid, big, on_progress=lambda *r: reports.append(r))
+    assert reports == [(STEP_SLOW_SAMPLE, 0, 1)] + [
+        (STEP_SLOW_FIT, k, soft.ROUNDS) for k in range(soft.ROUNDS + 1)
+    ]
+    assert np.array_equal(result.bits, page_bits(document()[1], 2))
+
+
+def test_identify_any_reports_the_ordinary_steps_then_the_slow_reader(only_layout):
+    img = scan(**COARSER)
+    reports = []
+    ident = identify_any(img, on_progress=lambda *r: reports.append(r))
+    check_slow_identity(ident, 0, COARSER["dpi"])
+    assert keys(reports) == [STEP_FIND, STEP_IDENTIFY, STEP_SLOW_SAMPLE, STEP_SLOW_FIT]
+    first_slow = keys(reports).index(STEP_SLOW_SAMPLE)
+    slow = [r for r in reports if r[0] in (STEP_SLOW_SAMPLE, STEP_SLOW_FIT)]
+    assert slow[0] == (STEP_SLOW_SAMPLE, 0, 1) and first_slow == 2
+    assert (STEP_SLOW_SAMPLE, 0, 2) in slow  # the first of two candidates (rotations)
+    fits = [done for step, done, of in slow if step == STEP_SLOW_FIT]
+    assert fits == list(range(soft.ROUNDS + 1))
+
+
+def test_identify_any_passes_the_callback_only_when_given():
+    calls = []
+
+    def ordinary(image, options=None, **kw):
+        calls.append(("scan", sorted(kw)))
+        raise IdentifyError(optar.identify.LABEL_UNREADABLE, scan_dpi=290.0)
+
+    def coarse(image, options=None, cancelled=None, **kw):
+        calls.append(("coarse", sorted(kw)))
+        raise IdentifyError(optar.identify.LABEL_UNREADABLE)
+
+    with mock.patch.object(optar.identify, "identify_scan", ordinary), \
+            mock.patch.object(soft, "identify_coarse", coarse):
+        for report in (None, lambda *r: None):
+            with pytest.raises(IdentifyError):
+                identify_any(np.zeros((4, 4), np.uint8), on_progress=report)
+    assert calls == [("scan", []), ("coarse", []),
+                     ("scan", ["on_progress"]), ("coarse", ["on_progress"])]  # fmt: skip
