@@ -198,8 +198,8 @@ pages as one PDF. `optar decode` reads only files named `BASE_0001.png`,
 
 ### Scans that are too coarse: the slower reader
 
-When the ordinary reader cannot identify a scan, but finds the outline of a
-page in it, the program tries a second, slower reader on the same scan. It
+From 0.4.0, when the ordinary reader cannot identify a scan, but finds the
+outline of a page in it, the program tries a second, slower reader on the same scan. It
 does the same when a coarse scan (fewer than 2.5 scan pixels to a dot) gave
 the ordinary reader only an untagged label and no header, and the page's data
 read badly (1% or more of its symbols beyond correction): on such a scan the
