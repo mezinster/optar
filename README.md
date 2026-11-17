@@ -232,7 +232,11 @@ The pages of a printout made with protection, or with any dot size but
 Standard, carry the details of the document in their data: which printout they
 belong to, their number, the number of pages, the size of the file and its
 fingerprint. The label printed at the bottom is for people and is not used to
-identify them. These are called self-identifying pages here. They need optar
+identify them. In a PDF it is printed at one size whatever the dot size (the
+size of a Standard page's label), so the whole line fits; it is then too small
+to be read from a coarse scan, and the window shows "(no name)" until the file
+is recovered and its own name is known. PNG and PGM pages have one pixel per
+dot, so their label is drawn in the page's dots and grows with them. These are called self-identifying pages here. They need optar
 0.3 or newer to be read, and reading them needs no setting. The 0.2.0
 application cannot read larger-dot pages at all. For Standard dots, 0.2.0 and
 the C tool read them as pages without a tag and return the data wrapped in the

@@ -501,6 +501,19 @@ def test_encode_to_pdf_round_trip(tmp_path):
     assert sorted(os.listdir(tmp_path)) == ["out.pdf", "source.bin"]
 
 
+def test_encode_to_pdf_prints_the_label_at_the_standard_size(tmp_path):
+    from optar.font import fine_label
+    from optar.format import get_layout
+
+    name = "a name too long for the label of a page with large dots.pdf"
+    dest = tmp_path / "out.pdf"
+    src = write_source(tmp_path, seeded_bytes(7, 60_000))
+    assert encode_to_pdf(src, str(dest), "a4", name, dots="large", protect="standard") == 2
+    layout = get_layout("a4", "large")
+    for number, got in enumerate(parse_pdf(dest), start=1):
+        assert np.array_equal(got["band"], fine_label(layout, number, 2, name))
+
+
 def test_encode_to_pdf_letter_empty_file(tmp_path):
     dest = tmp_path / "out.pdf"
     src = write_source(tmp_path, b"")
@@ -589,7 +602,13 @@ def test_encode_to_pdf_large_dots_with_protection(tmp_path):
     for page, expected in zip(pdf, want, strict=True):
         assert page["cm"] == pytest.approx(
             (w, 0, 0, h, layout.offset_x_pt, layout.offset_y_pt), abs=0.01)
-        assert np.array_equal(page["pixels"], expected.pixels)
+        # The page as encoded, but for its label, which is printed at the
+        # standard size by a strip over the (black) label band.
+        top = fmt.border + fmt.data_height
+        printed = expected.pixels.copy()
+        printed[top : top + fmt.text_height, fmt.border : fmt.border + fmt.data_width] = 0
+        assert np.array_equal(page["pixels"], printed)
+        assert page["band"] is not None
     assert sorted(os.listdir(tmp_path)) == ["out.pdf", "source.bin"]
 
 

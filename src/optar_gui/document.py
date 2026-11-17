@@ -484,6 +484,12 @@ class Summary:
     repair: Unwrapped | None = None  # version 1: the accepted repair result, if any
     repair_error: str = ""  # version 1: why the repair job for these pages raised
 
+    @property
+    def restored(self) -> bool:
+        """True when the document's protection gave a file that matches its
+        fingerprint: whatever its pages lost was repaired, every byte of it."""
+        return self.repair is not None and self.repair.verified
+
 
 @dataclass(frozen=True)
 class Verdict:
@@ -946,7 +952,14 @@ class Document:
         if lay.current is None:
             return None
         ids = tuple(sorted(lay.shown + list(lay.assigned)))
-        return self._group_view(lay.current, lay.shown, ids)
+        view = self._group_view(lay.current, lay.shown, ids)
+        # A recovered version-1 document knows its own name. The label of a
+        # page with larger dots is printed too small to be read from a scan,
+        # and an older printout's is cut short, so the recovered name is used.
+        repair = self._accepted_repair()
+        if repair is not None and repair.result.name:
+            view = replace(view, title=_safe_file_name(repair.result.name))
+        return view
 
     @property
     def by_hand(self) -> bool:
