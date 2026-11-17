@@ -216,8 +216,9 @@ whole.
   reader is at work, and afterwards that the page was read by it.
 - `optar decode` also runs it by itself and says so on stderr for each scan
   it is tried on. `--no-slow-reader` turns it off.
-- It takes about 20 seconds for an A4 page on the development machine, after
-  the ordinary reader has spent about 20 seconds on the scan. An image that is not
+- An A4 page took 40 to 70 seconds in all on the development machine: 20 to
+  35 seconds for the ordinary reader to give up, then 20 to 35 seconds for
+  the slower reader. An image that is not
   an optar page at all, but in which a page outline is found, costs about 20
   to 35 seconds more than it did without the slower reader.
 - It identifies a page only by the header in its data. Old 0.2-style pages
