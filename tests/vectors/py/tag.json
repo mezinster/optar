@@ -1,0 +1,61 @@
+{
+ "cases": {
+  "file_name": "name.tar",
+  "tags": [
+   {
+    "fingerprint": "e3b0c442",
+    "input": {
+     "name": "empty",
+     "seed": null,
+     "size": 0
+    },
+    "labels": {
+     "1": "[0:e3b0c442:84] name.tar",
+     "2": "[0:e3b0c442:32] name.tar"
+    },
+    "page_texts": {
+     "1": "[0:e3b0c442:84]",
+     "2": "[0:e3b0c442:32]"
+    },
+    "size": 0
+   },
+   {
+    "fingerprint": "2d711642",
+    "input": {
+     "name": "x",
+     "seed": null,
+     "size": 1
+    },
+    "labels": {
+     "1": "[1:2d711642:13] name.tar",
+     "2": "[1:2d711642:17] name.tar"
+    },
+    "page_texts": {
+     "1": "[1:2d711642:13]",
+     "2": "[1:2d711642:17]"
+    },
+    "size": 1
+   },
+   {
+    "fingerprint": "3ea3ce1b",
+    "input": {
+     "name": "seed5",
+     "seed": 5,
+     "size": 300000
+    },
+    "labels": {
+     "1": "[300000:3ea3ce1b:b4] name.tar",
+     "2": "[300000:3ea3ce1b:55] name.tar"
+    },
+    "page_texts": {
+     "1": "[300000:3ea3ce1b:b4]",
+     "2": "[300000:3ea3ce1b:55]"
+    },
+    "size": 300000
+   }
+  ],
+  "total": 2
+ },
+ "pins": "The document tag made from a file and the labels printed with it.",
+ "source": "python"
+}
