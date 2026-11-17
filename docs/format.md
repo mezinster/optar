@@ -1195,7 +1195,8 @@ the format.
 ### 7.6 The slower reader
 
 When the steps of 7.5 identify nothing but the outline of a page was found,
-this project tries a second, slower reader (`src/optar/decoder/soft.py`),
+or accept a page from an untagged label alone on a scan with fewer than 2.5
+scan pixels to a data pixel, this project tries a second, slower reader (`src/optar/decoder/soft.py`),
 meant for a scan too coarse for its dot size. For each candidate layout and
 rotation, in the order of 7.5, it:
 
@@ -1214,7 +1215,8 @@ rotation, in the order of 7.5, it:
 
 A page is accepted only by an acceptable header (section 6.2). A label is not
 read, so a page without a header (a plain or tagged document, part 3) is not
-identified this way, and section 6.1 does not come into play. The result goes
+identified this way. A page whose tag was accepted is never read this way,
+so section 6.1 holds. The result goes
 to the container exactly as the ordinary reader's does, and only the
 fingerprint verifies the file (section 6.3). Nothing in this reader is part
 of the format, and it does not change the results of the decoder of 7.1 to

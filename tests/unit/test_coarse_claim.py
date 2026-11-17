@@ -7,20 +7,22 @@ with tests.helpers.simulate_scan, each page identified with identify_any and
 the document unwrapped. The claim: the ordinary reader identifies no page,
 and with the slower reader the file is recovered and verified.
 
-The settings are 290 dpi and blur 1.8 printer dots, not the simulator's
+The settings are 290 and 300 dpi at blur 1.8 printer dots, not the simulator's
 defaults (blur 1.0), because at the defaults the claim does not hold: the
 ordinary reader alone reads such a page at 300 dpi with no lost symbol, so
 the slower reader is never needed. Measured on the same document:
 
 - 300 dpi, blur 1.0 (defaults): ordinary reader, no lost symbol, verified.
 - 300 dpi, blur 1.8, 2.0 and 2.2: the ordinary reader accepts each page from
-  its label without a header, so identify_any does not try the slower
-  reader, and the file is not recovered.
+  its untagged label without a header. identify_any does not settle for
+  that on a coarse scan and tries the slower reader; at blur 1.8 the file
+  then verifies (this test's 300 dpi case). Before that rule the file was
+  not recovered.
 - 290 dpi, blur 1.6: the ordinary reader identifies each page from its
   header, but the repair fails (worst block 65 of 64).
 - 290 dpi and 280 dpi, blur 1.8: the ordinary reader fails ("label
   unreadable"). At 290 dpi the slower reader reads both pages with no
-  repaired byte, and the file verifies. This test uses 290 dpi.
+  repaired byte, and the file verifies (this test's 290 dpi case).
 
 Blur 1.8 is the blur fitted to the owner's earlier real 300 dpi scans (the
 binding blur of test_claims.py); 290 dpi is close to the owner's six real
@@ -41,13 +43,16 @@ from tests.helpers import seeded_bytes, simulate_scan
 
 pytestmark = pytest.mark.slow
 
-DPI = 290
 BLUR = 1.8
 PAGES = 2
 NAME = "coarse.bin"
 
 
-def test_slower_reader_recovers_a_document_the_ordinary_reader_cannot_identify():
+# 290: the ordinary reader identifies nothing. 300: it reads each page's
+# untagged label but no header, which identify_any does not settle for on a
+# scan this coarse.
+@pytest.mark.parametrize("dpi", [290, 300])
+def test_slower_reader_recovers_a_document_the_ordinary_reader_cannot_read(dpi):
     layout = get_layout("a4", "standard")
     fmt, protect = layout.fmt, PARITY["high"]
     one = plan_for(1, fmt, protect).data_bytes
@@ -58,13 +63,14 @@ def test_slower_reader_recovers_a_document_the_ordinary_reader_cannot_identify()
     payloads, header = {}, None
     tried: list[int] = []  # pages handed to the slower reader
     for number, pixels in enumerate(images, start=1):
-        scan = simulate_scan(pixels, layout, DPI, blur=BLUR, seed=number)
+        scan = simulate_scan(pixels, layout, dpi, blur=BLUR, seed=number)
         # identify_any calls on_slow only after identify_scan has failed with
-        # a page outline found, so one call shows both halves of the claim:
-        # with the slower reader off (slow=False, or optar decode
-        # --no-slow-reader) this page would not be identified.
+        # a page outline found, or has read no more than an untagged label,
+        # so one call shows both halves of the claim: with the slower reader
+        # off (slow=False, or optar decode --no-slow-reader) this page's
+        # header would not be found.
         ident = identify_any(scan, on_slow=lambda n=number: tried.append(n))
-        assert tried[-1:] == [number], f"page {number}: the ordinary reader identified it"
+        assert tried[-1:] == [number], f"page {number}: the ordinary reader was enough"
         assert ident.reader == "slow"
         assert ident.layout is layout and ident.page == number
         assert ident.header is not None

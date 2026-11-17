@@ -199,8 +199,11 @@ pages as one PDF. `optar decode` reads only files named `BASE_0001.png`,
 ### Scans that are too coarse: the slower reader
 
 When the ordinary reader cannot identify a scan, but finds the outline of a
-page in it, the program tries a second, slower reader on the same scan. This
-is meant for a scan made at too low a resolution for its dot size, for
+page in it, the program tries a second, slower reader on the same scan. It
+does the same when a coarse scan (fewer than 2.5 scan pixels to a dot) gave
+the ordinary reader only an untagged label and no header: on such a scan the
+label can still be legible where the data is not. If the slower reader finds
+nothing there, the label's reading is kept. This is meant for a scan made at too low a resolution for its dot size, for
 example a Standard-dot page scanned at 300 dpi instead of 600. The slower
 reader enlarges the scan and learns, from the dots the ordinary reader is
 sure of, how neighbouring dots blur into each other in each part of the page.
@@ -217,8 +220,8 @@ whole.
   to 35 seconds more than it did without the slower reader.
 - It identifies a page only by the header in its data. Old 0.2-style pages
   (identified by the tag in their label) are not covered. The rule that a
-  valid label tag wins over a header does not come into play, because the
-  slower reader runs only when the ordinary reader could not read the label.
+  valid label tag wins over a header is kept: a page whose tag the ordinary
+  reader accepted is never given to the slower reader.
 - It does not make a wrong file look right: as always, only the fingerprint
   makes a file verified.
 
@@ -302,12 +305,11 @@ been shown on one real document and one simulated one:
   resolution. The scans were read where they are and are not part of this
   repository.
 - Simulated (`tests/unit/test_coarse_claim.py`): a two-page document of the
-  same kind, scanned at 290 dpi with blur 1.8 printer dots. The ordinary
-  reader identifies neither page; with the slower reader the file verifies.
-  At the simulator's default blur (1.0) the ordinary reader reads such a page
-  at 300 dpi on its own, and at 300 dpi with blur 1.8 it accepts each page
-  from its label without a header, so the slower reader is not tried and the
-  file is not recovered. The simulator is milder than the owner's scanner:
+  same kind, scanned at 290 and at 300 dpi with blur 1.8 printer dots. At
+  290 dpi the ordinary reader identifies neither page; at 300 dpi it reads
+  each page's label but no header. In both cases the file verifies with the
+  slower reader. At the simulator's default blur (1.0) the ordinary reader
+  reads such a page at 300 dpi on its own. The simulator is milder than the owner's scanner:
   in the simulation the slower reader repaired nothing, where the real
   document needed 41,495 bytes repaired.
 
