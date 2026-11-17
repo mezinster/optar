@@ -208,17 +208,26 @@ def _label_identity(dpi, **fields):
     return mock.Mock(**{**base, **fields})
 
 
+def _decoded(lost, symbols=1000):
+    """A stand-in for decode_located: `lost` of the symbols beyond correction."""
+    return lambda grid: mock.Mock(stats=mock.Mock(uncorrectable=lost, symbols=symbols))
+
+
 @pytest.mark.parametrize(
-    ("dpi", "fields", "tried"),
+    ("dpi", "fields", "lost", "tried"),
     [
-        (300.0, {}, True),  # an untagged label alone, on a coarse scan
-        (600.0, {}, False),  # the same on a fine scan: an old page, left alone
-        (300.0, {"tag": object()}, False),  # a valid tag is never questioned
-        (300.0, {"header": object()}, False),  # already a version-1 page
-        (None, {}, False),
+        (300.0, {}, 130, True),  # an untagged label alone, coarse scan, damaged data
+        (300.0, {}, 10, True),  # at the share of lost symbols that counts as damaged
+        (300.0, {}, 9, False),  # the data reads well: an old page, left alone
+        (300.0, {}, 0, False),
+        (600.0, {}, 130, False),  # a fine scan
+        (300.0, {"tag": object()}, 130, False),  # a valid tag is never questioned
+        (300.0, {"header": object()}, 130, False),  # already a version-1 page
+        (None, {}, 130, False),
     ],
 )
-def test_identify_any_reads_a_coarse_label_only_page_again(dpi, fields, tried):
+def test_identify_any_reads_a_coarse_label_only_page_again(dpi, fields, lost, tried, monkeypatch):
+    monkeypatch.setattr(optar.identify, "decode_located", _decoded(lost))
     label = _label_identity(dpi, **fields)
     found = object()
     coarse = mock.Mock(return_value=found)
@@ -232,7 +241,8 @@ def test_identify_any_reads_a_coarse_label_only_page_again(dpi, fields, tried):
             assert identify_any(np.zeros((4, 4), np.uint8), slow=False) is label
 
 
-def test_identify_any_keeps_the_label_when_the_slow_reader_finds_nothing():
+def test_identify_any_keeps_the_label_when_the_slow_reader_finds_nothing(monkeypatch):
+    monkeypatch.setattr(optar.identify, "decode_located", _decoded(130))
     label = _label_identity(300.0)
     coarse = mock.Mock(side_effect=IdentifyError(optar.identify.LABEL_UNREADABLE))
     with mock.patch.object(optar.identify, "identify_scan", lambda image, options=None: label), \

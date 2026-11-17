@@ -1196,7 +1196,8 @@ the format.
 
 When the steps of 7.5 identify nothing but the outline of a page was found,
 or accept a page from an untagged label alone on a scan with fewer than 2.5
-scan pixels to a data pixel, this project tries a second, slower reader (`src/optar/decoder/soft.py`),
+scan pixels to a data pixel while 1% or more of the page's symbols are beyond
+correction, this project tries a second, slower reader (`src/optar/decoder/soft.py`),
 meant for a scan too coarse for its dot size. For each candidate layout and
 rotation, in the order of 7.5, it:
 

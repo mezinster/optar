@@ -379,6 +379,11 @@ def identify_scan(image: np.ndarray, options: DecodeOptions | None = None) -> Sc
 # when its scan has fewer pixels than this to a printed dot (the ordinary
 # reader is made for three).
 COARSE_PIXELS_PER_DOT = 2.5
+# ... and only when the ordinary reader could not correct at least this share
+# of the page's symbols, so that a header may have gone unread. (A header is
+# stored five times; the owner's coarse scans lost 13% or more of their
+# symbols, a clean scan loses none.)
+DAMAGED_SHARE = 0.01
 
 
 def identify_any(
@@ -396,7 +401,9 @@ def identify_any(
       carries a scan_dpi), or
     - identify_scan accepted the page from an untagged label alone, with no
       header, on a scan with fewer than COARSE_PIXELS_PER_DOT pixels to a
-      dot: such a label can be read where the data cannot, so a version-1
+      dot whose data the ordinary reader could not read well (DAMAGED_SHARE
+      of its symbols beyond correction): such a label can be read where
+      the data cannot, so a version-1
       page would pass for an old one and its document would never be found.
     on_slow() is called first. In the first case, if the slow reader fails
     too, identify_scan's error is raised with slow_tried set; in the second
@@ -433,7 +440,12 @@ def _label_only_and_coarse(ident: ScanIdentity) -> bool:
         return False
     if ident.scan_dpi is None or ident.layout is None:
         return False
-    return ident.scan_dpi < COARSE_PIXELS_PER_DOT * float(ident.layout.pixels_per_inch)
+    if ident.scan_dpi >= COARSE_PIXELS_PER_DOT * float(ident.layout.pixels_per_inch):
+        return False
+    # A page whose data reads cleanly would have shown its header: it is an
+    # old page, and is left alone.
+    stats = decode_located(ident.grid).stats
+    return stats.uncorrectable >= DAMAGED_SHARE * stats.symbols
 
 
 def _corrected_bits(result: PageResult) -> int:

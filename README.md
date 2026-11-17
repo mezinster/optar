@@ -201,8 +201,10 @@ pages as one PDF. `optar decode` reads only files named `BASE_0001.png`,
 When the ordinary reader cannot identify a scan, but finds the outline of a
 page in it, the program tries a second, slower reader on the same scan. It
 does the same when a coarse scan (fewer than 2.5 scan pixels to a dot) gave
-the ordinary reader only an untagged label and no header: on such a scan the
-label can still be legible where the data is not. If the slower reader finds
+the ordinary reader only an untagged label and no header, and the page's data
+read badly (1% or more of its symbols beyond correction): on such a scan the
+label can still be legible where the data is not. A page whose data reads
+well is an old page without a header, and is left alone. If the slower reader finds
 nothing there, the label's reading is kept. This is meant for a scan made at too low a resolution for its dot size, for
 example a Standard-dot page scanned at 300 dpi instead of 600. The slower
 reader enlarges the scan and learns, from the dots the ordinary reader is
