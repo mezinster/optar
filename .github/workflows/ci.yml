@@ -45,9 +45,10 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e '.[dev]'
       # C comparisons and Ghostscript checks run in the oracle job on Linux,
-      # the desktop application's tests in the gui job.
+      # slow tests in the slow jobs, the desktop application's tests in the gui job.
       - run: pytest -q -m "not oracle and not gs and not slow and not gui"
 
+  # The comparisons with the C tools and the Ghostscript checks.
   oracle:
     runs-on: ubuntu-latest
     steps:
@@ -57,17 +58,55 @@ jobs:
           python-version: "3.15"
       - run: sudo apt-get update && sudo apt-get install -y libpng-dev ghostscript
       - run: pip install -e '.[dev]'
-      - name: Run oracle, Ghostscript and slow tests
+      - name: Run oracle and Ghostscript tests
         run: |
           set -o pipefail
-          # tests/gui needs PySide6, which this job does not install; its slow
-          # test runs in the gui job. Ignoring the folder keeps its collection
-          # skips out of the log checked below.
-          pytest -q -rs -m "(oracle or gs or slow) and not gui" --ignore=tests/gui | tee pytest.log
+          # tests/gui needs PySide6, which this job does not install. Ignoring
+          # the folder keeps its collection skips out of the log checked below.
+          pytest -q -rs -m "(oracle or gs) and not gui" --ignore=tests/gui | tee pytest.log
       - name: Fail on skipped tests other than tests/scans
         run: |
           if grep '^SKIPPED' pytest.log | grep -v 'tests/scans'; then
-            echo "These oracle/gs/slow tests were skipped (only tests/scans may skip)." >&2
+            echo "These oracle/gs tests were skipped (only tests/scans may skip)." >&2
+            exit 1
+          fi
+
+  # The slow tests need no C compiler. They run as four jobs side by side; the
+  # three big files also use every core of their machine.
+  slow:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: claims
+            args: -n auto tests/unit/test_claims.py
+          - name: identify
+            args: -n auto tests/unit/test_identify.py
+          - name: label
+            args: -n auto tests/unit/test_label.py
+          # The rest measure time and memory, so they run one at a time.
+          - name: rest
+            args: >-
+              --ignore=tests/unit/test_claims.py
+              --ignore=tests/unit/test_identify.py
+              --ignore=tests/unit/test_label.py
+    name: slow (${{ matrix.name }})
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.15"
+      - run: pip install -e '.[dev]'
+      - name: Run slow tests
+        run: |
+          set -o pipefail
+          pytest -q -rs -m "slow and not oracle and not gs and not gui" --ignore=tests/gui \
+            ${{ matrix.args }} | tee pytest.log
+      - name: Fail on skipped tests other than tests/scans
+        run: |
+          if grep '^SKIPPED' pytest.log | grep -v 'tests/scans'; then
+            echo "These slow tests were skipped (only tests/scans may skip)." >&2
             exit 1
           fi
 

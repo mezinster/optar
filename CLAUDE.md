@@ -9,6 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'`
 - `.venv/bin/pytest -q`: default suite, needs no C compiler.
 - `.venv/bin/pytest -q -m "oracle or gs or slow"`: compares against the C tools; needs a C compiler, libpng headers and Ghostscript. Without system libpng headers, point at them with `OPTAR_TEST_CFLAGS` / `OPTAR_TEST_LDFLAGS`.
+- Add `-n auto` (pytest-xdist) to run tests on every core; CI does this for the three big slow files. Tests that measure time or memory (`test_speed.py` and the like) must run without it.
 - `.venv/bin/ruff check .`
 - GUI tests: `.venv/bin/pip install -e '.[dev,gui-dev]'`, then `QT_QPA_PLATFORM=offscreen .venv/bin/pytest -q -m gui`. The `gui` marker is applied to all of `tests/gui`, and those tests are skipped without PySide6 and pytest-qt, so the default suite needs neither.
 - `optar-gui --self-test` runs an encode and a decode without a window; the release build must pass it.

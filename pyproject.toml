@@ -18,7 +18,7 @@ optar = "optar.cli:main"
 optar-gui = "optar_gui.__main__:main"
 
 [project.optional-dependencies]
-dev = ["pytest", "ruff", "pyinstaller"]
+dev = ["pytest", "pytest-xdist", "ruff", "pyinstaller"]
 gui = ["PySide6-Essentials>=6.6"]
 gui-dev = ["optar[gui]", "pytest-qt"]
 
