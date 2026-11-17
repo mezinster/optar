@@ -1,92 +1,6 @@
 {
  "c_commit": "9c8379c25466bf142459a26b0f34521bdde2af12",
- "golay_sha256": "e7fa76951f453edd860351063137aec317550e22f1d998435ecf3dd324d16fba",
- "pages": [
-  {
-   "format": "0-65-93-24-3-1-2-24",
-   "label": "",
-   "name": "empty",
-   "seed": 0,
-   "sha256": [
-    "6406406e1312d84c2e57bafb988ac7bd134631dcee7fda22ef9105e43e51dcd4"
-   ],
-   "size": 0
-  },
-  {
-   "format": "0-65-93-24-3-1-2-24",
-   "label": "",
-   "name": "one_byte",
-   "seed": 1,
-   "sha256": [
-    "ac934138473b3a565d9d83283f43f2d96060314ca387f707b7de5d8b297bb1fe"
-   ],
-   "size": 1
-  },
-  {
-   "format": "0-65-93-24-3-1-2-24",
-   "label": "",
-   "name": "exact_page",
-   "seed": 2,
-   "sha256": [
-    "acce6d9e16899a575cd83c5edbaa7dc8116273241e30bec127ea915605f5d701"
-   ],
-   "size": 199773
-  },
-  {
-   "format": "0-65-93-24-3-1-2-24",
-   "label": "",
-   "name": "page_plus_one",
-   "seed": 3,
-   "sha256": [
-    "4d5ce29928ab034b3cce81484e998dd89d3c2a9d844d53e6521b807ec66a424c",
-    "db76a8f5661308568bcdc9421ac26e907e29abcc84614fe36bb881902e32786d"
-   ],
-   "size": 199774
-  },
-  {
-   "format": "0-65-93-24-3-1-2-24",
-   "label": "",
-   "name": "two_pages",
-   "seed": 4,
-   "sha256": [
-    "adb628958f4808b5a2c1b52f9992abb54e150780029683ecb919860a2ef283f5",
-    "0498f3b03ea6203c9f6656e99434ad02f4cb97f6e43d2724e14a20a8902c2937"
-   ],
-   "size": 300000
-  },
-  {
-   "format": "0-65-93-24-3-1-2-24",
-   "label": "my label",
-   "name": "labelled",
-   "seed": 5,
-   "sha256": [
-    "84c7b0c3ecd183f7344c80bc3c0b1385eadb46a0ce7567260cce395768c217bd"
-   ],
-   "size": 5000
-  },
-  {
-   "format": "0-67-87-24-3-1-2-24",
-   "label": "",
-   "name": "one_byte",
-   "seed": 6,
-   "sha256": [
-    "3c0f4faee36ba296b63ec4707fd8d5474dc1711be7171ace3aa057039b111c91"
-   ],
-   "size": 1
-  },
-  {
-   "format": "0-67-87-24-3-1-2-24",
-   "label": "",
-   "name": "two_pages",
-   "seed": 7,
-   "sha256": [
-    "d43dd81fa3cc38e5afb2a1710c4104df835f9ccefa87258056c39ed26d572257",
-    "d34851f809e0ebaf67843c5e79308dc280edee1ba90de59c656fbbac36f5cf59"
-   ],
-   "size": 300000
-  }
- ],
- "seq2xy": {
+ "cases": {
   "0-65-93-24-3-1-2-24": [
    [
     643559,
@@ -20091,5 +20005,7 @@
     1430
    ]
   ]
- }
+ },
+ "pins": "The channel position (seq, x, y) of sampled sequence numbers per format equals the C encoder's.",
+ "source": "c"
 }
