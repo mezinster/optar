@@ -29,7 +29,7 @@ from optar.errors import DecodeError, FormatError, IdentifyError, OptarError
 from optar.fileio import io_error, replacing
 from optar.font import fine_label
 from optar.format import DOT_SIZES, PAPERS, PARITY, Layout, PageFormat, Paper, get_layout
-from optar.identify import ScanIdentity, identify_scan
+from optar.identify import ScanIdentity, identify_any
 from optar.imageio import read_scan, write_pgm, write_png
 from optar.pdf import write_pdf
 from optar.tag import make_tag, tagged_label
@@ -112,6 +112,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--force",
         action="store_true",
         help="save what was recovered of self-identifying pages even if it did not verify",
+    )
+    dec.add_argument(
+        "--no-slow-reader",
+        action="store_true",
+        help="do not try the slower reader on scans the ordinary reader cannot identify",
     )
     common(dec)
     return parser
@@ -265,16 +270,26 @@ def _scan_files(base: str) -> list[str]:
 PROBE_FILES = 3
 
 
-def _probe(path: str) -> ScanIdentity | str:
-    """The identity of a scan, or in plain words why there is none."""
+def _probe(path: str, slow: bool = True) -> ScanIdentity | str:
+    """The identity of a scan, or in plain words why there is none.
+
+    Unless `slow` is false, a scan the ordinary reader cannot identify is
+    given to the slower reader, which is announced on stderr."""
     try:
         image = read_scan(path)
     except OptarError as e:
         return f"could not be read ({e})"
     try:
-        return identify_scan(image)
+        return identify_any(
+            image,
+            slow=slow,
+            on_slow=lambda: _eprint(
+                f"optar: {os.path.basename(path)}: the ordinary reader cannot identify this "
+                "scan; trying the slower reader, which can take a minute or more"
+            ),
+        )
     except IdentifyError as e:
-        return f"not identified ({e.reason})" + _coarse_advice(e.scan_dpi)
+        return f"not identified ({e.reason})" + _coarse_advice(e.scan_dpi, e.slow_tried)
     except DecodeError as e:
         return f"not identified ({e})"
 
@@ -285,11 +300,12 @@ def _document_key(ident: ScanIdentity) -> tuple:
     return (h.fingerprint, h.size, h.total, h.parity, layout.fmt.to_string())
 
 
-def _coarse_advice(dpi: float | None) -> str:
+def _coarse_advice(dpi: float | None, slow_tried: bool = False) -> str:
     if dpi is None or dpi >= COARSE_DPI:
         return ""
     needs = ", ".join(f"{DOT_NAMES[d]} {dots.scan_dpi}" for d, dots in DOT_SIZES.items())
-    return f"; it was scanned at about {round(dpi, -1):.0f} dpi, the dot sizes need: {needs}"
+    tried = " (the slower reader was tried too)" if slow_tried else ""
+    return f"; it was scanned at about {round(dpi, -1):.0f} dpi{tried}, the dot sizes need: {needs}"
 
 
 def _pages(numbers) -> str:
@@ -305,7 +321,10 @@ def _some(numbers, most: int = 20) -> list:
 
 
 def _gather(
-    files: list[str], probes: dict[str, ScanIdentity | str], first: ScanIdentity
+    files: list[str],
+    probes: dict[str, ScanIdentity | str],
+    first: ScanIdentity,
+    slow: bool = True,
 ) -> dict[int, PagePayload]:
     """The payload of each page of first's document among the scans, the
     better scan of a page given twice. Reports each scan on stderr."""
@@ -315,7 +334,7 @@ def _gather(
     ignored: list[str] = []
     for path in files:
         shown = os.path.basename(path)
-        ident = probes[path] if path in probes else _probe(path)
+        ident = probes[path] if path in probes else _probe(path, slow)
         if isinstance(ident, str):
             _eprint(f"optar: {shown}: {ident}; counted as a missing page.")
             continue
@@ -326,6 +345,8 @@ def _gather(
         page = ident.header.page
         unreadable = int(np.count_nonzero(ident.payload.erased))
         note = f", {_plural(unreadable, 'byte')} unreadable" if unreadable else ""
+        if ident.reader == "slow":
+            note += " (read by the slower reader)"
         if page in chosen:
             better = unreadable < int(np.count_nonzero(chosen[page].erased))
             _eprint(
@@ -357,7 +378,7 @@ def _decode_version1(
         _eprint("optar: --debug-images is not available for self-identifying pages")
     header, layout = first.header, first.layout
     assert header is not None and layout is not None
-    result = unwrap(header, layout.fmt, _gather(files, probes, first))
+    result = unwrap(header, layout.fmt, _gather(files, probes, first, not args.no_slow_reader))
 
     summary = []
     if result.data is None and result.best_effort is None:
@@ -419,7 +440,7 @@ def _decode(args: argparse.Namespace) -> int:
         files = _scan_files(args.base)
         probes: dict[str, ScanIdentity | str] = {}
         for path in files[:PROBE_FILES]:
-            ident = probes[path] = _probe(path)
+            ident = probes[path] = _probe(path, not args.no_slow_reader)
             if isinstance(ident, str):
                 continue
             if ident.header is not None:
