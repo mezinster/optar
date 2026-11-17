@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Python package (primary code)
 
-`src/optar` is the Python port; the C sources are its read-only test oracle. Setup and commands:
+`src/optar` is the Python port; the C sources, in `lega-c/`, are its read-only test oracle. Setup and commands:
 
 - `python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'`
 - `.venv/bin/pytest -q`: default suite, needs no C compiler.
@@ -18,10 +18,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Rules:
 
 - Format numbers (65, 93, 24, 3, 2, 13, 200, paper sizes, dot sizes, grids per dot size, header, spread and parity numbers) live only in `src/optar/format.py`.
-- The C sources, `Makefile` and `pgm2ps` are the test oracle. Do not edit them.
+- Everything in `lega-c/` (the C sources, `Makefile` and `pgm2ps`) is the test oracle. Do not edit it.
 - Library modules never print, call `sys.exit` or read `sys.argv`; only `cli.py` does.
 - The decoder mirrors the C algorithm and its constants. Do not retune it without real scans.
-- Tests write only under pytest's `tmp_path`, because `make clean` deletes `*.pgm` and `*.ps` in the repo root.
+- Tests write only under pytest's `tmp_path`.
 - Runtime dependencies are numpy and Pillow only. No JPEG output.
 - GUI build (`optar-gui`, as in `.github/workflows/build.yml`, which the release workflow calls; macOS uses `--windowed` without `--onefile`): `.venv/bin/pyinstaller --onefile --name optar-gui --collect-data optar packaging/gui_entry.py`.
 - A `.py` edit is linted by the PostToolUse hook with `.venv/bin/ruff`.
@@ -42,10 +42,12 @@ Rules:
 
 ## C build notes (oracle)
 
+The C sources live in `lega-c/`; run `make` there.
+
 - `make` builds `optar` (encoder, libc only) and `unoptar` (decoder, needs libpng + zlib). The Makefile finds libpng headers only through `libpng-config`; there is no pkg-config fallback, so `unoptar` fails to compile without it.
 - `golay_codes.c` is generated at build time by the host program `golay` (`golay.c` + `parity.c`). Never edit or commit it; change `golay.c` instead.
 - `pgm2ps` needs ImageMagick `convert` at runtime.
-- `make clean` deletes every `*.pgm` and `*.ps` in the repo root. Keep test inputs and outputs elsewhere.
+- `make clean` deletes every `*.pgm` and `*.ps` in `lega-c/`. Keep test inputs and outputs elsewhere.
 - `make archive` names the tarball from `git describe`, which fails because the repo has no tags.
 - `archive_pdf` is unfinished (issue #11): the PS/PDF dimensions are wrong.
 - `CFLAGS` has `-DNODEBUG`, not `-DNDEBUG`, so `assert()` is active in normal builds.

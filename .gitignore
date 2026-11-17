@@ -1,7 +1,7 @@
 *.o
 golay
 golay_codes.c
-/optar
+/lega-c/optar
 unoptar
 .venv/
 dist/

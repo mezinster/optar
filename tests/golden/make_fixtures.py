@@ -22,6 +22,10 @@ LETTER = {"XCROSSES": 67, "YCROSSES": 87}
 LABEL = "my label"
 
 
+_C_FILES = ("optar.c", "common.c", "golay.c", "parity.c", "optar.h", "font.h")
+_C_HISTORY_PATHS = [*_C_FILES, *(f"lega-c/{name}" for name in _C_FILES)]
+
+
 def c_golay_sha256(build: cbuild.CBuild) -> str:
     """Hash the C golay_codes table, serialized like optar.fec.serialize_table."""
     probe = build.dir / "golay_dump.c"
@@ -99,8 +103,11 @@ def main() -> None:
         }
         fixtures = {
             "c_commit": subprocess.run(
-                ["git", "log", "-1", "--format=%H", "--", "optar.c", "common.c", "golay.c",
-                 "parity.c", "optar.h", "font.h"],
+                # The last commit that changed the C sources' contents. They moved
+                # from the repo root to lega-c unchanged: with both locations named
+                # and renames detected, the move is not counted as a change.
+                ["git", "log", "-1", "--format=%H", "-M", "--diff-filter=AM", "--",
+                 *_C_HISTORY_PATHS],
                 cwd=cbuild.REPO_ROOT, check=True, capture_output=True, text=True,
             ).stdout.strip(),
             "golay_sha256": c_golay_sha256(builds[a4.to_string()]),
