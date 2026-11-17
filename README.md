@@ -14,10 +14,14 @@ or more. From 0.3.0 the dots can be printed larger, so that a 200 dpi scanner
 is enough (see "Dot size and protection" below), and the pages can carry extra
 data that repairs damage and even a lost page.
 
+The page format is defined by [docs/format.md](docs/format.md) and by the
+conformance vectors in `tests/vectors`. The original C program, kept in
+`lega-c`, is where the format comes from; see "History" at the end.
+
 Desktop application
 -------------------
 
-From 0.2.0 the Python port also comes with `optar-gui`, a desktop application
+From 0.2.0 optar also comes with `optar-gui`, a desktop application
 with two tabs.
 
 **Put on paper.** Choose a file or drop it on the tab, pick A4 or US Letter
@@ -275,8 +279,8 @@ What is not shown:
 Python version
 --------------
 
-A Python port, `optar`, encodes a file into page images and decodes scans
-back, in one command-line program (the desktop application above uses the same
+The `optar` command, written in Python, encodes a file into page images and
+decodes scans back, in one command-line program (the desktop application above uses the same
 code). It needs no C compiler, no libpng and no ImageMagick.
 
 ### Installation
@@ -371,13 +375,15 @@ supported, selected through `--format` (the sixth field of the format string).
 ### Compatibility with the C version
 
 The Python encoder's pages are byte-identical to the C `optar` output for A4,
-Letter and all five error-correction modes (tested against C). The Python
-decoder's cross positions and sampled bits are bit-identical to the C
-`unoptar` on the synthetic test images.
+Letter and all five error-correction modes. The Python decoder's cross
+positions and sampled bits are bit-identical to the C `unoptar` on the
+synthetic test images. Both are checked against outputs of the C tools that
+were recorded once and are kept in `tests/vectors`; the tests no longer build
+or run the C tools.
 
 Each page of a self-identifying printout is still an ordinary optar page: a C
-`unoptar` built with the same grid size reads its dots exactly (this is tested
-for Large dots on A4 and Medium dots on Letter). What it returns is the data
+`unoptar` built with the same grid size reads its dots exactly (recorded for
+Large dots on A4 and Medium dots on Letter). What it returns is the data
 with the extra details and protection wrapped around the file, not the file.
 
 No automated test yet decodes a real print-and-scan.
@@ -388,10 +394,10 @@ No automated test yet decodes a real print-and-scan.
     .venv/bin/pytest -q
     .venv/bin/ruff check .
 
-`pytest -q` needs no C compiler. `.venv/bin/pytest -q -m "oracle or gs or slow"`
-also needs a C compiler, libpng headers and Ghostscript, and compares against
-the C tools. The `slow` marker includes the simulated-scan tests of the claims
-under "What has and has not been shown":
+No test needs a C compiler. `.venv/bin/pytest -q -m gs` checks the PDF output
+with Ghostscript, and `.venv/bin/pytest -q -m slow` runs the long tests (add
+`-n auto` to use every core). The `slow` marker includes the simulated-scan
+tests of the claims under "What has and has not been shown":
 `.venv/bin/pytest -q -m slow tests/unit/test_claims.py`.
 
 The application's tests need PySide6 and pytest-qt (`pip install -e '.[dev,gui-dev]'`)
@@ -402,17 +408,17 @@ Build the one-file executable and smoke-test it:
     .venv/bin/pyinstaller --onefile --name optar --collect-data optar packaging/entry.py
     python packaging/smoke.py dist/optar
 
-C reference implementation
---------------------------
+History: the original C program
+-------------------------------
 
-The original C programs live in the `lega-c` folder, and the rest of this
-document describes them. They are also the test oracle for the Python version.
-Run the commands below from inside `lega-c`. The C encoder is also called
+The original C programs live in the `lega-c` folder, unchanged, and the rest
+of this document describes them. They are history: the format is defined by
+[docs/format.md](docs/format.md), and nothing in this project builds or runs
+them any more. Run the commands below from inside `lega-c`. The C encoder is also called
 `optar`: `make` builds it there as `./optar`, so run it as `./optar` to avoid
 confusion with the Python command.
 
-Building
---------
+### Building
 
 You need to install [ImageMagick](https://www.imagemagick.org) so that the 
 resulting .pgm image can be converted into PostScript with the right dimensions:
@@ -432,8 +438,7 @@ Note that there may be some hardcoded configuration values that you may need to
 change, for example the page size defaults to A4 instead of US Letter. Read on
 to learn where to change that.
 
-Installing locally
-------------------
+### Installing locally
 
 It's easiest to install your local build with
 
@@ -445,8 +450,7 @@ To uninstall, run
 
     sudo make uninstall
 
-Encoding (writing)
-------------------
+### Encoding (writing)
 
 Run
 
@@ -475,8 +479,7 @@ Please note that the file will be padded by zeroes and the original length will
 be lost. **Pack your data with tar if you store data that are sensitive to
 this.**
 
-Decoding (reading)
-------------------
+### Decoding (reading)
 
 Clean and polish the scanner glass with rubbing alcohol and paper towel. Put
 yellow pages on the scanner lid to get sharper picture˚. Insert the
@@ -511,14 +514,12 @@ Please note the data are padded with zeroes so the original information
 about file length is lost. **If your data format doesn't like this then first
 pack your data with `tar`.**
 
-A4 <-> US Letter
-----------------
+### A4 <-> US Letter
 Change the convert parameters in pgm2ps (see comments). Change XCROSSES
 and YCROSSES in optar.h (see comments). Recompile. Then you can use US Letter
 instead of A4.
 
-Changing the format
--------------------
+### Changing the format
 If your printer is low quality and you are getting irreparable bits, you can
 try to format the media to lower capacity.  Unfortunately, setting by
 commandline is not implemented yet.  Change XCROSSES and YCROSSES in optar.h to
@@ -530,8 +531,7 @@ You can also change the decoding parameters in unoptar.c (look for MAGIC
 CONSTANTS) in attempt to read a difficult recording: unsharp_mask,
 unsharp_dist, sync_white_cut, white_cut, minmax_filter, pixel_blur, cross_trim.
 
-Future improvement
-------------------
+### Future improvement
 - manpage could be written for optar and unoptar
 - commandline help (-h) could be written for optar and unoptar
 - the format could be made configurable. Now it's stored in the optar.h

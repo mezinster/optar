@@ -1,4 +1,10 @@
 .venv/
+# What `make` in lega-c leaves behind, should anyone build the old C program.
+*.o
+golay
+golay_codes.c
+/lega-c/optar
+unoptar
 dist/
 build/
 __pycache__/
