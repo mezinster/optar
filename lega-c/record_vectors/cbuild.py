@@ -15,7 +15,8 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[2]
+HERE = Path(__file__).resolve().parent
 # The original C tools: a frozen test oracle kept apart from the Python code.
 C_DIR = REPO_ROOT / "lega-c"
 C_SOURCES = [
@@ -168,11 +169,11 @@ def build_c_tools(dest: Path, format_overrides: dict[str, int] | None = None) ->
 
 
 def build_seq2xy_dump(build: CBuild) -> Path:
-    """Compile tests/oracle/seq2xy_dump.c against the build's common.o; return the binary."""
+    """Compile seq2xy_dump.c (next to this file) against the build's common.o; return the binary."""
     cc = compiler()
     if cc is None:
         raise RuntimeError("no C compiler found")
-    shutil.copy(REPO_ROOT / "tests" / "oracle" / "seq2xy_dump.c", build.dir)
+    shutil.copy(HERE / "seq2xy_dump.c", build.dir)
     extra_c = shlex.split(os.environ.get("OPTAR_TEST_CFLAGS", ""))
     extra_ld = shlex.split(os.environ.get("OPTAR_TEST_LDFLAGS", ""))
     _run([cc, "-c", *CFLAGS, *extra_c, "-o", "seq2xy_dump.o", "seq2xy_dump.c"], build.dir)

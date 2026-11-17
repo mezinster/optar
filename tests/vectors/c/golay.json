@@ -1,0 +1,8 @@
+{
+ "c_commit": "9c8379c25466bf142459a26b0f34521bdde2af12",
+ "cases": {
+  "golay_sha256": "e7fa76951f453edd860351063137aec317550e22f1d998435ecf3dd324d16fba"
+ },
+ "pins": "The SHA-256 of the serialized Golay table equals the one built by the C tool.",
+ "source": "c"
+}

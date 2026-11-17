@@ -1,0 +1,31 @@
+{
+ "c_commit": "9c8379c25466bf142459a26b0f34521bdde2af12",
+ "cases": [
+  {
+   "band_sha256": "97b80ff20d4185a3f5bd525a3c63321ce89c447c458c900a3a023a9ca5c0f3fe",
+   "format": "0-65-93-24-3-1-2-24",
+   "input_hex": "78",
+   "text": ""
+  },
+  {
+   "band_sha256": "46adef6f328dc6e9aa5c76863862c414f686add38e14218a01c7781d71d3f178",
+   "format": "0-65-93-24-3-1-2-24",
+   "input_hex": "78",
+   "text": "my label"
+  },
+  {
+   "band_sha256": "4365113bfcd9f7fccad116c673ec4a9bf8b1c26c2215f65505e49c1894e62d6c",
+   "format": "0-65-93-24-3-1-2-24",
+   "input_hex": "78",
+   "text": "The quick brown fox jumps over the lazy dog 0123456789. The quick brown fox jumps over the lazy dog 0123456789. The quick brown fox jumps over the lazy dog 0123456789. The quick brown fox jumps over t"
+  },
+  {
+   "band_sha256": "5cb4857e9c7452b64bee99d260ec4789df28bf9cfc6ef74050aed5cc310770f5",
+   "format": "0-65-93-24-3-1-2-24",
+   "input_hex": "78",
+   "text": "na\u00efve \u2603"
+  }
+ ],
+ "pins": "The label band of page 1 is the one C optar draws for the same label text.",
+ "source": "c"
+}
