@@ -21,6 +21,7 @@ from optar.container import (
     Unwrapped,
     document_plan,
     fingerprint,
+    padding,
     page_payload,
     pages_promised,
     plan,
@@ -265,6 +266,60 @@ def test_wrap_headers_on_every_page(key, parity):
     _check_wrapped(data, "name.txt", fmt, parity)
 
 
+def _padding_stream(count):
+    """The padding stream written out from its definition, without optar.container."""
+    blocks = (
+        hashlib.sha256(b"optar padding" + n.to_bytes(8, "big")).digest()
+        for n in range(count // 32 + 1)
+    )
+    return b"".join(blocks)[:count]
+
+
+def test_padding_stream():
+    assert padding(0, 0).tobytes() == b""
+    assert padding(0, 100).tobytes() == _padding_stream(100)
+    assert padding(0, 4).tobytes() == bytes.fromhex(
+        hashlib.sha256(b"optar padding" + bytes(8)).hexdigest()
+    )[:4]
+    # Any stretch of the stream, also one that starts and ends inside a block.
+    whole = _padding_stream(5000)
+    for first, count in [(1, 1), (31, 2), (32, 32), (45, 1000), (4999, 1)]:
+        assert padding(first, count).tobytes() == whole[first : first + count]
+
+
+@pytest.mark.parametrize("parity", PARITY.values())
+def test_unused_room_does_not_print_as_white_lines(parity):
+    # Zeros are white dots: a part-filled document used to print long white
+    # rows on every page. No run of zero bytes may be longer than chance gives.
+    fmt = get_layout("a4", "medium").fmt
+    data = random.Random(7).randbytes(60_000)  # about half of one page
+    stream = np.frombuffer(wrap(data, "half.bin", fmt, parity), dtype=np.uint8)
+    zero = np.concatenate(([0], (stream == 0).astype(np.int8), [0]))
+    edges = np.flatnonzero(np.diff(zero))
+    # The longest are the leading zeros of the size in each header copy.
+    assert (edges[1::2] - edges[0::2]).max() <= 8
+
+
+@pytest.mark.parametrize("parity", PARITY.values())
+def test_a_document_padded_with_zeros_is_still_read(parity, monkeypatch):
+    # Printouts made by 0.3.0 pad with zeros. No reader looks at the padding.
+    fmt = get_layout("a4", "xlarge").fmt
+    data = random.Random(parity).randbytes(30_000)
+    monkeypatch.setattr(
+        optar.container, "padding", lambda first, count: np.zeros(max(count, 0), np.uint8)
+    )
+    stream = wrap(data, "old.bin", fmt, parity)
+    monkeypatch.undo()
+    assert stream != wrap(data, "old.bin", fmt, parity)
+    p = plan(len(data), "old.bin", fmt, parity)
+    pages = {
+        number: PagePayload(payload, np.zeros(len(payload), dtype=bool))
+        for number, payload in enumerate(_page_payloads(stream, fmt, p.total), start=1)
+    }
+    out = unwrap(read_header(pages[1].data), fmt, pages)
+    assert out.verified and out.data == data and out.name == "old.bin"
+
+
 def _body(stream, fmt, p):
     """The body bytes of all pages, in order."""
     covered = np.zeros(p.page_bytes, dtype=bool)
@@ -289,8 +344,11 @@ def test_wrap_body_layout(parity):
     assert region[: len(data)] == data
     assert region[len(data)] == len(name)
     assert region[len(data) + 1 : len(data) + 1 + len(name)] == name.encode()
-    assert not any(region[len(data) + 1 + len(name) :])
-    assert not body[CODEWORD * p.codewords :].any()
+    # The unused room holds the padding stream: first the rest of the region,
+    # then the body bytes that belong to no codeword.
+    unused = region[len(data) + 1 + len(name) :]
+    spare = body[CODEWORD * p.codewords :].tobytes()
+    assert unused + spare == _padding_stream(len(unused) + len(spare))
     if parity:
         assert np.array_equal(words[:, k:], RSCode(parity).encode(words[:, :k]))
 

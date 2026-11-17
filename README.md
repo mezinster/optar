@@ -236,7 +236,7 @@ identify them. In a PDF it is printed at one size whatever the dot size (the
 size of a Standard page's label), so the whole line fits; it is then too small
 to be read from a coarse scan, and the window shows "(no name)" until the file
 is recovered and its own name is known. PNG and PGM pages have one pixel per
-dot, so their label is drawn in the page's dots and grows with them. These are called self-identifying pages here. They need optar
+dot, so their label is drawn in the page's dots and grows with them. These are called self-identifying pages here. The room such a document does not use is filled with a fixed pattern that looks like data, so every page prints evenly; 0.3.0 filled it with zeros, which printed as white lines across the pages. Both are read, by 0.3.0 too: no reader looks at the filling. They need optar
 0.3 or newer to be read, and reading them needs no setting. The 0.2.0
 application cannot read larger-dot pages at all. For Standard dots, 0.2.0 and
 the C tool read them as pages without a tag and return the data wrapped in the

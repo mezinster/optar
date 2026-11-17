@@ -271,6 +271,10 @@ FINGERPRINT_SIZE = 16
 SPREAD_STEP = 7919
 CODEWORD = 255
 NAME_MAX_BYTES = 255
+# The room a document does not use is filled with PADDING_BLOCK-byte blocks,
+# block n being the SHA-256 of PADDING_KEY and n as 8 bytes, big-endian.
+PADDING_KEY = b"optar padding"
+PADDING_BLOCK = 32
 # Largest stream (pages times page bytes) of a document with parity.
 PROTECTED_MAX_BYTES = 256 * 1024 * 1024
 # The window promises a page can be lost only while it takes at most this

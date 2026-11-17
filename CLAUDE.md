@@ -28,6 +28,7 @@ Rules:
 - A `.py` edit is linted by the PostToolUse hook with `.venv/bin/ruff`.
 - Every page, whatever the dot size or protection, stays an ordinary version-0 optar page. `encode()` is not changed for the self-identifying (version 1) printouts: the container wraps the stream before it and unwraps it after.
 - The label of a larger-dot page is printed at the standard size by a strip the PDF draws over the label band (`font.fine_label`, `write_pdf`); the page pixels from `encode()` are not changed, and nothing may depend on reading that label from a scan.
+- The unused room of a version-1 document is filled by `container.padding` (fixed, defined in `format.py`), never with zeros. Readers must not look at it: 0.3.0 printouts hold zeros there.
 - A valid label tag wins over a header found in the data (a re-printed old stream must stay a 0.2.0 page).
 - Only the fingerprint makes a file "verified"; a repair that reports no failure does not.
 - A page header is untrusted: one scanned page can claim any document. `container.document_plan` is the one check of what a header may claim, and `unwrap()` must keep its memory and time in proportion to the pages supplied, never to the claim.

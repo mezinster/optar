@@ -32,6 +32,8 @@ from optar.format import (
     HEADER_MAGIC,
     HEADER_SIZE,
     NAME_MAX_BYTES,
+    PADDING_BLOCK,
+    PADDING_KEY,
     PARITY,
     PROMISE_DEN,
     PROMISE_NUM,
@@ -54,6 +56,7 @@ __all__ = [
     "document_plan",
     "fingerprint",
     "name_bytes",
+    "padding",
     "page_payload",
     "pages_promised",
     "plan",
@@ -234,14 +237,39 @@ def pages_promised(p: Plan) -> int:
     return min(p.total, budget // per_page)
 
 
+def padding(first: int, count: int) -> np.ndarray:
+    """uint8 (count,): bytes first .. first+count-1 of the padding stream.
+
+    The room a document does not use is filled with this stream instead of
+    zeros, which would print as white lines across every page. It carries
+    nothing and no reader looks at it: the stream is fixed only so that the
+    same file always gives the same pages.
+    """
+    if count <= 0:
+        return np.zeros(0, dtype=np.uint8)
+    start, last = first // PADDING_BLOCK, (first + count - 1) // PADDING_BLOCK
+    blocks = b"".join(
+        hashlib.sha256(PADDING_KEY + n.to_bytes(8, "big")).digest()
+        for n in range(start, last + 1)
+    )
+    skip = first - start * PADDING_BLOCK
+    return np.frombuffer(blocks, dtype=np.uint8)[skip : skip + count]
+
+
 def _codewords(data: bytes, name: str, p: Plan) -> np.ndarray:
-    """uint8 (m, CODEWORD): data region row by row, then each row's parity."""
+    """uint8 (m, CODEWORD): data region row by row, then each row's parity.
+
+    The region is the file, the length of its name, the name, and then the
+    padding stream from its start.
+    """
     k = CODEWORD - p.parity
     record = name_bytes(name)
-    region = np.zeros(p.data_bytes, dtype=np.uint8)
+    used = len(data) + 1 + len(record)
+    region = np.empty(p.data_bytes, dtype=np.uint8)
     region[: len(data)] = np.frombuffer(data, dtype=np.uint8)
     region[len(data)] = len(record)
-    region[len(data) + 1 : len(data) + 1 + len(record)] = np.frombuffer(record, dtype=np.uint8)
+    region[len(data) + 1 : used] = np.frombuffer(record, dtype=np.uint8)
+    region[used:] = padding(0, p.data_bytes - used)
     words = region.reshape(p.codewords, k)
     if not p.parity:
         return words
@@ -250,7 +278,12 @@ def _codewords(data: bytes, name: str, p: Plan) -> np.ndarray:
 
 def _payloads(data: bytes, name: str, p: Plan) -> np.ndarray:
     """uint8 (total, page_bytes): every page's payload."""
-    body = np.zeros(p.total * p.page_body, dtype=np.uint8)
+    body = np.empty(p.total * p.page_body, dtype=np.uint8)
+    # The body bytes after the last codeword belong to none: the padding
+    # stream goes on there from where the region's padding ended.
+    spare = CODEWORD * p.codewords
+    unused = p.data_bytes - (len(data) + 1 + len(name_bytes(name)))
+    body[spare:] = padding(unused, len(body) - spare)
     body[positions(p)] = _codewords(data, name, p)
     covered = _covered(p.page_bytes)
     pages = np.zeros((p.total, p.page_bytes), dtype=np.uint8)
