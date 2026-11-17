@@ -41,7 +41,9 @@ format change.
   every parity (0, 32, 64): a file named `vector.bin` of `seeded_bytes(41, size)` where
   `size = int(1.5 * plan_for(1, fmt, parity).data_bytes)`, the page and codeword counts, the
   length and SHA-256 of the stream `wrap()` returns (the bytes given to `encode()`), and
-  `positions(plan)` of codewords 0, 1 and the last, each as 255 body positions.
+  `positions(plan)` of codewords 0, 1 and the last: the first 16 positions as a list, and `sha256`,
+  the digest of the whole row of 255 positions, `array_digest(row, np.int64)` (the SHA-256 of its
+  255 little-endian int64 values, 2040 bytes).
 - `py/tag.json`: for files of 0 bytes, 1 byte (`x`) and `seeded_bytes(5, 300000)`, the tag's size
   and fingerprint, the printed tag text and `tagged_label(tag, "name.tar", page, 2)` for pages 1
   and 2.

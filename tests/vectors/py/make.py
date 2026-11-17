@@ -15,7 +15,7 @@ from optar.format import LAYOUTS, PARITY
 from optar.rs import RSCode
 from optar.tag import make_tag, tagged_label
 from tests.helpers import seeded_bytes
-from tests.vectors.load import digest
+from tests.vectors.load import array_digest, digest
 
 HERE = Path(__file__).parent
 
@@ -156,7 +156,10 @@ def stream_case(layout_name: str, parity: int) -> dict:
         "codewords": p.codewords,
         "stream_bytes": len(stream),
         "stream_sha256": digest(stream),
-        "positions": {str(j): pos[j].tolist() for j in (0, 1, last)},
+        "positions": {
+            str(j): {"first16": pos[j][:16].tolist(), "sha256": array_digest(pos[j], np.int64)}
+            for j in (0, 1, last)
+        },
     }
 
 
