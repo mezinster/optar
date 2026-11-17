@@ -1,6 +1,7 @@
 # (c) GPL 2007 Karel 'Clock' Kulhavy, Twibright Labs; Python port 2026
 """The reading tab and the slower reader for coarse scans, off-screen."""
 
+import os
 import threading
 import time
 
@@ -97,7 +98,7 @@ def test_removing_a_scan_stops_the_slower_reader(qtbot, make_tab, coarse_scans):
     _, paths = coarse_scans
     tab = make_tab(process_scan, max_workers=1)
     tab.controller.add_paths(paths[1:])
-    row = f"{paths[1].rsplit('/', 1)[-1]} · {text.READING_COARSE}"
+    row = f"{os.path.basename(paths[1])} · {text.READING_COARSE}"
     qtbot.waitUntil(lambda: row in tab.rows(), timeout=TIMEOUT)
     scan_id = tab.controller.document.reading_coarse()[0].id
     start = time.monotonic()
