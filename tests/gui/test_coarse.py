@@ -151,13 +151,26 @@ def test_a_document_read_by_the_slower_reader_says_so_and_verifies(qtbot, make_t
     wait_settled(qtbot, tab)
     assert tab.controller.summary.state == DocState.VERIFIED
     assert tab.summary.text().startswith(text.VERIFIED)
+    summary = tab.controller.summary
+    doc = tab.controller.document
     for number in (1, 2):
-        row = f"Page {number} · {text.READ_SLOWLY}"
+        page = doc.pages()[number - 1]
+        work = tab.controller.work_for(page.scan_id, doc.current.format)
+        repaired = summary.repaired_bytes(number)
+        assert repaired is not None and repaired == summary.repair.page_damage.get(number, 0)
+        row = text.page_row(page, True, repaired)
+        assert row.startswith(f"Page {number} · {text.READ_SLOWLY_ROW} · ")
+        assert f"{page.corrected_dots:,} dots corrected" in row
         assert row in tab.rows()
         tab.select_row(tab.rows().index(row))
         lines = tab.detail.text().splitlines()
-        assert lines[1] == text.read_by_slow_reader()
+        assert lines[1] == f"{text.READ_SLOWLY}."
+        assert lines[2].startswith(f"Dots corrected within the page: {page.corrected_dots:,} of ")
+        assert lines[3].startswith("After verification: ")
         assert not any("Repairs:" in line for line in lines)
-        assert tab.preview.mark_count == 0
+        # The dots that reader corrected are marked on the scan.
+        assert 0 < page.corrected_dots == len(work.marks)
+        qtbot.waitUntil(lambda: not tab.preview.loading, timeout=TIMEOUT)
+        assert tab.preview.mark_count == len(work.marks)
     assert tab.controller.document.actions(Row.PAGE, 1).remove is not None
     assert tab.controller.document.save_bytes() == case.document()[0]

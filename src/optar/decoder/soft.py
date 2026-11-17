@@ -178,6 +178,7 @@ class _Reader:
         self.words: np.ndarray | None = None
         self.margin: np.ndarray | None = None
         self.distance: np.ndarray | None = None
+        self.overruled: np.ndarray | None = None
 
     def _stop(self) -> None:
         if self.cancelled():
@@ -310,9 +311,11 @@ class _Reader:
             margin[s : s + _SCORE_CHUNK] = first - fit.max(axis=1)
         chosen = self.codebook[best]
         hard = self._codewords((soft > 0).astype(np.uint8))
-        flipped = self._channel(chosen ^ hard).reshape(self.large, self.syms)
+        flipped = self._channel(chosen ^ hard)
         self.words, self.margin = best.astype(np.uint32), margin
-        self.distance = flipped.sum(axis=0, dtype=np.int64)
+        # Channel position s + b * syms is entry b * syms + s of the channel.
+        self.distance = flipped.reshape(self.large, self.syms).sum(axis=0, dtype=np.int64)
+        self.overruled = np.flatnonzero(flipped).astype(np.int64)
         self.labels = self._channel(chosen)
         cut = np.quantile(margin, 1 - KEEP) if margin.size else 0.0
         self.known = np.tile(margin > cut, self.large)
@@ -323,6 +326,10 @@ class _Reader:
 
     def result(self) -> PageResult:
         """The page as read by the last fit; no symbol is marked lost.
+
+        corrected_bits lists the dots whose own sign the chosen codeword
+        overruled in that fit (ascending channel positions), as many as the
+        histogram counts.
 
         Marking the least confident symbols lost was measured on the owner's
         scans: 1% gave a worst block of 39 instead of 40 of 64, 3% 39, 6% 45,
@@ -338,7 +345,7 @@ class _Reader:
             uncorrectable=len(lost),
         )
         return PageResult(
-            bits=bits, stats=stats, debug_image=None, corrected_bits=None,
+            bits=bits, stats=stats, debug_image=None, corrected_bits=self.overruled,
             lost_symbols=lost, grid=self.grid,
         )  # fmt: skip
 
@@ -366,7 +373,9 @@ def read_soft(
     the shape decode_located(..., detail=True) returns: bits, stats (the
     histogram counts symbols by how many of their dots' signs the chosen
     codeword overrules, which may be more than 3), lost_symbols (empty: every
-    symbol gets its best codeword), corrected_bits None and the grid.
+    symbol gets its best codeword), corrected_bits (the ascending int64 channel
+    positions of the dots whose own sign, in the last fit, the chosen codeword
+    overrules: as many as the histogram counts) and the grid.
 
     Raises DecodeError when the page has too little the ordinary reader
     trusts to learn from, Stopped as soon as cancelled() returns True.
@@ -474,10 +483,10 @@ def identify_coarse(
     layout (identify._header_fits), from the final fit.
 
     The identity has reader "slow", the header, the payload and the result;
-    its grid is located on the enlarged upright scan; scan_dpi is that of
-    the scan as given; name is "" and tag None (a coarse scan's label is
-    not read). Raises IdentifyError like identify_scan, Stopped when
-    cancelled() returns True.
+    its grid is located on the upright scan enlarged by the identity's
+    enlarged factor; scan_dpi is that of the scan as given; name is "" and
+    tag None (a coarse scan's label is not read). Raises IdentifyError like
+    identify_scan, Stopped when cancelled() returns True.
 
     on_progress, if given, is called with (identify.STEP_SLOW_SAMPLE, 0, 1)
     before the outline is found, (identify.STEP_SLOW_SAMPLE, done, of) before
@@ -525,7 +534,7 @@ def identify_coarse(
             layout.paper, layout.fmt, rotation, header.page, header.total, None, "",
             0.0, 0.0, grid, layout=layout, header=header, payload=payload,
             result=result, scan_dpi=identify.scan_dpi(grid, layout) / applied,
-            reader="slow",
+            reader="slow", enlarged=applied,
         )  # fmt: skip
     raise IdentifyError(identify.LABEL_UNREADABLE, scan_dpi=identify._outline_dpi(outline))
 

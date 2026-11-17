@@ -27,8 +27,10 @@ the decoded file is held once at full size (8 bits a pixel for a gray scan,
 16 for a 16-bit one, its own depth for colour) until it has been reduced.
 Scans above ``MAX_SCAN_PIXELS`` are refused, as ``read_scan`` refuses them.
 
-Marks are one item drawn in a single ``drawPoints`` call with a cosmetic pen,
-so they keep their size on screen at any zoom and tens of thousands draw fast.
+Marks are one item drawn in a single ``drawPointsNp`` call with a cosmetic pen,
+straight from two numpy arrays (no Python object per mark), so they keep their
+size on screen at any zoom and the few hundred thousand of a page read by the
+slower reader are shown at once and redrawn in tens of milliseconds.
 """
 
 from __future__ import annotations
@@ -39,8 +41,8 @@ from typing import NamedTuple
 
 import numpy as np
 from PIL import Image
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPolygonF
+from PySide6.QtCore import QRectF, Qt, Signal
+from PySide6.QtGui import QColor, QImage, QPainter, QPen
 from PySide6.QtWidgets import (
     QGraphicsItem,
     QGraphicsScene,
@@ -255,9 +257,11 @@ class _ImageItem(QGraphicsItem):
 class _MarksItem(QGraphicsItem):
     """Every mark as a square of MARK_SIZE screen pixels, in one drawing call."""
 
-    def __init__(self, points: QPolygonF, rect: QRectF, colour: QColor = MARK_COLOUR) -> None:
+    def __init__(
+        self, points: tuple[np.ndarray, np.ndarray], rect: QRectF, colour: QColor = MARK_COLOUR
+    ) -> None:
         super().__init__()
-        self._points = points
+        self._xs, self._ys = points
         self._rect = rect
         self._pen = QPen(colour)
         self._pen.setWidthF(MARK_SIZE)
@@ -273,14 +277,18 @@ class _MarksItem(QGraphicsItem):
     ) -> None:
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
         painter.setPen(self._pen)
-        painter.drawPoints(self._points)
+        painter.drawPointsNp(self._xs, self._ys)
 
 
-def _points(marks: np.ndarray | None) -> QPolygonF:
+_NO_POINTS = (np.zeros(0), np.zeros(0))
+
+
+def _points(marks: np.ndarray | None) -> tuple[np.ndarray, np.ndarray]:
+    """The marks' scene points (pixel centres) as contiguous x and y arrays."""
     if marks is None or len(marks) == 0:
-        return QPolygonF()
+        return _NO_POINTS
     centres = np.asarray(marks, np.float64).reshape(-1, 2) + 0.5
-    return QPolygonF([QPointF(x, y) for x, y in centres.tolist()])
+    return np.ascontiguousarray(centres[:, 0]), np.ascontiguousarray(centres[:, 1])
 
 
 class ScanPreview(QGraphicsView):
@@ -309,7 +317,7 @@ class ScanPreview(QGraphicsView):
         self._rotation = 0
         self._marks: np.ndarray | None = None  # as given, to see whether they changed
         self._mark_colour = MARK_COLOUR
-        self._points = QPolygonF()
+        self._points = _NO_POINTS
         self._size: tuple[int, int] | None = None  # upright scan size, once shown
         self._marks_item: _MarksItem | None = None
         self._loading = False
@@ -335,7 +343,7 @@ class ScanPreview(QGraphicsView):
     @property
     def mark_count(self) -> int:
         """How many marks are drawn."""
-        return self._points.size() if self._marks_item is not None else 0
+        return len(self._points[0]) if self._marks_item is not None else 0
 
     @property
     def zoom(self) -> float:
@@ -386,7 +394,7 @@ class ScanPreview(QGraphicsView):
         self.resetTransform()
         self._path = None
         self._marks = None
-        self._points = QPolygonF()
+        self._points = _NO_POINTS
         self._size = None
         self._marks_item = None
         self._loading = False
@@ -402,7 +410,7 @@ class ScanPreview(QGraphicsView):
         self._add_marks()
 
     def _add_marks(self) -> None:
-        if self._size is None or self._points.isEmpty():
+        if self._size is None or len(self._points[0]) == 0:
             return
         self._marks_item = _MarksItem(
             self._points, QRectF(0, 0, *self._size), self._mark_colour

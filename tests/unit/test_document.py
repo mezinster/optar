@@ -2612,13 +2612,65 @@ def test_version1_choice_follows_its_identity():
 # --- The slower reader for coarse scans --------------------------------------------
 
 
-def add_slow_v1(doc, n, payload):
-    """Adds a version-1 scan read by the slower reader: it counts no repairs."""
+def add_slow_v1(doc, n, payload, corrected_dots=0, dots=0):
+    """Adds a version-1 scan read by the slower reader: it counts no repairs, only
+    the dots it corrected."""
     scan_id = add(doc, n)
     doc.set_identified(scan_id, v1_info(payload, ""))
     doc.set_payload(scan_id, payload)
-    doc.set_outcome(scan_id, PageOutcome(payload.data, (0, 0, 0, 0), 0, slow=True))
+    outcome = PageOutcome(payload.data, (0, 0, 0, 0), 0, slow=True, dots=dots,
+                          corrected_dots=corrected_dots)  # fmt: skip
+    doc.set_outcome(scan_id, outcome)
     return scan_id
+
+
+def spoilt(payload, count, start=1000):
+    """The payload with ``count`` bytes from ``start`` wrong (none marked erased)."""
+    data = bytearray(payload.data)
+    for i in range(start, start + count):
+        data[i] ^= 0x5A
+    return PagePayload(bytes(data), payload.erased.copy())
+
+
+def test_a_slow_page_shows_its_corrected_dots_and_once_verified_its_repaired_bytes():
+    data, payloads = v1_pages(2)
+    doc = Document()
+    add_v1(doc, "a", payloads[1])
+    slow = add_slow_v1(doc, "b", spoilt(payloads[2], 40), corrected_dots=1234, dots=50_000)
+    page = doc.pages()[1]
+    assert page.slow and page.scan_id == slow
+    assert (page.corrected_dots, page.dots) == (1234, 50_000)
+    # The dots it corrected are not repairs: the page stays good, counted apart.
+    assert (page.health, page.repaired, page.histogram) == (Health.GOOD, 0, (0, 0, 0, 0))
+    assert doc.pages()[0].corrected_dots == doc.pages()[0].dots == 0
+    s = doc.summary()
+    assert (s.good, s.slow) == (2, 1)
+    assert s.repaired_bytes(2) is None and s.repaired_bytes(1) is None  # not verified yet
+    result = repaired(doc)
+    s = doc.summary()
+    assert s.state == DocState.VERIFIED and s.slow == 1 and s.good == 2
+    # The bytes of each page the document's protection repaired, from the repair.
+    assert s.repaired_bytes(2) == result.page_damage[2] == 40
+    assert s.repaired_bytes(1) == 0
+    assert doc.save_bytes() == data
+
+
+def test_repaired_bytes_are_not_claimed_for_a_document_that_does_not_verify():
+    _, payloads = v1_pages(3)
+    doc, _ = v1_document(payloads, skip=(2,))
+    result = repaired(doc)
+    assert not result.verified and result.page_damage
+    s = doc.summary()
+    assert all(s.repaired_bytes(n) is None for n in (1, 2, 3))
+
+
+def test_of_two_slow_readings_of_a_page_the_one_with_fewer_corrected_dots_is_used():
+    _, payloads = v1_pages(1)
+    doc = Document()
+    worse = add_slow_v1(doc, "worse", payloads[1], corrected_dots=900)
+    better = add_slow_v1(doc, "better", payloads[1], corrected_dots=300)
+    slot = doc.slots()[0]
+    assert (slot.scan_id, slot.spare_ids) == (better, (worse,))
 
 
 def test_a_page_read_by_the_slower_reader_says_so_and_counts_no_repairs():

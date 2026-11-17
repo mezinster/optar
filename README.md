@@ -174,8 +174,10 @@ The bar at the bottom shows the state of the whole document:
   "Recoverable: page 3 missing, repaired from the others · matches the
   fingerprint", followed by the size and what the repair did.
 - "Working… 3 of 6 scans read": scans are still being read; the count is of
-  the scans added since the last time none was being read. "Working…" alone:
-  a scan assigned to a page by hand is being decoded.
+  the scans added since the last time none was being read. When the document
+  already has a state to show, the count follows it instead, for example
+  "Verified · N bytes · 3 of 6 scans read". "Working…" alone: a scan assigned
+  to a page by hand is being decoded.
 - "Checking the fingerprint…": the check is running in the background. For
   pages that identify themselves from their data it reads "Repairing and
   checking the fingerprint…".
@@ -224,7 +226,17 @@ whole.
 
 - In the application it runs by itself. The scan's row shows the slower
   reader's step and progress while it is at work (selecting it says that this
-  takes about a minute), and afterwards that the page was read by it.
+  takes about a minute), and afterwards that the page was read by it and how
+  many dots it corrected: those whose own impression lost its decision of
+  their symbol, "Page 3 · Read by the slower reader · 265,112 dots corrected".
+  They are marked on the scan preview, as an ordinary page's repairs are; on
+  coarse scans that is often several percent of the dots, so the marks are
+  dense. Once the document is verified, the row adds how many of the page's
+  bytes the document's protection repaired ("· 6,912 bytes repaired by the
+  document's protection"), and selecting the page shows both figures. Such a
+  page is never called "Good" and is counted apart in the bar at the bottom:
+  the slower reader gives every symbol its best guess, so it cannot say what
+  is beyond repair on the page.
 - `optar decode` also runs it by itself and says so on stderr for each scan
   it is tried on. `--no-slow-reader` turns it off.
 - An A4 page took 40 to 70 seconds in all on the development machine: 20 to

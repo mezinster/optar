@@ -362,6 +362,35 @@ def test_thirty_thousand_marks_draw_quickly(qtbot, preview, tmp_path):
         assert time.perf_counter() - start < 0.5
 
 
+def test_three_hundred_thousand_marks_stay_responsive(qtbot, preview, tmp_path):
+    """A page read by the slower reader of a real coarse scan has about 265,000
+    marks: giving them to the preview and redrawing them must not stall the window.
+    Measured on the development machine: setting them about 3 ms (drawing them
+    from a list of points took 310 ms before), a repaint of the whole page about
+    50 ms, zoomed in 10 to 15 ms."""
+    path = tmp_path / "blank.png"
+    Image.new("L", (2380, 3368), 255).save(path)  # an A4 page at 288 dpi
+    rng = np.random.default_rng(2)
+    marks = (rng.random((300_000, 2)) * [2380, 3368]).astype(np.float32)
+    show_and_wait(qtbot, preview, str(path), 0, None)
+    preview.resize(700, 800)
+    start = time.perf_counter()
+    preview.show_scan(str(path), 0, marks)
+    assert time.perf_counter() - start < 0.1
+    assert preview.mark_count == 300_000
+    for zoom in (1, 6):
+        preview.scale(zoom, zoom)
+        start = time.perf_counter()
+        preview.viewport().repaint()
+        assert time.perf_counter() - start < 0.3
+    assert red_pixels(preview) > 0
+    # Other marks replace them at once; none clears them.
+    preview.show_scan(str(path), 0, marks[:2])
+    assert preview.mark_count == 2
+    preview.show_scan(str(path), 0, None)
+    assert preview.mark_count == 0
+
+
 def test_orientation_tagged_tiff_is_sized_as_read_scan_reads_it(qtbot, preview, tmp_path):
     # Pillow turns a TIFF with orientation 6 or 8 while loading it; read_scan
     # (so the marks) uses the loaded image, and the preview must too.

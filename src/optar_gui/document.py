@@ -196,9 +196,13 @@ waiting). Progress changes nothing else: it is shown, not used. ``Summary``
 counts the scans being read (``reading``) out of the *batch* (``batch``): the
 scans added since the last ``add_scan`` made while no scan was being read, that
 are still there, and any other scan being read. Coarse scans: a page read by the slower reader
-(``PageOutcome.slow``) counts no repairs; its view says so (``PageView.slow``),
-and within a version-1 page a scan read by the ordinary reader is preferred to
-it, whatever their erased bytes.
+(``PageOutcome.slow``) counts no repairs, only the dots that reader corrected
+(``corrected_dots`` of ``dots``); its view says so (``PageView.slow``), its health
+is good unless it is unusable, ``Summary.slow`` counts such pages apart, and
+within a version-1 page a scan read by the ordinary reader is preferred to it,
+whatever their erased bytes (between two read by the slower reader, the one with
+fewer erased bytes, then fewer corrected dots). ``Summary.repaired_bytes(page)``
+is how many of a page's bytes the document's protection repaired, once verified.
 
 ``can_start_by_hand`` is true when there is no document but there are unreadable
 scans to put into one. ``replacement_fit(scan_id, page)`` says whether a scan
@@ -361,13 +365,17 @@ class PageOutcome:
 
     ``histogram`` counts the symbols with 0, 1, 2 and 3 corrected bits. A page
     read by the slower reader for coarse scans (``slow``) counts none: that
-    reader measures no repairs, so its histogram is all zeros.
+    reader measures no repairs, so its histogram is all zeros. It counts instead
+    the dots whose own impression lost that reader's decision of their symbol
+    (``corrected_dots``) of the page's ``dots``; both are 0 for another page.
     """
 
     data: bytes
     histogram: tuple[int, int, int, int]
     lost: int
     slow: bool = False
+    dots: int = 0
+    corrected_dots: int = 0
 
     @property
     def repaired(self) -> int:
@@ -453,6 +461,10 @@ class PageView:
     histogram: tuple[int, int, int, int] | None
     reason: str = ""  # why an unreadable page is unreadable
     slow: bool = False  # its scan in use was read by the slower reader for coarse scans
+    # Of a page read by the slower reader: its dots, and those that reader corrected
+    # (PageOutcome.corrected_dots); 0 for another page.
+    dots: int = 0
+    corrected_dots: int = 0
 
 
 class DocState:
@@ -530,6 +542,14 @@ class Summary:
         """True when the document's protection gave a file that matches its
         fingerprint: whatever its pages lost was repaired, every byte of it."""
         return self.repair is not None and self.repair.verified
+
+    def repaired_bytes(self, page: int) -> int | None:
+        """How many bytes of ``page`` were wrong or lost and were repaired by the
+        document's protection (``Unwrapped.page_damage``), once the document is
+        ``restored``; None before (nothing is known to be repaired yet)."""
+        if not self.restored:
+            return None
+        return self.repair.page_damage.get(page, 0)
 
 
 @dataclass(frozen=True)
@@ -814,9 +834,10 @@ class Document:
         self._changed()
 
     def set_progress(self, scan_id: int, progress: Progress | None) -> None:
-        """Records how far the scan's reading has got (None: not started, or started
-        again). Shown while the scan is being read (``being_read``); it changes
-        nothing else, so the layout is not recomputed."""
+        """Records how far the scan's reading has got (None: not started). A scan
+        read again keeps its last progress until the new reading reports. Shown while
+        the scan is being read (``being_read``); it changes nothing else, so the
+        layout is not recomputed."""
         self._get(scan_id).progress = progress
 
     def set_identified(self, scan_id: int, info: ScanInfo) -> None:
@@ -1553,9 +1574,11 @@ class Document:
         if _v1_header(s.info) is not None and s.id not in self._layout.assigned:
             # Version 1: a page read by the ordinary reader before one read by the
             # slower reader, which marks nothing erased and counts no repairs; then
-            # fewest erased bytes, then fewest corrected bits.
+            # fewest erased bytes, then fewest corrected bits (of a page read by the
+            # slower reader, the dots it corrected).
             h = o.histogram
-            return (0, o.slow, s.erased, h[1] + 2 * h[2] + 3 * h[3], scan_id)
+            corrected = h[1] + 2 * h[2] + 3 * h[3] + o.corrected_dots
+            return (0, o.slow, s.erased, corrected, scan_id)
         return (0, o.lost, o.repaired, scan_id)
 
     def _state(self, s: _Scan) -> str:
@@ -1645,7 +1668,7 @@ class Document:
                 )
             return PageView(
                 slot.number, health, slot.scan_id, slot.spare_ids, repaired, o.lost, o.histogram,
-                slow=o.slow,
+                slow=o.slow, dots=o.dots, corrected_dots=o.corrected_dots,
             )
 
         if slot.scan_id is None:

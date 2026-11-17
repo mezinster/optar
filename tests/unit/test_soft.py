@@ -14,6 +14,7 @@ from optar import DOT_SIZES, PAPERS, PARITY, encode
 from optar.container import page_payload, plan_for, read_header, wrap
 from optar.decoder import decode_located, locate_page, soft
 from optar.errors import DecodeError, IdentifyError
+from optar.fec import encode_symbols
 from optar.format import Layout, get_layout
 from optar.identify import ScanIdentity, identify_any, identify_scan
 from tests.helpers import seeded_bytes, simulate_scan
@@ -80,9 +81,37 @@ def test_read_soft_reads_a_scan_the_ordinary_reader_cannot():
     assert result.bits.dtype == np.uint8 and result.bits.shape == (FMT.net_bits,)
     assert result.lost_symbols is not None and result.lost_symbols.dtype == np.int64
     assert len(result.lost_symbols) == 0 and result.stats.uncorrectable == 0
-    assert result.corrected_bits is None and result.grid is grid
+    assert result.grid is grid
     assert sum(result.stats.error_histogram) == FMT.fec_syms == result.stats.symbols
     assert read_header(page_payload(result, FMT).data) is not None
+
+
+def test_read_soft_lists_the_dots_whose_sign_its_choice_overruled():
+    big, grid = enlarged(scan(**COARSE))
+    fits = []
+    real = soft._Reader._fit
+
+    def recording(self):
+        fits.append(real(self))
+        return fits[-1]
+
+    with mock.patch.object(soft._Reader, "_fit", recording):
+        result = soft.read_soft(grid, big)
+    corrected = result.corrected_bits
+    assert corrected.dtype == np.int64 and corrected.ndim == 1
+    assert np.all(np.diff(corrected) > 0)  # ascending, each once
+    histogram = result.stats.error_histogram
+    assert len(corrected) == sum(i * n for i, n in enumerate(histogram)) > 0
+    # Each listed dot's sign in the last fit differs from its chosen codeword's bit,
+    # and every other dot's agrees.
+    words = (result.bits.reshape(FMT.fec_syms, FMT.fec_smallbits).astype(np.uint32)
+             << np.arange(FMT.fec_smallbits - 1, -1, -1, dtype=np.uint32)).sum(axis=1)  # fmt: skip
+    codewords = encode_symbols(words.astype(np.uint32), FMT)
+    shifts = np.arange(FMT.fec_largebits - 1, -1, -1, dtype=np.uint32)
+    chosen = ((codewords[None, :] >> shifts[:, None]) & 1).reshape(-1).astype(bool)
+    dark = fits[-1] > 0
+    assert len(fits) == soft.ROUNDS and dark.shape == chosen.shape
+    assert np.array_equal(np.flatnonzero(dark != chosen), corrected)
 
 
 def test_read_soft_matches_the_ordinary_reader_on_a_clean_scan():
@@ -130,6 +159,8 @@ def check_slow_identity(ident, turns, dpi, page=2):
     again = page_payload(ident.result, FMT)
     assert ident.payload.data == again.data and not ident.payload.erased.any()
     assert ident.scan_dpi == pytest.approx(dpi, rel=0.05)
+    # The grid is on the scan enlarged to about ENLARGE_TO pixels a dot.
+    assert ident.enlarged == pytest.approx(soft.ENLARGE_TO * 200 / dpi, abs=soft.ENLARGE_STEP)
 
 
 @pytest.mark.parametrize("turns", [0, 1, 2, 3])

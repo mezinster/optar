@@ -261,9 +261,9 @@ class ReadController(QObject):
         """The bottom bar's text."""
         s = self._summary
         if s.state == DocState.CHECKING and self.check_error:
-            line = text.check_failed(self.check_error)
+            line = text.with_reading(text.check_failed(self.check_error), s)
         elif self._repair_key is not None and s.repair is None and s.state != DocState.WORKING:
-            line = text.REPAIRING
+            line = text.with_reading(text.REPAIRING, s)
         else:
             line = text.summary_line(self._summary)
         return text.summary_bar(line, self.note)
@@ -429,7 +429,8 @@ class ReadController(QObject):
     def _read(self, scan_id: int, path: str) -> None:
         """Starts the scan's own reading (``process``): identifying and decoding it."""
         self._reading.add(scan_id)
-        self._doc.set_progress(scan_id, None)  # waiting, until it reports
+        # Read before (its reading cancelled for a decode by hand): its last
+        # progress stays until this reading reports, rather than "Waiting".
         self._runner.submit(scan_id, partial(_reading, self._process, path), reports=True)
 
     def _decode_for_document(self, scan_id: int) -> None:
@@ -441,7 +442,8 @@ class ReadController(QObject):
         if scan_id in self._reading:
             self._reading.discard(scan_id)
             self._read_again.add(scan_id)
-            doc.set_progress(scan_id, None)  # cancelled: it will never report
+            # Cancelled: it will never report. Its last progress is kept, not
+            # shown while the scan is in a page, until its next reading reports.
         self._runner.cancel(scan_id)  # required before submitting the id again
         earlier = self._decoding_in.pop(scan_id, None)
         if earlier is not None:
@@ -985,9 +987,11 @@ class ReadTab(QWidget):
         if cur is not None:
             rows.append(("title", None, text.document_title(cur), None))
         self._pages = doc.pages()
-        restored = self.controller.summary.restored
+        summary = self.controller.summary
+        restored = summary.restored
         for p in self._pages:
-            rows.append((Row.PAGE, p.number, text.page_row(p, restored), None))
+            row = text.page_row(p, restored, summary.repaired_bytes(p.number))
+            rows.append((Row.PAGE, p.number, row, None))
             for spare in p.spare_ids:
                 name = os.path.basename(doc.scan(spare).path)
                 rows.append((Row.SPARE, spare, text.spare_row(doc.page_with(spare), name), None))
@@ -1058,8 +1062,12 @@ class ReadTab(QWidget):
                     scan_path = doc.scan(page.scan_id).path
                     work = self.controller.work_for(page.scan_id, doc.current.format)
                     name = os.path.basename(scan_path)
-                restored = self.controller.summary.restored
-                lines = text.detail_text(page, name, len(self._pages), restored=restored)
+                summary = self.controller.summary
+                restored = summary.restored
+                lines = text.detail_text(
+                    page, name, len(self._pages), restored=restored,
+                    repaired_bytes=summary.repaired_bytes(page.number),
+                )  # fmt: skip
                 note = self.controller.scan_note(work)
                 if note is not None:
                     lines = (*lines, note)

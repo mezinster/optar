@@ -237,9 +237,12 @@ def test_the_bar_is_drawn_fuller_for_a_larger_fraction(qtbot, make_tab, theme):
     empty = drawn(0.0)
     filled = [int(np.count_nonzero(drawn(f) != empty)) for f in (0.2, 0.5, 0.9)]
     assert 0 < filled[0] < filled[1] < filled[2], filled
-    # Selected, the row is still drawn, with its bar.
+    # Selected, the row is still drawn, with its bar, and highlighted: it differs
+    # from the same row unselected.
     selected_empty = drawn(0.0, selected=True)
     assert np.count_nonzero(drawn(0.9, selected=True) != selected_empty) > 0
+    assert np.count_nonzero(selected_empty != empty) > 0
+    assert np.count_nonzero(drawn(0.5, selected=True) != drawn(0.5)) > 0
     # Another row is drawn as the list always draws it.
     assert render(tab, tab.rows().index(text.BEING_READ_SECTION)) is not None
     tab.controller.remove(a)
@@ -250,10 +253,15 @@ def test_many_scans_at_once_stay_responsive(qtbot, make_tab, tmp_path, monkeypat
     limited, every scan ends as its row, and the window keeps up."""
 
     def chatty(image, *, cancelled, on_slow, on_progress):
+        # Thousands of reports a second. Between them the reader lets go of the
+        # interpreter, as the real one does in its numpy work: a loop of pure
+        # Python in three threads holds up any interface thread for 0.15 to 0.3 s
+        # at a time (measured), whatever the window does.
         start = time.monotonic()
         while time.monotonic() - start < 0.3:
             on_progress(work.STEP_IDENTIFY, 0, 2)
             on_progress(work.STEP_IDENTIFY, 1, 2)
+            time.sleep(0.0002)
         raise optar.errors.IdentifyError("no page found")
 
     monkeypatch.setattr(work, "identify_any", chatty)
@@ -287,8 +295,10 @@ def test_many_scans_at_once_stay_responsive(qtbot, make_tab, tmp_path, monkeypat
     assert max(per_scan.values()) <= 2 + 0.3 / work.PROGRESS_INTERVAL_S + 2
     # Redraws are gathered, not one per report.
     assert tab.controller.refreshes <= 5 + elapsed * 1000 / 100 * 1.5
+    # The event loop keeps turning: a 20 ms timer is never held up long. Measured
+    # on the development machine: the longest gap about 0.02 s.
     gaps = np.diff(ticks)
-    assert len(gaps) and gaps.max() < 2.0
+    assert len(gaps) and gaps.max() < 0.3, gaps.max()
 
 
 def test_a_label_read_again_slowly_ends_as_its_page_without_going_back(
@@ -320,3 +330,35 @@ def test_a_label_read_again_slowly_ends_as_its_page_without_going_back(
     assert work.STEP_SLOW_FIT in steps and steps[-1] == STEP_READ
     assert text.BEING_READ_SECTION not in tab.rows()
     assert tab.rows()[1] == "Page 1 · Good"
+
+
+def test_the_bottom_bar_keeps_the_documents_state_while_more_scans_are_read(
+    qtbot, make_tab, scan_files
+):
+    _, paths = scan_files(nbytes=1000)
+    stepper = Stepper()
+
+    def process(path, cancelled=lambda: False, on_progress=None):
+        if os.path.basename(path).startswith("held"):
+            return stepper(path, cancelled, on_progress)
+        return process_scan(path, cancelled, on_progress=on_progress)
+
+    tab = make_tab(process, max_workers=2)
+    tab.controller.add_paths(paths)
+    qtbot.waitUntil(lambda: tab.controller.runner.active == 0, timeout=TIMEOUT)
+    tab.controller.refresh()
+    qtbot.waitUntil(lambda: not tab.controller.checking, timeout=TIMEOUT)
+    tab.controller.refresh()
+    verdict = tab.summary.text()
+    assert verdict.startswith(text.VERIFIED)
+
+    tab.controller.add_paths(["/scans/held-1.png", "/scans/held-2.png"])
+    assert tab.summary.text() == f"{verdict} · 0 of 2 scans read"
+    for _ in range(len(STEPS) + 1):  # held-1 goes through its steps, finds no page
+        stepper.advance("held-1.png")
+    qtbot.waitUntil(lambda: tab.summary.text() == f"{verdict} · 1 of 2 scans read",
+                    timeout=TIMEOUT)  # fmt: skip
+    tab.controller.remove(scan_id(tab, "held-2.png"))
+    qtbot.waitUntil(lambda: tab.controller.runner.active == 0, timeout=TIMEOUT)
+    tab.controller.refresh()
+    assert tab.summary.text() == verdict

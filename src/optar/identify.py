@@ -113,6 +113,10 @@ class ScanIdentity:
     scan_dpi: float | None = None  # estimated resolution of the scan
     # "ordinary", or "slow" for a page read by decoder.soft (identify_coarse).
     reader: str = "ordinary"
+    # The factor by which the slow reader enlarged the scan before locating the
+    # page: grid (and result's grid) is in the enlarged scan's coordinates, where
+    # a point u of it lies at (u + 0.5) / enlarged - 0.5 in the scan as given.
+    enlarged: float = 1.0
 
 
 def scan_dpi(grid: PageGrid, layout: Layout) -> float:

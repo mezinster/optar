@@ -209,8 +209,11 @@ class ScanWork:
     scan that was found but not identified; ``layout`` the identified page's
     paper and dot size. ``slow`` is True when the page was read by the slower
     reader for coarse scans (``optar.decoder.soft``): its outcome counts no
-    repairs and it has no marks (an empty array), since that reader measures no
-    per-block damage.
+    repairs (that reader measures no per-block damage) but the dots whose own
+    impression lost its decision of their symbol (``PageOutcome.corrected_dots``),
+    and its marks are those dots, on the scan as loaded (that reader works on an
+    enlarged copy of it). There may be a few hundred thousand of them (about
+    2 MB).
     """
 
     info: ScanInfo | None
@@ -325,34 +328,61 @@ def _upright_size(image: np.ndarray, rotation: int) -> tuple[int, int]:
     return (int(h), int(w)) if rotation % 2 else (int(w), int(h))
 
 
-def _outcome(result: PageResult, slow: bool = False) -> tuple[PageOutcome, np.ndarray]:
+def _outcome(
+    result: PageResult, slow: bool = False, enlarged: float = 1.0
+) -> tuple[PageOutcome, np.ndarray]:
     """The page's packed data and statistics, and its corrected bits' scan positions.
 
     Takes only small arrays out of the result: nothing returned refers to
-    the grid or the scan. A page read by the slower reader (``slow``) has no
-    corrected bits: its histogram counts the dot decisions that reader
-    overruled, not repairs, so its outcome counts none and it has no marks.
+    the grid or the scan. A page read by the slower reader (``slow``) counts no
+    repairs: its histogram counts the dot decisions that reader overruled, so
+    its outcome's histogram is zeros and it carries the number of those dots
+    (``corrected_dots``, of ``dots``) instead; its marks are those dots. That
+    reader located the page on the scan enlarged ``enlarged`` times: the marks
+    are brought back to the scan as loaded.
     """
     stats = result.stats
+    data = np.packbits(result.bits).tobytes()
+    grid = result.grid
+    positions = result.corrected_bits
     if slow:
         outcome = PageOutcome(
-            data=np.packbits(result.bits).tobytes(),
+            data=data,
             histogram=(0, 0, 0, 0),
             lost=int(stats.uncorrectable),
             slow=True,
+            dots=int(grid.fmt.used_bits),
+            corrected_dots=len(positions),
         )
-        return outcome, np.empty((0, 2), np.float32)
-    outcome = PageOutcome(
-        data=np.packbits(result.bits).tobytes(),
-        histogram=tuple(int(n) for n in stats.error_histogram[:4]),
-        lost=int(stats.uncorrectable),
-    )
-    grid = result.grid
+    else:
+        outcome = PageOutcome(
+            data=data,
+            histogram=tuple(int(n) for n in stats.error_histogram[:4]),
+            lost=int(stats.uncorrectable),
+        )
+    return outcome, _marks(grid, positions, enlarged)
+
+
+# Corrected dots brought to scan positions at a time: bounds the temporaries of
+# page_to_scan for the slower reader's few hundred thousand.
+_MARK_CHUNK = 65_536
+
+
+def _marks(grid, positions: np.ndarray, enlarged: float = 1.0) -> np.ndarray:
+    """The (x, y) scan positions (float32, shape (n, 2)) of channel ``positions`` on
+    ``grid``, divided back from a scan enlarged ``enlarged`` times."""
     xs, ys = channel_xy(grid.fmt)
-    positions = result.corrected_bits
-    sx, sy = page_to_scan(grid, xs[positions], ys[positions])
-    marks = np.column_stack([np.ravel(sx), np.ravel(sy)]).astype(np.float32)
-    return outcome, marks
+    marks = np.empty((len(positions), 2), np.float32)
+    for start in range(0, len(positions), _MARK_CHUNK):
+        part = positions[start : start + _MARK_CHUNK]
+        sx, sy = page_to_scan(grid, xs[part], ys[part])
+        marks[start : start + len(part), 0] = np.ravel(sx)
+        marks[start : start + len(part), 1] = np.ravel(sy)
+    if enlarged != 1.0:
+        marks += np.float32(0.5)
+        marks /= np.float32(enlarged)
+        marks -= np.float32(0.5)
+    return marks
 
 
 def process_scan(
@@ -428,6 +458,7 @@ def process_scan(
         del image
         header, payload = identity.header, identity.payload
         slow = identity.reader == "slow"
+        enlarged = identity.enlarged
         found = {"scan_dpi": identity.scan_dpi, "layout": identity.layout, "slow": slow}
         info = ScanInfo(
             format=identity.fmt.to_string(),
@@ -456,7 +487,7 @@ def process_scan(
     finally:
         if turn:
             _LARGE_SCAN_TURN.release()
-    outcome, marks = _outcome(result, slow)
+    outcome, marks = _outcome(result, slow, enlarged)
     del result
     _check(cancelled)
     if report is not None:

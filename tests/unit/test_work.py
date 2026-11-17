@@ -285,8 +285,9 @@ class FakeStages:
         monkeypatch.setattr(work, "decode_located", self.decode_located)
         monkeypatch.setattr(work, "decode_unlabelled", self.decode_unlabelled)
         monkeypatch.setattr(
-            work, "_outcome", lambda result, slow=False: (self.work.outcome, self.work.marks)
-        )
+            work, "_outcome",
+            lambda result, slow=False, enlarged=1.0: (self.work.outcome, self.work.marks),
+        )  # fmt: skip
 
     def read_scan(self, path):
         self.ran.append("read")
@@ -299,6 +300,7 @@ class FakeStages:
             fmt, rotation, page, total, name, tag, grid = A4, 0, 1, 2, NAME, None, object()
             header = payload = result = layout = scan_dpi = None
             reader = "ordinary"
+            enlarged = 1.0
 
         return Identity()
 
@@ -1101,13 +1103,56 @@ def test_process_scan_reads_a_coarse_scan_with_the_slower_reader(coarse_case):
     assert w.info.format == case.FMT.to_string()
     assert w.payload is not None and w.layout is case.LAYOUT
     assert w.scan_dpi == pytest.approx(case.COARSER["dpi"], rel=0.05)
-    # The slower reader's histogram counts overruled dots, not repairs: none is
-    # counted or marked, and the size is that of the scan as loaded.
+    # The slower reader's histogram counts overruled dots, not repairs: no repair
+    # is counted; the dots it corrected are, and marked on the scan as loaded.
     assert w.outcome.slow and w.outcome.histogram == (0, 0, 0, 0) and w.outcome.lost == 0
-    assert w.marks is not None and w.marks.shape == (0, 2)
+    assert w.outcome.dots == case.FMT.used_bits
+    assert 0 < w.outcome.corrected_dots < w.outcome.dots // 10
+    assert w.marks is not None and w.marks.shape == (w.outcome.corrected_dots, 2)
+    assert w.marks.dtype == np.float32
     h, wd = case.scan(**case.COARSER).shape
     assert w.size == (wd, h)
+    assert (w.marks >= -0.5).all() and (w.marks < [wd - 0.5, h - 0.5]).all()
     assert len(w.outcome.data) == -(-case.FMT.net_bits // 8)
+    # Nothing of the enlarged scan (about 8 MB here) or its grid is kept.
+    assert len(pickle.dumps(w)) < 1_000_000
+    assert not any(isinstance(o, PageGrid) for o in reachable(w))
+
+
+def test_the_marks_of_a_slow_page_fall_on_a_blot_of_the_scan(coarse_case, tmp_path):
+    """The slower reader's corrected dots, brought back from its enlarged scan, are
+    dense where the scan was spoilt and sparse elsewhere."""
+    case, _ = coarse_case
+    img = case.scan(**case.COARSER).copy()
+    h, wd = img.shape
+    x0, y0, side = wd // 2, h // 3, 30
+    img[y0 : y0 + side, x0 : x0 + side] = 128
+    path = tmp_path / "blot.png"
+    save_linear_scan(path, img)
+    w = process_scan(str(path))
+    assert w.slow and w.reason == "" and w.rotation == 0
+    marks = w.marks
+    assert len(marks) == w.outcome.corrected_dots
+    assert (marks >= -0.5).all() and (marks < [wd - 0.5, h - 0.5]).all()
+    inside = ((marks[:, 0] >= x0) & (marks[:, 0] < x0 + side)
+              & (marks[:, 1] >= y0) & (marks[:, 1] < y0 + side))  # fmt: skip
+    # Measured: about 180 of 5,200 marks inside, 34 times the page's density.
+    density = inside.sum() / side**2
+    assert inside.sum() > 50 and density > 10 * len(marks) / (wd * h)
+    # Their middle is the blot's.
+    centre = marks[inside].mean(axis=0)
+    assert np.allclose(centre, [x0 + side / 2, y0 + side / 2], atol=side / 4)
+
+
+def test_marks_from_an_enlarged_scan_are_brought_back_to_the_scan(monkeypatch):
+    grid = types.SimpleNamespace(fmt=A4)
+    positions = np.arange(5, dtype=np.int64)
+    monkeypatch.setattr(
+        work, "page_to_scan", lambda g, x, y: (np.full(len(x), 5.5), np.full(len(y), 2.5))
+    )
+    marks = work._marks(grid, positions, 3.0)
+    # A pixel u of the enlarged scan is at (u + 0.5) / 3 - 0.5 in the scan.
+    assert marks.shape == (5, 2) and np.allclose(marks, [[1.5, 0.5]] * 5)
 
 
 def test_process_scan_keeps_ordinary_pages_ordinary(clean_work):
