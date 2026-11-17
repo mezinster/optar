@@ -362,3 +362,38 @@ def test_the_bottom_bar_keeps_the_documents_state_while_more_scans_are_read(
     qtbot.waitUntil(lambda: tab.controller.runner.active == 0, timeout=TIMEOUT)
     tab.controller.refresh()
     assert tab.summary.text() == verdict
+
+
+def test_the_names_get_the_room_they_need_before_they_are_elided(qtbot, make_tab):
+    from PySide6.QtGui import QFontMetrics
+
+    stepper = Stepper()
+    tab = make_tab(stepper, max_workers=1)
+    long_name, short_name = "scan 2026-11-17 page 3.png", "a.png"
+    tab.controller.add_paths([f"/scans/{long_name}", f"/scans/{short_name}"])
+    doc = tab.controller.document
+    rows = {name: tab.rows().index(f"{name} · Waiting") for name in (long_name, short_name)}
+    needed = QFontMetrics(tab.page_list.font()).horizontalAdvance(long_name)
+
+    def bar_left(name, width):
+        """The first column the bar's filling changes, from empty to full."""
+        sid = scan_id(tab, name)
+        images = []
+        for fraction in (0.0, 1.0):
+            doc.set_progress(sid, Progress(STEP_READ, 0, 1, fraction))
+            tab.refresh()
+            images.append(pixels(render(tab, rows[name], width=width)))
+        cols = np.flatnonzero((images[0] != images[1]).any(axis=0)) // 4
+        assert len(cols)
+        return int(cols.min())
+
+    # A wide list: the whole long name, and the bars of both rows in one column.
+    wide = [bar_left(n, 900) for n in (long_name, short_name)]
+    assert wide[0] == wide[1]
+    assert needed < wide[0] < needed + 40
+    # A narrow list: the name column stops at 45% of the row, and the name is cut.
+    narrow = [bar_left(n, 300) for n in (long_name, short_name)]
+    assert narrow[0] == narrow[1] < needed
+    assert 0.4 * 300 < narrow[0] <= 0.45 * 300 + 20
+    for name in (long_name, short_name):
+        tab.controller.remove(scan_id(tab, name))

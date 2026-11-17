@@ -70,7 +70,7 @@ from collections.abc import Callable, Iterable, Iterator
 from functools import partial
 
 from PySide6.QtCore import QAbstractListModel, QModelIndex, QObject, QRect, Qt, QTimer, Signal
-from PySide6.QtGui import QFont, QPainter, QPalette
+from PySide6.QtGui import QFont, QFontMetrics, QPainter, QPalette
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -707,6 +707,7 @@ class _RowModel(QAbstractListModel):
         super().__init__(parent)
         self._rows: list[_Line] = []
         self._where: dict[tuple[str, object], int] = {}
+        self._names: tuple[str, ...] = ()  # of the scans being read, for the name column
         self._bold = QFont()
         self._bold.setBold(True)
 
@@ -744,9 +745,14 @@ class _RowModel(QAbstractListModel):
     def texts(self) -> list[str]:
         return [label for _, _, label, _ in self._rows]
 
+    def bar_names(self) -> tuple[str, ...]:
+        """The names of the rows drawn with a bar (the scans being read)."""
+        return self._names
+
     def set_rows(self, rows: list[_Line]) -> bool:
         """Replaces the rows; returns True when the model was reset (not updated in place)."""
         old = self._rows
+        self._names = tuple(bar[1] for _, _, _, bar in rows if bar is not None)
         if len(rows) == len(old) and all(
             a[0] == b[0] and a[1] == b[1] for a, b in zip(rows, old, strict=True)
         ):
@@ -770,9 +776,27 @@ class _RowDelegate(QStyledItemDelegate):
     # The bar's width at most, and its share of the row at most.
     BAR_WIDTH = 120
     BAR_SHARE = 0.3
-    # The name's share of the row at most (it is elided beyond).
-    NAME_SHARE = 0.4
+    # The name column is as wide as the longest name of the scans being read, up to
+    # this share of the row; a longer name is elided in the middle.
+    NAME_SHARE = 0.45
     GAP = 8
+    # Room added to a name's measured width, so that text measured to fit is not
+    # elided for a fraction of a pixel.
+    _SLACK = 2
+
+    def __init__(self, parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self._widest: tuple[object, int] | None = None  # (names and font, width)
+
+    def _name_column(self, index: QModelIndex, metrics, font: QFont) -> int:
+        """The width the longest name of the scans being read needs, in this font."""
+        model = index.model()
+        names = model.bar_names() if hasattr(model, "bar_names") else ()
+        key = (names, font.key())
+        if self._widest is None or self._widest[0] != key:
+            widest = max((metrics.horizontalAdvance(n) for n in names), default=0)
+            self._widest = (key, widest + self._SLACK)
+        return self._widest[1]
 
     def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex) -> None:
         fraction = index.data(FRACTION_ROLE)
@@ -789,9 +813,11 @@ class _RowDelegate(QStyledItemDelegate):
         style.drawControl(QStyle.ControlElement.CE_ItemViewItem, opt, painter, widget)
         area = style.subElementRect(QStyle.SubElement.SE_ItemViewItemText, opt, widget)
         area = area.adjusted(2, 0, -2, 0)
-        metrics = opt.fontMetrics
+        metrics = QFontMetrics(opt.font)
         width = area.width()
-        name_width = min(metrics.horizontalAdvance(name), int(width * self.NAME_SHARE))
+        column = max(self._name_column(index, metrics, opt.font),
+                     metrics.horizontalAdvance(name) + self._SLACK)  # fmt: skip
+        name_width = max(0, min(column, int(width * self.NAME_SHARE)))
         bar_width = max(0, min(self.BAR_WIDTH, int(width * self.BAR_SHARE)))
         selected = bool(opt.state & QStyle.StateFlag.State_Selected)
         role = QPalette.ColorRole.HighlightedText if selected else QPalette.ColorRole.Text
@@ -1088,7 +1114,7 @@ class ReadTab(QWidget):
                 lines = text.being_read_detail(*self._being_read[key])
         self.detail.setText("\n".join(lines))
         if work is not None:
-            self.preview.show_scan(scan_path, work.rotation, work.marks, restored)
+            self.preview.show_scan(scan_path, work.rotation, work.marks, restored, work.dot)
         else:
             self.preview.show_scan(scan_path, 0, None)
         self.remove_button.setEnabled(actions.remove is not None)

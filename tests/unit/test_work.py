@@ -1110,6 +1110,9 @@ def test_process_scan_reads_a_coarse_scan_with_the_slower_reader(coarse_case):
     assert 0 < w.outcome.corrected_dots < w.outcome.dots // 10
     assert w.marks is not None and w.marks.shape == (w.outcome.corrected_dots, 2)
     assert w.marks.dtype == np.float32
+    # A dot is about 1.45 scan pixels at 290 dpi (Standard dots, 200 to the inch),
+    # measured on the scan as loaded, not on the enlarged one.
+    assert w.dot == pytest.approx(case.COARSER["dpi"] / 200, rel=0.03)
     h, wd = case.scan(**case.COARSER).shape
     assert w.size == (wd, h)
     assert (w.marks >= -0.5).all() and (w.marks < [wd - 0.5, h - 0.5]).all()
@@ -1157,6 +1160,7 @@ def test_marks_from_an_enlarged_scan_are_brought_back_to_the_scan(monkeypatch):
 
 def test_process_scan_keeps_ordinary_pages_ordinary(clean_work):
     assert not clean_work.slow and not clean_work.outcome.slow
+    assert clean_work.dot == 0.0  # its marks stay screen-sized
 
 
 def test_cancelling_during_the_slower_reader_raises_cancelled(coarse_case):

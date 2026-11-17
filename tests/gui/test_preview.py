@@ -367,7 +367,8 @@ def test_three_hundred_thousand_marks_stay_responsive(qtbot, preview, tmp_path):
     marks: giving them to the preview and redrawing them must not stall the window.
     Measured on the development machine: setting them about 3 ms (drawing them
     from a list of points took 310 ms before), a repaint of the whole page about
-    50 ms, zoomed in 10 to 15 ms."""
+    50 ms, zoomed in 10 to 15 ms. Drawn one dot wide (``dot``), as a page read by
+    the slower reader is: setting them about 5 ms, a repaint 1 to 3 ms."""
     path = tmp_path / "blank.png"
     Image.new("L", (2380, 3368), 255).save(path)  # an A4 page at 288 dpi
     rng = np.random.default_rng(2)
@@ -384,11 +385,86 @@ def test_three_hundred_thousand_marks_stay_responsive(qtbot, preview, tmp_path):
         preview.viewport().repaint()
         assert time.perf_counter() - start < 0.3
     assert red_pixels(preview) > 0
+    # Drawn one dot wide, as for a page read by the slower reader.
+    preview.fit()
+    start = time.perf_counter()
+    preview.show_scan(str(path), 0, marks, False, 1.43)
+    assert time.perf_counter() - start < 0.1
+    assert preview.mark_count == 300_000
+    for zoom in (1, 6):
+        preview.scale(zoom, zoom)
+        start = time.perf_counter()
+        preview.viewport().repaint()
+        assert time.perf_counter() - start < 0.3
     # Other marks replace them at once; none clears them.
     preview.show_scan(str(path), 0, marks[:2])
     assert preview.mark_count == 2
     preview.show_scan(str(path), 0, None)
     assert preview.mark_count == 0
+
+
+def scene_at(view, scale):
+    """The whole scene drawn at ``scale`` screen pixels per scan pixel, RGB."""
+    rect = view.scene().sceneRect()
+    w, h = round(rect.width() * scale), round(rect.height() * scale)
+    image = QImage(w, h, QImage.Format.Format_RGB32)
+    image.fill(QColor(255, 255, 255))
+    painter = QPainter(image)
+    painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+    view.scene().render(painter, QRectF(0, 0, w, h), rect)
+    painter.end()
+    a = np.frombuffer(image.constBits(), np.uint8).reshape(h, image.bytesPerLine())
+    return a[:, : w * 4].reshape(h, w, 4)[..., 2::-1].astype(float)
+
+
+def test_marks_sized_to_the_dots_cover_their_dots_at_any_zoom(qtbot, preview, tmp_path):
+    """A slow page's marks (``dot`` given) are one dot wide in scan pixels: seen
+    whole, their tint is as dense as they are, not a blob per mark."""
+    path = tmp_path / "white.png"
+    Image.new("L", (400, 400), 255).save(path)
+    dot = 4.0
+    rng = np.random.default_rng(5)
+    cells = rng.choice(100 * 100, 800, replace=False)  # 8% of the dots
+    marks = np.column_stack([cells % 100, cells // 100]).astype(np.float32) * dot + 1.5
+    show_and_wait(qtbot, preview, str(path), 0, None)
+    preview.show_scan(str(path), 0, marks, False, dot)
+    assert preview.mark_count == 800
+
+    def tint(scale):
+        rgb = scene_at(preview, scale)
+        return float(np.mean((255 - rgb[..., 1]) / 255))  # red marks take the green
+
+    # One scan pixel a screen pixel: each mark fills its dot, 4 x 4 pixels.
+    full = scene_at(preview, 1)
+    red = (full[..., 0] > 150) & (full[..., 1] < 80)
+    assert red.sum() == 800 * 16
+    # Shrunk to a quarter (a dot is a screen pixel) and to a tenth: the tint is
+    # the marks' share of the dots, not more.
+    assert tint(1) == pytest.approx(0.08, abs=0.01)
+    assert tint(0.25) == pytest.approx(0.08, abs=0.01)
+    assert tint(0.1) == pytest.approx(0.08, abs=0.015)
+    # Without ``dot`` the same marks are screen-sized again.
+    preview.show_scan(str(path), 0, marks)
+    preview.fit()
+    assert preview.mark_count == 800
+    assert red_pixels(preview) > 0
+
+
+def test_screen_sized_marks_are_drawn_without_drawpointsnp(qtbot, preview, tmp_path, monkeypatch):
+    """A PySide6 without QPainter.drawPointsNp gets the marks as a polygon."""
+    import optar_gui.preview as module
+
+    monkeypatch.setattr(module, "_POINTS_NP", False)
+    path = tmp_path / "blank.png"
+    Image.new("L", (300, 400), 255).save(path)
+    marks = np.array([[50, 60], [150, 200], [250, 350]], np.float32)
+    show_and_wait(qtbot, preview, str(path), 0, marks)
+    assert preview.mark_count == 3
+    assert preview._marks_item._polygon is not None and preview._marks_item._polygon.size() == 3
+    assert red_pixels(preview) > 0
+    full = render_scene(preview)
+    for x, y in marks.astype(int):
+        assert full[y, x, 0] > 150 and full[y, x, 1] < 80
 
 
 def test_orientation_tagged_tiff_is_sized_as_read_scan_reads_it(qtbot, preview, tmp_path):

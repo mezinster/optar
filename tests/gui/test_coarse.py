@@ -172,5 +172,6 @@ def test_a_document_read_by_the_slower_reader_says_so_and_verifies(qtbot, make_t
         assert 0 < page.corrected_dots == len(work.marks)
         qtbot.waitUntil(lambda: not tab.preview.loading, timeout=TIMEOUT)
         assert tab.preview.mark_count == len(work.marks)
+        assert work.dot > 1 and tab.preview._dot == work.dot  # drawn one dot wide
     assert tab.controller.document.actions(Row.PAGE, 1).remove is not None
     assert tab.controller.document.save_bytes() == case.document()[0]

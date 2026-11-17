@@ -226,6 +226,9 @@ class ScanWork:
     scan_dpi: float | None = None
     layout: Layout | None = None
     slow: bool = False
+    # Of a page read by the slower reader: the width of one of its dots in scan
+    # pixels, at which its (dense) marks are drawn; 0 for another page.
+    dot: float = 0.0
 
     @property
     def header(self) -> Header | None:
@@ -363,6 +366,14 @@ def _outcome(
     return outcome, _marks(grid, positions, enlarged)
 
 
+def _dot_width(grid) -> float:
+    """The width of one dot of the located page in the pixels it was located on:
+    the mean distance between neighbouring cross centres per cross pitch."""
+    p = np.asarray(grid.positions, dtype=np.float64)
+    steps = [np.hypot(*np.moveaxis(np.diff(p, axis=a), -1, 0)).ravel() for a in (0, 1)]
+    return float(np.concatenate(steps).mean()) / grid.fmt.cpitch
+
+
 # Corrected dots brought to scan positions at a time: bounds the temporaries of
 # page_to_scan for the slower reader's few hundred thousand.
 _MARK_CHUNK = 65_536
@@ -488,11 +499,12 @@ def process_scan(
         if turn:
             _LARGE_SCAN_TURN.release()
     outcome, marks = _outcome(result, slow, enlarged)
+    dot = _dot_width(result.grid) / enlarged if slow else 0.0
     del result
     _check(cancelled)
     if report is not None:
         report(STEP_READ, 1, 1)
-    return ScanWork(info, "", outcome, rotation, marks, size, payload=payload, **found)
+    return ScanWork(info, "", outcome, rotation, marks, size, payload=payload, dot=dot, **found)
 
 
 def process_unlabelled(

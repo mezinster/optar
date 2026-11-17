@@ -849,7 +849,7 @@ def test_a_scan_decoded_in_another_format_keeps_its_own_preview(qtbot, fake_cont
     tab = ReadTab(controller)
     qtbot.addWidget(tab)
     shown = []
-    tab.preview.show_scan = lambda path, rotation, marks, restored=False: shown.append(
+    tab.preview.show_scan = lambda path, rotation, marks, restored=False, dot=0.0: shown.append(
         (path and os.path.basename(path), rotation, None if marks is None else marks.tolist()))
     controller.add_paths(["/x/a1.png", "/x/a2.png"])
     idle(qtbot, controller)

@@ -229,9 +229,10 @@ whole.
   takes about a minute), and afterwards that the page was read by it and how
   many dots it corrected: those whose own impression lost its decision of
   their symbol, "Page 3 · Read by the slower reader · 265,112 dots corrected".
-  They are marked on the scan preview, as an ordinary page's repairs are; on
-  coarse scans that is often several percent of the dots, so the marks are
-  dense. Once the document is verified, the row adds how many of the page's
+  They are marked on the scan preview, each mark one dot wide: on coarse
+  scans that is often several percent of the dots, so seen whole the page
+  shows a tint as dense as the corrections, and zooming in shows single dots.
+  (An ordinary page's few repairs are marked at a fixed size on screen.) Once the document is verified, the row adds how many of the page's
   bytes the document's protection repaired ("· 6,912 bytes repaired by the
   document's protection"), and selecting the page shows both figures. Such a
   page is never called "Good" and is counted apart in the bar at the bottom:
