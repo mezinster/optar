@@ -1,6 +1,6 @@
 # A second, slower reader for scans that are too coarse: design
 
-Date: 2026-11-17. Status: proposed.
+Date: 2026-11-17. Status: approved.
 
 ## Intent
 
