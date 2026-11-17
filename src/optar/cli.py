@@ -284,8 +284,8 @@ def _probe(path: str, slow: bool = True) -> ScanIdentity | str:
             image,
             slow=slow,
             on_slow=lambda: _eprint(
-                f"optar: {os.path.basename(path)}: the ordinary reader cannot identify this "
-                "scan; trying the slower reader, which can take a minute or more"
+                f"optar: {os.path.basename(path)}: the ordinary reader could not read this "
+                "scan's data; trying the slower reader, which takes about a minute"
             ),
         )
     except IdentifyError as e:
@@ -331,6 +331,7 @@ def _gather(
     key = _document_key(first)
     total = first.header.total  # type: ignore[union-attr]
     chosen: dict[int, PagePayload] = {}
+    by_slow_reader: dict[int, bool] = {}
     ignored: list[str] = []
     for path in files:
         shown = os.path.basename(path)
@@ -347,8 +348,14 @@ def _gather(
         note = f", {_plural(unreadable, 'byte')} unreadable" if unreadable else ""
         if ident.reader == "slow":
             note += " (read by the slower reader)"
+        slow_read = ident.reader == "slow"
         if page in chosen:
-            better = unreadable < int(np.count_nonzero(chosen[page].erased))
+            # The slower reader marks no byte unreadable, so its count says
+            # nothing: an ordinary reading of the page is preferred to it.
+            if slow_read != by_slow_reader[page]:
+                better = by_slow_reader[page]
+            else:
+                better = unreadable < int(np.count_nonzero(chosen[page].erased))
             _eprint(
                 f"{shown}: page {page} of {total} again{note}; "
                 f"using the {'better' if better else 'earlier'} scan"
@@ -358,6 +365,7 @@ def _gather(
         else:
             _eprint(f"{shown}: page {page} of {total}{note}")
         chosen[page] = ident.payload
+        by_slow_reader[page] = slow_read
     if ignored:
         n = len(ignored)
         _eprint(

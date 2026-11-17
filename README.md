@@ -215,7 +215,7 @@ whole.
 - `optar decode` also runs it by itself and says so on stderr for each scan
   it is tried on. `--no-slow-reader` turns it off.
 - It takes about 20 seconds for an A4 page on the development machine, after
-  the ordinary reader has spent about 20 seconds failing. An image that is not
+  the ordinary reader has spent about 20 seconds on the scan. An image that is not
   an optar page at all, but in which a page outline is found, costs about 20
   to 35 seconds more than it did without the slower reader.
 - It identifies a page only by the header in its data. Old 0.2-style pages
@@ -310,7 +310,7 @@ been shown on one real document and one simulated one:
   each page's label but no header. In both cases the file verifies with the
   slower reader. At the simulator's default blur (1.0) the ordinary reader
   reads such a page at 300 dpi on its own. The simulator is milder than the owner's scanner:
-  in the simulation the slower reader repaired nothing, where the real
+  at 290 dpi in the simulation the slower reader repaired nothing, where the real
   document needed 41,495 bytes repaired.
 
 Standard protection has a budget of 32, below the 40 the real document's

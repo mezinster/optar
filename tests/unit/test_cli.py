@@ -881,7 +881,7 @@ def test_decode_reads_a_coarse_scan_with_the_slower_reader(tmp_path, coarse_docu
     assert main(["decode", base, "-o", str(tmp_path / "out.bin")]) == 0
     assert (tmp_path / "out.bin").read_bytes() == data
     err = capsys.readouterr().err
-    assert "coarse_0001.png: the ordinary reader cannot identify this scan" in err
+    assert "coarse_0001.png: the ordinary reader could not read this scan's data" in err
     assert "slower reader" in err
     assert "coarse_0002.png: page 2 of 2" in err and "(read by the slower reader)" in err
     assert "file verified" in err
@@ -913,3 +913,32 @@ def test_probe_names_the_slower_reader_when_it_failed_too(tmp_path, capsys):
     assert "trying the slower reader" in capsys.readouterr().err.split("\n")[0]
     assert "not identified (no page)" in tried and "the slower reader was tried too" in tried
     assert "not identified (no page)" in skipped and "slower reader" not in skipped
+
+
+def test_an_ordinary_reading_of_a_page_is_preferred_to_a_slow_one(capsys):
+    """The slower reader marks no byte unreadable, so the count of unreadable
+    bytes must not make its reading win over an ordinary one."""
+    from types import SimpleNamespace
+
+    from optar import cli
+    from optar.container import Header, PagePayload
+
+    header = Header(page=1, total=1, size=10, fingerprint=b"f" * 16, parity=64)
+
+    def ident(reader, unreadable):
+        erased = np.zeros(8, dtype=bool)
+        erased[:unreadable] = True
+        payload = PagePayload(data=reader.encode().ljust(8, b"."), erased=erased)
+        return SimpleNamespace(header=header, payload=payload, reader=reader, layout=None)
+
+    ordinary, slow = ident("ordinary", 3), ident("slow", 0)
+    for order in (("a", ordinary), ("b", slow)), (("a", slow), ("b", ordinary)):
+        probes = dict(order)
+        with mock.patch.object(cli, "_document_key", lambda i: "doc"):
+            chosen = cli._gather(list(probes), probes, order[0][1])
+        assert chosen == {1: ordinary.payload}
+    # Two readings by the same reader: the fewer unreadable bytes, as before.
+    worse = ident("ordinary", 5)
+    with mock.patch.object(cli, "_document_key", lambda i: "doc"):
+        assert cli._gather(["a", "b"], {"a": worse, "b": ordinary}, worse) == {1: ordinary.payload}
+    capsys.readouterr()
