@@ -14,7 +14,7 @@ from optar import DOT_SIZES, PAPERS, PARITY, encode
 from optar.container import page_payload, plan_for, read_header, wrap
 from optar.decoder import decode_located, locate_page, soft
 from optar.errors import DecodeError, IdentifyError
-from optar.format import Layout
+from optar.format import Layout, get_layout
 from optar.identify import ScanIdentity, identify_any, identify_scan
 from tests.helpers import seeded_bytes, simulate_scan
 
@@ -186,7 +186,7 @@ def test_identify_coarse_refuses_a_picture(only_layout):
 
 
 def test_identify_any_keeps_the_ordinary_result():
-    ident = object()
+    ident = mock.Mock(header=object())
     with mock.patch.object(optar.identify, "identify_scan", lambda image, options=None: ident), \
             mock.patch.object(soft, "identify_coarse", mock.Mock(side_effect=AssertionError)):
         on_slow = mock.Mock()
@@ -200,6 +200,45 @@ def test_identify_any_falls_back(only_layout):
     ident = identify_any(img, on_slow=on_slow)
     on_slow.assert_called_once_with()
     check_slow_identity(ident, 0, COARSER["dpi"])
+
+
+def _label_identity(dpi, **fields):
+    """A stand-in for a page identify_scan accepted from its label."""
+    base = dict(header=None, tag=None, scan_dpi=dpi, layout=get_layout("a4"))
+    return mock.Mock(**{**base, **fields})
+
+
+@pytest.mark.parametrize(
+    ("dpi", "fields", "tried"),
+    [
+        (300.0, {}, True),  # an untagged label alone, on a coarse scan
+        (600.0, {}, False),  # the same on a fine scan: an old page, left alone
+        (300.0, {"tag": object()}, False),  # a valid tag is never questioned
+        (300.0, {"header": object()}, False),  # already a version-1 page
+        (None, {}, False),
+    ],
+)
+def test_identify_any_reads_a_coarse_label_only_page_again(dpi, fields, tried):
+    label = _label_identity(dpi, **fields)
+    found = object()
+    coarse = mock.Mock(return_value=found)
+    on_slow = mock.Mock()
+    with mock.patch.object(optar.identify, "identify_scan", lambda image, options=None: label), \
+            mock.patch.object(soft, "identify_coarse", coarse):
+        got = identify_any(np.zeros((4, 4), np.uint8), on_slow=on_slow)
+        assert got is (found if tried else label)
+        assert coarse.call_count == on_slow.call_count == int(tried)
+        if tried:  # not asked to: the label stands
+            assert identify_any(np.zeros((4, 4), np.uint8), slow=False) is label
+
+
+def test_identify_any_keeps_the_label_when_the_slow_reader_finds_nothing():
+    label = _label_identity(300.0)
+    coarse = mock.Mock(side_effect=IdentifyError(optar.identify.LABEL_UNREADABLE))
+    with mock.patch.object(optar.identify, "identify_scan", lambda image, options=None: label), \
+            mock.patch.object(soft, "identify_coarse", coarse):
+        assert identify_any(np.zeros((4, 4), np.uint8)) is label
+    coarse.assert_called_once()
 
 
 def test_identify_any_reports_the_first_error():

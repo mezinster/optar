@@ -375,6 +375,12 @@ def identify_scan(image: np.ndarray, options: DecodeOptions | None = None) -> Sc
     raise IdentifyError(LABEL_UNREADABLE, scan_dpi=_outline_dpi(outline))
 
 
+# A page accepted from an untagged label alone is read again by the slow reader
+# when its scan has fewer pixels than this to a printed dot (the ordinary
+# reader is made for three).
+COARSE_PIXELS_PER_DOT = 2.5
+
+
 def identify_any(
     image: np.ndarray,
     options: DecodeOptions | None = None,
@@ -383,20 +389,32 @@ def identify_any(
     cancelled: Callable[[], bool] | None = None,
     on_slow: Callable[[], None] | None = None,
 ) -> ScanIdentity:
-    """identify_scan, then, if that fails, the slow reader (decoder.soft).
+    """identify_scan, then, where that is not enough, the slow reader (decoder.soft).
 
-    The slow reader is tried only when slow is true and identify_scan found
-    a page outline (its IdentifyError carries a scan_dpi); on_slow() is
-    called first. If the slow reader fails too, identify_scan's error is
-    raised with slow_tried set. decoder.soft.Stopped propagates when
-    cancelled() returns True during the slow reader.
+    The slow reader is tried when slow is true and either
+    - identify_scan failed but found a page outline (its IdentifyError
+      carries a scan_dpi), or
+    - identify_scan accepted the page from an untagged label alone, with no
+      header, on a scan with fewer than COARSE_PIXELS_PER_DOT pixels to a
+      dot: such a label can be read where the data cannot, so a version-1
+      page would pass for an old one and its document would never be found.
+    on_slow() is called first. In the first case, if the slow reader fails
+    too, identify_scan's error is raised with slow_tried set; in the second
+    the label's identity is kept. A valid tag is never questioned.
+    decoder.soft.Stopped propagates when cancelled() returns True during the
+    slow reader.
     """
+    error = label_only = None
     try:
-        return identify_scan(image, options)
+        ident = identify_scan(image, options)
     except IdentifyError as first:
         if not slow or first.scan_dpi is None:
             raise
         error = first
+    else:
+        if not slow or not _label_only_and_coarse(ident):
+            return ident
+        label_only = ident
     from optar.decoder.soft import identify_coarse  # imports this module
 
     if on_slow is not None:
@@ -404,8 +422,18 @@ def identify_any(
     try:
         return identify_coarse(image, options, cancelled)
     except IdentifyError:
+        if label_only is not None:
+            return label_only
         error.slow_tried = True
         raise error from None
+
+
+def _label_only_and_coarse(ident: ScanIdentity) -> bool:
+    if ident.header is not None or ident.tag is not None:
+        return False
+    if ident.scan_dpi is None or ident.layout is None:
+        return False
+    return ident.scan_dpi < COARSE_PIXELS_PER_DOT * float(ident.layout.pixels_per_inch)
 
 
 def _corrected_bits(result: PageResult) -> int:
