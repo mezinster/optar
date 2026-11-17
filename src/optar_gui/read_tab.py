@@ -576,6 +576,12 @@ class ReadController(QObject):
         if not isinstance(progress, Progress) or scan_id not in self._reading:
             return
         try:
+            # A scan read again shows its last reading's progress until this one
+            # reports; its bar never moves back: the new step's words are shown
+            # with the larger fraction.
+            shown = self._doc.progress(scan_id)
+            if shown is not None and shown.fraction > progress.fraction:
+                progress = dataclasses.replace(progress, fraction=shown.fraction)
             self._doc.set_progress(scan_id, progress)
         except KeyError:
             return

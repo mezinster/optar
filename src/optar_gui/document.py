@@ -200,8 +200,7 @@ are still there, and any other scan being read. Coarse scans: a page read by the
 (``corrected_dots`` of ``dots``); its view says so (``PageView.slow``), its health
 is good unless it is unusable, ``Summary.slow`` counts such pages apart, and
 within a version-1 page a scan read by the ordinary reader is preferred to it,
-whatever their erased bytes (between two read by the slower reader, the one with
-fewer erased bytes, then fewer corrected dots). ``Summary.repaired_bytes(page)``
+whatever their erased bytes. ``Summary.repaired_bytes(page)``
 is how many of a page's bytes the document's protection repaired, once verified.
 
 ``can_start_by_hand`` is true when there is no document but there are unreadable
@@ -839,6 +838,10 @@ class Document:
         the scan is being read (``being_read``); it changes nothing else, so the
         layout is not recomputed."""
         self._get(scan_id).progress = progress
+
+    def progress(self, scan_id: int) -> Progress | None:
+        """The scan's progress as last recorded (``set_progress``)."""
+        return self._get(scan_id).progress
 
     def set_identified(self, scan_id: int, info: ScanInfo) -> None:
         """Records what the scan's label says.
@@ -1574,11 +1577,11 @@ class Document:
         if _v1_header(s.info) is not None and s.id not in self._layout.assigned:
             # Version 1: a page read by the ordinary reader before one read by the
             # slower reader, which marks nothing erased and counts no repairs; then
-            # fewest erased bytes, then fewest corrected bits (of a page read by the
-            # slower reader, the dots it corrected).
+            # fewest erased bytes, then fewest corrected bits. The dots the slower
+            # reader corrected do not rank its readings: a washed-out or saturated
+            # area reads as a codeword with none corrected.
             h = o.histogram
-            corrected = h[1] + 2 * h[2] + 3 * h[3] + o.corrected_dots
-            return (0, o.slow, s.erased, corrected, scan_id)
+            return (0, o.slow, s.erased, h[1] + 2 * h[2] + 3 * h[3], scan_id)
         return (0, o.lost, o.repaired, scan_id)
 
     def _state(self, s: _Scan) -> str:

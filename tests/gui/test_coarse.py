@@ -20,7 +20,7 @@ from optar_gui.work import (
     ScanWork,
     process_scan,
 )
-from tests.helpers import save_linear_scan
+from tests.helpers import save_linear_scan, simulate_scan
 
 TIMEOUT = 120_000  # ms
 
@@ -146,27 +146,42 @@ def coarse_scans(tmp_path, monkeypatch):
 def test_a_document_read_by_the_slower_reader_says_so_and_verifies(qtbot, make_tab,
                                                                    coarse_scans):  # fmt: skip
     case, paths = coarse_scans
+    # Page 2 scanned coarser still (measured: about 5% of its dots corrected and
+    # some 50 bytes wrong), so that the document's protection has bytes to repair.
+    save_linear_scan(paths[1], simulate_scan(case.document()[2][1], case.LAYOUT, 240,
+                                             blur=2.0, seed=2))  # fmt: skip
     tab = make_tab(process_scan, max_workers=2)
     tab.controller.add_paths(paths)
     wait_settled(qtbot, tab)
     assert tab.controller.summary.state == DocState.VERIFIED
     assert tab.summary.text().startswith(text.VERIFIED)
     summary = tab.controller.summary
+    damage = summary.repair.page_damage
+    assert damage.get(2, 0) > 0  # the protection repaired bytes of page 2
     doc = tab.controller.document
     for number in (1, 2):
         page = doc.pages()[number - 1]
         work = tab.controller.work_for(page.scan_id, doc.current.format)
-        repaired = summary.repaired_bytes(number)
-        assert repaired is not None and repaired == summary.repair.page_damage.get(number, 0)
-        row = text.page_row(page, True, repaired)
-        assert row.startswith(f"Page {number} · {text.READ_SLOWLY_ROW} · ")
-        assert f"{page.corrected_dots:,} dots corrected" in row
+        repaired = damage.get(number, 0)
+        assert summary.repaired_bytes(number) == repaired
+        row = f"Page {number} · Read by the slower reader · {page.corrected_dots:,} dots corrected"
+        if repaired:
+            row += f" · {repaired:,} bytes repaired by the document's protection"
         assert row in tab.rows()
         tab.select_row(tab.rows().index(row))
         lines = tab.detail.text().splitlines()
-        assert lines[1] == f"{text.READ_SLOWLY}."
-        assert lines[2].startswith(f"Dots corrected within the page: {page.corrected_dots:,} of ")
-        assert lines[3].startswith("After verification: ")
+        assert lines[1] == "Read by the slower reader for coarse scans."
+        share = f"{100 * page.corrected_dots / page.dots:.1f}%"
+        assert lines[2] == (
+            f"Dots corrected within the page: {page.corrected_dots:,} of {page.dots:,} ({share})."
+        )
+        if repaired:
+            assert lines[3] == (
+                f"After verification: {repaired:,} of this page's bytes were wrong and were "
+                "repaired by the document's protection."
+            )
+        else:
+            assert lines[3] == "After verification: none of this page's bytes were wrong."
         assert not any("Repairs:" in line for line in lines)
         # The dots that reader corrected are marked on the scan.
         assert 0 < page.corrected_dots == len(work.marks)

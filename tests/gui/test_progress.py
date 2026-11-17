@@ -296,9 +296,11 @@ def test_many_scans_at_once_stay_responsive(qtbot, make_tab, tmp_path, monkeypat
     # Redraws are gathered, not one per report.
     assert tab.controller.refreshes <= 5 + elapsed * 1000 / 100 * 1.5
     # The event loop keeps turning: a 20 ms timer is never held up long. Measured
-    # on the development machine: the longest gap about 0.02 s.
+    # on the development machine: the longest gap about 0.02 s. The limit is 1 s,
+    # not tuned to that machine, so a loaded CI machine does not fail it; a stall
+    # of the window (a redraw per report, say) still would.
     gaps = np.diff(ticks)
-    assert len(gaps) and gaps.max() < 0.3, gaps.max()
+    assert len(gaps) and gaps.max() < 1.0, gaps.max()
 
 
 def test_a_label_read_again_slowly_ends_as_its_page_without_going_back(
@@ -397,3 +399,25 @@ def test_the_names_get_the_room_they_need_before_they_are_elided(qtbot, make_tab
     assert 0.4 * 300 < narrow[0] <= 0.45 * 300 + 20
     for name in (long_name, short_name):
         tab.controller.remove(scan_id(tab, name))
+
+
+def test_a_lower_fraction_after_a_higher_one_does_not_move_the_bar_back(qtbot, make_tab):
+    """A scan read again shows its last reading's progress; the new reading's first
+    reports (a small fraction) change the step's words, not the bar."""
+    stepper = Stepper()
+    tab = make_tab(stepper, max_workers=1)
+    tab.controller.add_paths(["/scans/a.png"])
+    a = scan_id(tab, "a.png")
+    qtbot.waitUntil(lambda: stepper.started == ["a.png"], timeout=TIMEOUT)
+    runner = tab.controller.runner
+    runner.progress.emit(a, Progress(STEP_READ, 0, 1, 0.6))
+    tab.controller.refresh()
+    assert fraction_of(tab, a) == 0.6 and "a.png · Reading the data" in tab.rows()
+    runner.progress.emit(a, Progress(STEP_OPEN, 0, 1, 0.0))  # as a new reading starts
+    tab.controller.refresh()
+    assert fraction_of(tab, a) == 0.6
+    assert "a.png · Opening the file" in tab.rows()
+    runner.progress.emit(a, Progress(STEP_READ, 0, 1, 0.8))
+    tab.controller.refresh()
+    assert fraction_of(tab, a) == 0.8
+    tab.controller.remove(a)

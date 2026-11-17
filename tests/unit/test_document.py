@@ -2664,13 +2664,15 @@ def test_repaired_bytes_are_not_claimed_for_a_document_that_does_not_verify():
     assert all(s.repaired_bytes(n) is None for n in (1, 2, 3))
 
 
-def test_of_two_slow_readings_of_a_page_the_one_with_fewer_corrected_dots_is_used():
+def test_corrected_dots_do_not_rank_two_slow_readings_of_a_page():
+    """A washed-out area reads as a codeword with no dot corrected: fewer corrected
+    dots is not a better reading, so two slow readings keep the add order."""
     _, payloads = v1_pages(1)
     doc = Document()
-    worse = add_slow_v1(doc, "worse", payloads[1], corrected_dots=900)
-    better = add_slow_v1(doc, "better", payloads[1], corrected_dots=300)
+    first = add_slow_v1(doc, "first", payloads[1], corrected_dots=900)
+    second = add_slow_v1(doc, "second", payloads[1], corrected_dots=300)
     slot = doc.slots()[0]
-    assert (slot.scan_id, slot.spare_ids) == (better, (worse,))
+    assert (slot.scan_id, slot.spare_ids) == (first, (second,))
 
 
 def test_a_page_read_by_the_slower_reader_says_so_and_counts_no_repairs():

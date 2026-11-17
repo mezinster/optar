@@ -1122,18 +1122,21 @@ def test_process_scan_reads_a_coarse_scan_with_the_slower_reader(coarse_case):
     assert not any(isinstance(o, PageGrid) for o in reachable(w))
 
 
-def test_the_marks_of_a_slow_page_fall_on_a_blot_of_the_scan(coarse_case, tmp_path):
+@pytest.mark.parametrize("turns", [0, 1, 2, 3])
+def test_the_marks_of_a_slow_page_fall_on_a_blot_of_the_scan(coarse_case, tmp_path, turns):
     """The slower reader's corrected dots, brought back from its enlarged scan, are
-    dense where the scan was spoilt and sparse elsewhere."""
+    dense where the scan was spoilt and sparse elsewhere, on the upright scan
+    whichever way the scan was turned."""
     case, _ = coarse_case
     img = case.scan(**case.COARSER).copy()
     h, wd = img.shape
     x0, y0, side = wd // 2, h // 3, 30
     img[y0 : y0 + side, x0 : x0 + side] = 128
     path = tmp_path / "blot.png"
-    save_linear_scan(path, img)
+    save_linear_scan(path, np.ascontiguousarray(np.rot90(img, -turns)))  # turned clockwise
     w = process_scan(str(path))
-    assert w.slow and w.reason == "" and w.rotation == 0
+    assert w.slow and w.reason == "" and w.rotation == turns
+    assert w.size == (wd, h)  # upright
     marks = w.marks
     assert len(marks) == w.outcome.corrected_dots
     assert (marks >= -0.5).all() and (marks < [wd - 0.5, h - 0.5]).all()
