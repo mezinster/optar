@@ -59,9 +59,11 @@ def _contents(path):
         return hashlib.sha256(f.read()).hexdigest()
 
 
-def cached_process(path, cancelled=lambda: False, on_slow=None):
+def cached_process(path, cancelled=lambda: False, on_progress=None):
     """``process_scan``, remembering each result by the file's contents."""
-    return _remembered(("scan", _contents(path)), lambda: process_scan(path, cancelled, on_slow))
+    return _remembered(
+        ("scan", _contents(path)), lambda: process_scan(path, cancelled, on_progress=on_progress)
+    )
 
 
 def cached_unlabelled(path, format, cancelled=lambda: False):
@@ -263,7 +265,7 @@ def held_back(gate, slow):
     """A ``process`` that reads ``slow`` only once ``gate`` is set; others at once."""
     slow = os.path.realpath(slow)
 
-    def process(path, cancelled=lambda: False, on_slow=None):
+    def process(path, cancelled=lambda: False, on_progress=None):
         if os.path.realpath(path) == slow:
             gate.wait(TIMEOUT / 1000)
         return cached_process(path, cancelled)
@@ -617,7 +619,7 @@ class Fakes:
         if name in self.held:
             self.gate.wait(TIMEOUT / 1000)
 
-    def process(self, path, cancelled=lambda: False, on_slow=None):
+    def process(self, path, cancelled=lambda: False, on_progress=None):
         name = os.path.basename(path)
         self._hold(name)
         return self.scans[name]

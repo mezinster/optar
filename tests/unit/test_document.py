@@ -34,6 +34,7 @@ from optar_gui.document import (
     PageOutcome,
     PageSlot,
     PageView,
+    Progress,
     Row,
     ScanInfo,
     ScanState,
@@ -1262,7 +1263,8 @@ def test_summary_counts_and_states():
     doc.set_outcome(p1, page_out(b"1" * PAGE))
     doc.set_outcome(p2, page_out(b"2" * PAGE, repaired=3))
     s = doc.summary()
-    assert s == Summary(DocState.INCOMPLETE, 1, 1, 0, 0, 1, TAG.size)
+    # p3, not identified, is still being read.
+    assert s == Summary(DocState.INCOMPLETE, 1, 1, 0, 0, 1, TAG.size, reading=1, batch=3)
     doc.assign_page(p3, 3)
     doc.set_unreadable(p3, "label unreadable")
     assert counts(doc.summary()) == (1, 1, 0, 1, 0)
@@ -2646,33 +2648,80 @@ def test_an_ordinary_reading_of_a_page_is_preferred_to_a_slow_one():
     assert doc.page_with(slow).slow and not doc.pages()[0].slow
 
 
-def test_a_scan_being_read_by_the_slower_reader_is_listed_until_its_work_ends():
+def being_read(doc):
+    return [(scan.id, progress) for scan, progress in doc.being_read()]
+
+
+def test_every_scan_is_listed_as_being_read_until_it_is_identified_or_unreadable():
     doc = Document()
     a, b, c = add(doc, "a"), add(doc, "b"), add(doc, "c")
+    # Listed from the moment it is added: waiting, with no progress yet.
+    assert being_read(doc) == [(a, None), (b, None), (c, None)]
+    assert all(s.state == ScanState.WAITING for s, _ in doc.being_read())
     for scan_id in (a, b, c):
         doc.set_working(scan_id)
-    assert doc.reading_coarse() == ()
-    doc.set_reading_coarse(a)
-    doc.set_reading_coarse(b)
-    doc.set_reading_coarse(c)
-    assert [s.id for s in doc.reading_coarse()] == [a, b, c]
-    assert all(s.state == ScanState.WORKING for s in doc.reading_coarse())
-    assert doc.actions(Row.READING_COARSE, a) == Actions(remove=a)
-    assert doc.actions(Row.READING_COARSE, 99) == NO_ACTIONS
+    assert all(s.state == ScanState.WORKING for s, _ in doc.being_read())
+    step = Progress("find", 0, 1, 0.1)
+    doc.set_progress(b, step)
+    assert being_read(doc) == [(a, None), (b, step), (c, None)]
+    assert doc.actions(Row.BEING_READ, a) == Actions(remove=a)
+    assert doc.actions(Row.BEING_READ, 99) == NO_ACTIONS
+    assert doc.actions(Row.BEING_READ, "a") == NO_ACTIONS
     doc.set_unreadable(a, "label unreadable")
     _, payloads = v1_pages(1)
     doc.set_identified(b, v1_info(payloads[1]))
-    assert [s.id for s in doc.reading_coarse()] == [c]
-    assert doc.actions(Row.READING_COARSE, a) == NO_ACTIONS
+    assert being_read(doc) == [(c, None)]
+    assert doc.actions(Row.BEING_READ, a) == NO_ACTIONS
+    assert doc.actions(Row.BEING_READ, b) == NO_ACTIONS
     # With a document current, the row still offers removing the scan.
     assert doc.current is not None
-    assert doc.actions(Row.READING_COARSE, c) == Actions(remove=c)
+    assert doc.actions(Row.BEING_READ, c) == Actions(remove=c)
+    # Its work ending does not end it: only a result does.
     doc.set_working(c, False)
-    assert doc.reading_coarse() == ()
-    doc.set_working(c)
-    doc.set_reading_coarse(c)
-    doc.set_reading_coarse(c, False)
-    assert doc.reading_coarse() == ()
-    doc.set_reading_coarse(c)
+    assert being_read(doc) == [(c, None)]
     doc.remove_scan(c)
-    assert doc.reading_coarse() == ()
+    assert being_read(doc) == []
+    assert doc.actions(Row.BEING_READ, c) == NO_ACTIONS
+
+
+def test_progress_changes_nothing_but_what_is_shown():
+    doc, ids = build(info(1), None)
+    before = picture(doc), doc.summary()
+    doc.set_progress(ids[1], Progress("identify", 3, 10, 0.4))
+    assert (picture(doc), doc.summary()) == before
+    doc.set_progress(ids[1], None)
+    assert being_read(doc) == [(ids[1], None)]
+    with pytest.raises(KeyError):
+        doc.set_progress(99, None)
+
+
+def test_a_scan_put_into_a_page_by_hand_is_not_listed_as_being_read():
+    doc, ids = build(info(1, total=2), None)
+    assert being_read(doc) == [(ids[1], None)]
+    doc.assign_page(ids[1], 2)
+    assert being_read(doc) == []
+    assert doc.actions(Row.BEING_READ, ids[1]) == NO_ACTIONS
+    assert doc.slots()[1].scan_id == ids[1]
+
+
+def test_the_summary_counts_the_scans_of_the_batch_being_read():
+    doc = Document()
+    assert (doc.summary().reading, doc.summary().batch) == (0, 0)
+    a, b, c = add(doc, "a"), add(doc, "b"), add(doc, "c")
+    assert (doc.summary().reading, doc.summary().batch) == (3, 3)
+    assert doc.summary().state == DocState.EMPTY  # no document yet
+    doc.set_identified(a, info(1, total=2))
+    doc.set_outcome(a, out())
+    doc.set_unreadable(b, "label unreadable")
+    assert (doc.summary().reading, doc.summary().batch) == (1, 3)
+    doc.remove_scan(b)
+    assert (doc.summary().reading, doc.summary().batch) == (1, 2)
+    # Added while scans are being read: the same batch.
+    d = add(doc, "d")
+    assert (doc.summary().reading, doc.summary().batch) == (2, 3)
+    doc.set_unreadable(c, "label unreadable")
+    doc.set_unreadable(d, "label unreadable")
+    assert (doc.summary().reading, doc.summary().batch) == (0, 0)
+    # Added once every scan was read: a new batch.
+    add(doc, "e")
+    assert (doc.summary().reading, doc.summary().batch) == (1, 1)

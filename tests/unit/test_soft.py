@@ -306,3 +306,103 @@ def test_cancel_stops_the_slow_reader(only_layout):
     with mock.patch.object(optar.identify, "identify_scan", fails), \
             pytest.raises(soft.Stopped):
         identify_any(scan(**COARSER), cancelled=lambda: True)
+
+
+# --- Progress reports ---------------------------------------------------------------
+
+STEP_FIND = optar.identify.STEP_FIND
+STEP_IDENTIFY = optar.identify.STEP_IDENTIFY
+STEP_SLOW_SAMPLE = optar.identify.STEP_SLOW_SAMPLE
+STEP_SLOW_FIT = optar.identify.STEP_SLOW_FIT
+
+
+def keys(reports):
+    """The step keys reported, each run of one key once."""
+    out = []
+    for step, _, _ in reports:
+        if not out or out[-1] != step:
+            out.append(step)
+    return out
+
+
+def same_identity(a, b):
+    assert (a.paper, a.fmt, a.rotation, a.page, a.total, a.tag, a.name, a.layout, a.reader) == (
+        b.paper, b.fmt, b.rotation, b.page, b.total, b.tag, b.name, b.layout, b.reader
+    )  # fmt: skip
+    assert (a.confidence, a.margin, a.header, a.scan_dpi) == (
+        b.confidence, b.margin, b.header, b.scan_dpi
+    )  # fmt: skip
+    assert np.array_equal(a.grid.positions, b.grid.positions)
+    assert (a.payload is None) == (b.payload is None)
+    if a.payload is not None:
+        assert a.payload.data == b.payload.data
+        assert np.array_equal(a.result.bits, b.result.bits)
+
+
+def test_identify_scan_reports_finding_then_each_candidate(only_layout):
+    img = scan(600, 1.0)
+    reports = []
+    ident = identify_scan(img, on_progress=lambda *r: reports.append(r))
+    same_identity(ident, identify_scan(img))
+    assert keys(reports) == [STEP_FIND, STEP_IDENTIFY]
+    assert reports[0] == (STEP_FIND, 0, 1)
+    tried = [(done, of) for step, done, of in reports if step == STEP_IDENTIFY]
+    # LAYOUT on one paper, in two rotations: the label, then the layouts.
+    assert {of for _, of in tried} == {2 * (1 + 1)}
+    assert [done for done, _ in tried] == list(range(len(tried)))
+
+
+def test_identify_scan_reports_nothing_more_when_it_fails(only_layout):
+    reports = []
+    with pytest.raises(IdentifyError):
+        identify_scan(np.full((60, 40), 255, np.uint8), on_progress=lambda *r: reports.append(r))
+    assert reports == [(STEP_FIND, 0, 1)]
+    reports.clear()
+    with pytest.raises(IdentifyError):
+        identify_scan(scan(**COARSER), on_progress=lambda *r: reports.append(r))
+    assert keys(reports) == [STEP_FIND, STEP_IDENTIFY]
+    assert [r[1] for r in reports[1:]] == list(range(4)) and {r[2] for r in reports[1:]} == {4}
+
+
+def test_read_soft_reports_sampling_then_each_fit():
+    big, grid = enlarged(scan(**COARSE))
+    reports = []
+    result = soft.read_soft(grid, big, on_progress=lambda *r: reports.append(r))
+    assert reports == [(STEP_SLOW_SAMPLE, 0, 1)] + [
+        (STEP_SLOW_FIT, k, soft.ROUNDS) for k in range(soft.ROUNDS + 1)
+    ]
+    assert np.array_equal(result.bits, page_bits(document()[1], 2))
+
+
+def test_identify_any_reports_the_ordinary_steps_then_the_slow_reader(only_layout):
+    img = scan(**COARSER)
+    reports = []
+    ident = identify_any(img, on_progress=lambda *r: reports.append(r))
+    check_slow_identity(ident, 0, COARSER["dpi"])
+    assert keys(reports) == [STEP_FIND, STEP_IDENTIFY, STEP_SLOW_SAMPLE, STEP_SLOW_FIT]
+    first_slow = keys(reports).index(STEP_SLOW_SAMPLE)
+    slow = [r for r in reports if r[0] in (STEP_SLOW_SAMPLE, STEP_SLOW_FIT)]
+    assert slow[0] == (STEP_SLOW_SAMPLE, 0, 1) and first_slow == 2
+    assert (STEP_SLOW_SAMPLE, 0, 2) in slow  # the first of two candidates (rotations)
+    fits = [done for step, done, of in slow if step == STEP_SLOW_FIT]
+    assert fits == list(range(soft.ROUNDS + 1))
+
+
+def test_identify_any_passes_the_callback_only_when_given():
+    calls = []
+
+    def ordinary(image, options=None, **kw):
+        calls.append(("scan", sorted(kw)))
+        raise IdentifyError(optar.identify.LABEL_UNREADABLE, scan_dpi=290.0)
+
+    def coarse(image, options=None, cancelled=None, **kw):
+        calls.append(("coarse", sorted(kw)))
+        raise IdentifyError(optar.identify.LABEL_UNREADABLE)
+
+    with mock.patch.object(optar.identify, "identify_scan", ordinary), \
+            mock.patch.object(soft, "identify_coarse", coarse):
+        for report in (None, lambda *r: None):
+            with pytest.raises(IdentifyError):
+                identify_any(np.zeros((4, 4), np.uint8), on_progress=report)
+    assert calls == [("scan", []), ("coarse", []),
+                     ("scan", ["on_progress"]), ("coarse", ["on_progress"])]  # fmt: skip

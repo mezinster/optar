@@ -38,6 +38,10 @@ from optar.label import parse_label, read_label
 from optar.tag import Tag, damaged_tag, split_label
 
 __all__ = [
+    "STEP_FIND",
+    "STEP_IDENTIFY",
+    "STEP_SLOW_FIT",
+    "STEP_SLOW_SAMPLE",
     "ScanIdentity",
     "candidate_rotations",
     "decode_unlabelled",
@@ -45,6 +49,17 @@ __all__ = [
     "identify_scan",
     "scan_dpi",
 ]
+
+# The steps the readers report to an on_progress(step, done, of) callback.
+# Keys, not words: the application words them. Finding the page outline:
+STEP_FIND = "find"
+# Trying the page's candidates (paper, dot size, rotation): done of of tried.
+STEP_IDENTIFY = "identify"
+# The slow reader (decoder.soft) preparing a candidate: enlarging, locating
+# and sampling it (done: the candidate, of: the candidates, when known).
+STEP_SLOW_SAMPLE = "slow-sample"
+# The slow reader's fits: done of of finished.
+STEP_SLOW_FIT = "slow-fit"
 
 NO_PAGE = "no page found"
 LABEL_UNREADABLE = "label unreadable"
@@ -288,7 +303,12 @@ def _identify_header(
     )
 
 
-def identify_scan(image: np.ndarray, options: DecodeOptions | None = None) -> ScanIdentity:
+def identify_scan(
+    image: np.ndarray,
+    options: DecodeOptions | None = None,
+    *,
+    on_progress: Callable[[str, int, int], None] | None = None,
+) -> ScanIdentity:
     """Work out a scan's paper, dot size, rotation and page.
 
     The papers are tried closest outline shape first. For each paper:
@@ -326,6 +346,10 @@ def identify_scan(image: np.ndarray, options: DecodeOptions | None = None) -> Sc
     The identity of a version-1 page carries the header, the page's payload
     and its decode, so it need not be decoded again; its name is the label's
     free text if the label parses, else "".
+
+    on_progress, if given, is called with (STEP_FIND, 0, 1) before the outline
+    is looked for, then with (STEP_IDENTIFY, done, of) before each candidate,
+    done counting those tried of all there could be; it changes nothing else.
     """
     image = _check(image)
     rotations = candidate_rotations(image)
@@ -341,15 +365,31 @@ def identify_scan(image: np.ndarray, options: DecodeOptions | None = None) -> Sc
     def done(ident: ScanIdentity) -> ScanIdentity:
         return dataclasses.replace(ident, scan_dpi=scan_dpi(ident.grid, ident.layout))
 
+    if on_progress is not None:
+        on_progress(STEP_FIND, 0, 1)
     outline = next((c for r in rotations if (c := view(r)[1]) is not None), None)
     if outline is None:
         raise IdentifyError(NO_PAGE)
+    tried = candidates = 0
+    if on_progress is not None:  # every candidate the loops below may try
+        candidates = sum(
+            len(rotations) * (1 + len(_layouts_by_shape(outline, p)))
+            for p in _papers_by_shape(outline)
+        )
+
+    def trying() -> None:
+        nonlocal tried
+        if on_progress is not None:
+            on_progress(STEP_IDENTIFY, tried, candidates)
+        tried += 1
+
     # The likelier paper in every orientation before the other paper: a page
     # turned the wrong way costs one locate, not one per paper.
     for paper in _papers_by_shape(outline):
         standard = get_layout(paper.name)
         grids: dict[int, PageGrid | None] = {}
         for rotation in rotations:
+            trying()
             upright, corners = view(rotation)
             if corners is None:
                 continue
@@ -362,6 +402,7 @@ def identify_scan(image: np.ndarray, options: DecodeOptions | None = None) -> Sc
             return done(ident)
         for layout in _layouts_by_shape(outline, paper):
             for rotation in rotations:
+                trying()
                 upright, corners = view(rotation)
                 if corners is None:
                     continue
@@ -393,6 +434,7 @@ def identify_any(
     slow: bool = True,
     cancelled: Callable[[], bool] | None = None,
     on_slow: Callable[[], None] | None = None,
+    on_progress: Callable[[str, int, int], None] | None = None,
 ) -> ScanIdentity:
     """identify_scan, then, where that is not enough, the slow reader (decoder.soft).
 
@@ -410,10 +452,15 @@ def identify_any(
     the label's identity is kept. A valid tag is never questioned.
     decoder.soft.Stopped propagates when cancelled() returns True during the
     slow reader.
+
+    on_progress, if given, is passed to identify_scan and to the slow reader
+    (decoder.soft.identify_coarse), which call it with the STEP_ keys; without
+    it neither is given one.
     """
+    report = {} if on_progress is None else {"on_progress": on_progress}
     error = label_only = None
     try:
-        ident = identify_scan(image, options)
+        ident = identify_scan(image, options, **report)
     except IdentifyError as first:
         if not slow or first.scan_dpi is None:
             raise
@@ -427,7 +474,7 @@ def identify_any(
     if on_slow is not None:
         on_slow()
     try:
-        return identify_coarse(image, options, cancelled)
+        return identify_coarse(image, options, cancelled, **report)
     except IdentifyError:
         if label_only is not None:
             return label_only

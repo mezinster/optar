@@ -15,6 +15,7 @@ from optar_gui.document import (
     Health,
     PageOutcome,
     PageView,
+    Progress,
     ScanInfo,
     ScanView,
     Summary,
@@ -748,12 +749,62 @@ def test_a_slow_page_does_not_hide_that_it_is_unreadable_or_missing():
 
 def test_a_coarse_scan_being_read_says_it_takes_about_a_minute():
     scan = ScanView(4, "/scans/coarse.png", "working", None, None, "")
-    row = plain(text.reading_coarse_row(scan))
-    assert row.startswith("coarse.png · ") and "about a minute" in row
-    assert "coarse scan" in row and "slower reader" in row
-    assert text.reading_coarse_detail(scan)[0] == "coarse.png"
-    assert "about a minute" in text.reading_coarse_detail(scan)[1]
-    plain(text.READING_COARSE_SECTION)
+    for progress in (Progress("slow-sample", 0, 1, 0.3), Progress("slow-fit", 2, 5, 0.6)):
+        detail = text.being_read_detail(scan, progress)
+        assert detail[0] == "coarse.png"
+        assert "about a minute" in plain(detail[-1])
+        assert "coarse scan" in detail[-1] and "slower reader" in detail[-1]
+    # An ordinary reading says nothing of the kind.
+    detail = text.being_read_detail(scan, Progress("find", 0, 1, 0.1))
+    assert detail == ("coarse.png", "Finding the page.")
+    assert text.being_read_detail(scan, None) == ("coarse.png", "Waiting.")
+
+
+def test_the_steps_of_a_scan_being_read():
+    def step(key, done=0, of=1):
+        return text.step_text(Progress(key, done, of, 0.5))
+
+    assert text.step_text(None) == text.WAITING == "Waiting"
+    assert step("open") == "Opening the file"
+    assert step("find") == "Finding the page"
+    assert step("identify", 3, 12) == "Identifying the page"
+    assert step("read") == "Reading the data"
+    assert step("slow-sample", 2, 9) == "Slower reader: sampling"
+    assert step("slow-fit", 0, 5) == "Slower reader: pass 1 of 5"
+    assert step("slow-fit", 3, 5) == "Slower reader: pass 4 of 5"
+    assert step("slow-fit", 5, 5) == "Slower reader: pass 5 of 5"
+    for key in ("open", "find", "identify", "read", "slow-sample", "slow-fit"):
+        plain(step(key))
+    plain(text.BEING_READ_SECTION)
+
+
+def test_every_step_the_readers_report_has_its_words():
+    import optar.identify
+    import optar_gui.work as work
+
+    keys = {work.STEP_OPEN, work.STEP_READ, optar.identify.STEP_FIND,
+            optar.identify.STEP_IDENTIFY, optar.identify.STEP_SLOW_SAMPLE,
+            optar.identify.STEP_SLOW_FIT}  # fmt: skip
+    assert len(keys) == 6
+    words = {text.step_text(Progress(k, 0, 1, 0.0)) for k in keys}
+    assert len(words) == 6 and text.WAITING not in words
+
+
+def test_the_row_of_a_scan_being_read_is_its_name_and_step():
+    assert text.being_read_row("scan-3.png", None) == "scan-3.png · Waiting"
+    row = text.being_read_row("<b>scan</b>.png", Progress("slow-fit", 3, 5, 0.7))
+    assert row == "<b>scan</b>.png · Slower reader: pass 4 of 5"
+
+
+def test_the_bar_counts_the_scans_read_while_scans_are_being_read():
+    assert text.reading_line(3, 6) == "Working… 3 of 6 scans read"
+    assert text.reading_line(1, 1) == "Working… 0 of 1 scan read"
+    assert text.reading_line(1, 1205) == "Working… 1,204 of 1,205 scans read"
+    # Whatever the document's state, while scans are being read.
+    for state in (D.EMPTY, D.WORKING, D.VERIFIED, D.INCOMPLETE):
+        s = S(state, 1, 0, 0, 0, 0, 9, reading=3, batch=6)
+        assert text.summary_line(s) == "Working… 3 of 6 scans read"
+    assert text.summary_line(S(D.WORKING, 1, 0, 0, 0, 1, 9)) == "Working…"
 
 
 def test_an_unreadable_coarse_scan_says_the_slower_reader_was_tried():

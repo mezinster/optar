@@ -12,7 +12,14 @@ from optar import PAPERS
 from optar_gui import text
 from optar_gui.document import DocState, Row, ScanState
 from optar_gui.read_tab import ReadController, ReadTab
-from optar_gui.work import Cancelled, ScanWork, process_scan
+from optar_gui.work import (
+    STEP_SLOW_FIT,
+    STEP_SLOW_SAMPLE,
+    Cancelled,
+    Progress,
+    ScanWork,
+    process_scan,
+)
 from tests.helpers import save_linear_scan
 
 TIMEOUT = 120_000  # ms
@@ -56,8 +63,8 @@ class SlowFake:
         self.gate = threading.Event()
         self.cancelled = []
 
-    def __call__(self, path, cancelled=lambda: False, on_slow=None):
-        on_slow()
+    def __call__(self, path, cancelled=lambda: False, on_progress=None):
+        on_progress(Progress(STEP_SLOW_FIT, 3, 5, 0.7))
         while not self.gate.wait(0.01):
             if cancelled():
                 self.cancelled.append(path)
@@ -70,17 +77,20 @@ def test_a_coarse_scan_is_listed_while_the_slower_reader_reads_it(qtbot, make_ta
     fake = SlowFake()
     tab = make_tab(fake, max_workers=2)
     tab.controller.add_paths(["/scans/coarse.png", "/scans/other.png"])
-    row = f"coarse.png · {text.READING_COARSE}"
+    row = "coarse.png · Slower reader: pass 4 of 5"
     qtbot.waitUntil(lambda: row in tab.rows(), timeout=TIMEOUT)
-    qtbot.waitUntil(lambda: f"other.png · {text.READING_COARSE}" in tab.rows(), timeout=TIMEOUT)
-    assert text.READING_COARSE_SECTION in tab.rows()
-    assert "about a minute" in row
+    qtbot.waitUntil(lambda: "other.png · Slower reader: pass 4 of 5" in tab.rows(),
+                    timeout=TIMEOUT)  # fmt: skip
+    assert text.BEING_READ_SECTION in tab.rows()
     tab.select_row(tab.rows().index(row))
-    assert tab.detail.text().splitlines() == ["coarse.png", f"{text.READING_COARSE}."]
+    assert tab.detail.text().splitlines() == [
+        "coarse.png", "Slower reader: pass 4 of 5.", f"{text.READING_COARSE}."
+    ]
+    assert "about a minute" in tab.detail.text()
     assert tab.remove_button.isEnabled()
 
     # Removing the other scan cancels its reading.
-    tab.select_row(tab.rows().index(f"other.png · {text.READING_COARSE}"))
+    tab.select_row(tab.rows().index("other.png · Slower reader: pass 4 of 5"))
     tab.remove_button.click()
     qtbot.waitUntil(lambda: fake.cancelled == ["/scans/other.png"], timeout=TIMEOUT)
     assert not any(r.startswith("other.png") for r in tab.rows())
@@ -88,7 +98,7 @@ def test_a_coarse_scan_is_listed_while_the_slower_reader_reads_it(qtbot, make_ta
     # The reader fails: the scan is unreadable, saying the slower reader was tried.
     fake.gate.set()
     wait_settled(qtbot, tab)
-    assert text.READING_COARSE_SECTION not in tab.rows()
+    assert text.BEING_READ_SECTION not in tab.rows()
     unreadable = [r for r in tab.rows() if r.startswith("coarse.png")]
     assert len(unreadable) == 1 and unreadable[0].endswith(text.SLOW_TRIED)
     assert "too coarse to read" in unreadable[0]
@@ -98,9 +108,18 @@ def test_removing_a_scan_stops_the_slower_reader(qtbot, make_tab, coarse_scans):
     _, paths = coarse_scans
     tab = make_tab(process_scan, max_workers=1)
     tab.controller.add_paths(paths[1:])
-    row = f"{os.path.basename(paths[1])} · {text.READING_COARSE}"
-    qtbot.waitUntil(lambda: row in tab.rows(), timeout=TIMEOUT)
-    scan_id = tab.controller.document.reading_coarse()[0].id
+    doc = tab.controller.document
+
+    def reading_slowly():
+        listed = doc.being_read()
+        slow = (STEP_SLOW_SAMPLE, STEP_SLOW_FIT)
+        return listed and listed[0][1] is not None and listed[0][1].step in slow
+
+    qtbot.waitUntil(reading_slowly, timeout=TIMEOUT)
+    name = os.path.basename(paths[1])
+    qtbot.waitUntil(lambda: any(r.startswith(f"{name} · Slower reader: ") for r in tab.rows()),
+                    timeout=TIMEOUT)  # fmt: skip
+    scan_id = doc.being_read()[0][0].id
     start = time.monotonic()
     tab.controller.remove(scan_id)
     qtbot.waitUntil(lambda: tab.controller.runner.active == 0, timeout=TIMEOUT)

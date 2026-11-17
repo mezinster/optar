@@ -8,7 +8,7 @@ states), of the ordered user operations (``switch_to``, ``start_by_hand``,
 ``assign_page``, ``use_scan``, ``remove_scan``) and of which background results
 were known when each user operation was made. It does not depend on the order in
 which background results (``set_working``, ``set_identified``, ``set_outcome``,
-``set_unreadable``, ``set_decoding``, ``set_payload``, ``set_reading_coarse``)
+``set_unreadable``, ``set_decoding``, ``set_payload``, ``set_progress``)
 arrive between user operations (nor on when the state is read): everything shown
 is recomputed from that information after every change, and a user's choice is
 never lost or changed by a passing intermediate state.
@@ -186,16 +186,19 @@ kinds of row. ``actions(kind, key)`` says which actions apply to a row, as an
   also have that scan assigned to a page of the document;
 - an unreadable scan (key: its scan) can be removed, and assigned to a page when
   there is a document;
-- a scan the slower reader for coarse scans is reading (key: its scan) can be
-  removed.
+- a scan being read (key: its scan) can be removed.
 
-Coarse scans. ``set_reading_coarse`` records that the slower reader has started
-on a scan the ordinary reader could not identify; ``reading_coarse()`` lists such
-scans (not identified, not unreadable, not put into a page by hand) until their
-work ends (``set_working(False)``), they are identified or found unreadable. A
-page read by that reader (``PageOutcome.slow``) counts no repairs; its view says
-so (``PageView.slow``), and within a version-1 page a scan read by the ordinary
-reader is preferred to it, whatever their erased bytes.
+Scans being read. ``being_read()`` lists, in add order, every scan from the
+moment it is added until it is identified or found unreadable, unless it is put
+into a page by hand (it is then shown in that page), each with its latest
+``Progress`` (``set_progress``; None until its reading reports any: it is
+waiting). Progress changes nothing else: it is shown, not used. ``Summary``
+counts the scans being read (``reading``) out of the *batch* (``batch``): the
+scans added since the last ``add_scan`` made while no scan was being read, that
+are still there, and any other scan being read. Coarse scans: a page read by the slower reader
+(``PageOutcome.slow``) counts no repairs; its view says so (``PageView.slow``),
+and within a version-1 page a scan read by the ordinary reader is preferred to
+it, whatever their erased bytes.
 
 ``can_start_by_hand`` is true when there is no document but there are unreadable
 scans to put into one. ``replacement_fit(scan_id, page)`` says whether a scan
@@ -375,6 +378,21 @@ class PageOutcome:
         return len(self.data)
 
 
+@dataclass(frozen=True)
+class Progress:
+    """How far one scan's reading has got (``optar_gui.work`` makes them).
+
+    ``step`` is a step key (``work.STEP_OPEN``, ``optar.identify.STEP_FIND``, ...),
+    ``done`` of ``of`` its count where it has one, and ``fraction`` the share of
+    the whole reading done, in [0, 1], never decreasing within one reading.
+    """
+
+    step: str
+    done: int
+    of: int
+    fraction: float
+
+
 class ScanState:
     WAITING = "waiting"
     WORKING = "working"
@@ -457,7 +475,7 @@ class Row:
     SPARE = "spare"  # key: scan id
     OTHER = "other"  # key: group key
     UNREADABLE = "unreadable"  # key: scan id
-    READING_COARSE = "reading coarse"  # key: scan id
+    BEING_READ = "being read"  # key: scan id
 
 
 @dataclass(frozen=True)
@@ -502,6 +520,10 @@ class Summary:
     # reader counts no repairs, so "good" is not known of them: text.py lists
     # them apart.
     slow: int = 0
+    # Scans being read (``Document.being_read``), and the scans of their batch
+    # (see the module docstring); both 0 when none is being read.
+    reading: int = 0
+    batch: int = 0
 
     @property
     def restored(self) -> bool:
@@ -627,7 +649,7 @@ class _Scan:
     path: str  # as given
     real: str  # ``_file_key`` of the path, for spotting the same file added twice
     working: bool = False
-    coarse: bool = False  # the slower reader is reading it (until its work ends)
+    progress: Progress | None = None  # of its reading, as last reported
     info: ScanInfo | None = None
     outcome: PageOutcome | None = None
     outcome_serial: int = 0  # changes with every outcome, for the verdict cache
@@ -762,6 +784,7 @@ class Document:
         self._repair: Repair | None = None  # version 1: the latest accepted repair result
         self._repair_failure: tuple[tuple, str] | None = None  # (key, reason) of a job that raised
         self._reals: dict[str, int] = {}  # resolved path -> scan
+        self._batch_start = 1  # the first scan id of the batch being read
         self._lay = _Layout()
         self._dirty = False  # the layout is recomputed when next read
 
@@ -773,6 +796,8 @@ class Document:
             return None
         scan_id = self._next_id
         self._next_id += 1
+        if not any(self._being_read(s) for s in self._scans.values()):
+            self._batch_start = scan_id  # a new batch
         self._scans[scan_id] = _Scan(scan_id, path, real)
         self._reals[real] = scan_id
         self._changed()
@@ -786,16 +811,13 @@ class Document:
         """
         s = self._get(scan_id)
         s.working = working
-        if not working:
-            s.coarse = False
         self._changed()
 
-    def set_reading_coarse(self, scan_id: int, reading: bool = True) -> None:
-        """Records that the slower reader for coarse scans has started reading the
-        scan (or, ``reading=False``, that it no longer does). ``set_working(False)``
-        ends it too, as does identifying the scan or finding it unreadable."""
-        self._get(scan_id).coarse = reading
-        self._changed()
+    def set_progress(self, scan_id: int, progress: Progress | None) -> None:
+        """Records how far the scan's reading has got (None: not started, or started
+        again). Shown while the scan is being read (``being_read``); it changes
+        nothing else, so the layout is not recomputed."""
+        self._get(scan_id).progress = progress
 
     def set_identified(self, scan_id: int, info: ScanInfo) -> None:
         """Records what the scan's label says.
@@ -813,7 +835,6 @@ class Document:
             info = replace(info, page=header.page, total=header.total)
         s = self._get(scan_id)
         s.info = info
-        s.coarse = False
         self._changed()
 
     def set_payload(self, scan_id: int, payload: PagePayload) -> None:
@@ -853,7 +874,6 @@ class Document:
         s = self._get(scan_id)
         if format is None:
             s.unreadable_reason = reason
-            s.coarse = False
         else:
             s.failed[format] = reason
             s.decoded.pop(format, None)
@@ -1041,6 +1061,11 @@ class Document:
         (see ``verdict_job``). A version-1 document is never repaired here, whatever
         ``verify`` says (see ``repair_job``).
         """
+        summary = self._summary(verify)
+        counts = self._reading_counts()
+        return replace(summary, **counts) if counts else summary
+
+    def _summary(self, verify: bool) -> Summary:
         cur = self._layout.current
         if cur is None:
             return Summary(DocState.EMPTY, 0, 0, 0, 0, 0, None)
@@ -1303,7 +1328,7 @@ class Document:
         if lay.current is None:
             if kind == Row.UNREADABLE and self._listed_unreadable(key):
                 return Actions(remove=key)
-            if kind == Row.READING_COARSE and self._listed_coarse(key):
+            if kind == Row.BEING_READ and self._listed_being_read(key):
                 return Actions(remove=key)
             return NO_ACTIONS
         if kind == Row.PAGE:
@@ -1327,20 +1352,19 @@ class Document:
         if kind == Row.UNREADABLE and self._listed_unreadable(key):
             by_hand = lay.current.v1 is None and _v1_header(self._scans[key].info) is None
             return Actions(remove=key, assign=key if by_hand else None)
-        if kind == Row.READING_COARSE and self._listed_coarse(key):
+        if kind == Row.BEING_READ and self._listed_being_read(key):
             return Actions(remove=key)
         return NO_ACTIONS
 
-    def _listed_coarse(self, scan_id: object) -> bool:
+    def _listed_being_read(self, scan_id: object) -> bool:
         s = self._scans.get(scan_id) if isinstance(scan_id, int) else None
-        return s is not None and self._reading_coarse(s)
+        return s is not None and self._being_read(s)
 
-    def _reading_coarse(self, s: _Scan) -> bool:
+    def _being_read(self, s: _Scan) -> bool:
         return (
-            s.coarse
-            and s.info is None
+            s.info is None
+            and s.unreadable_reason is None
             and s.id not in self._layout.assigned
-            and self._unreadable_reason(s) is None
         )
 
     def _listed_unreadable(self, scan_id: object) -> bool:
@@ -1436,10 +1460,23 @@ class Document:
             if s.id not in self._layout.assigned and self._unreadable_reason(s) is not None
         )
 
-    def reading_coarse(self) -> tuple[ScanView, ...]:
-        """The scans the slower reader for coarse scans is reading: not identified,
-        not unreadable, not put into a page by hand, in add order."""
-        return tuple(self._view(s) for s in self._scans.values() if self._reading_coarse(s))
+    def being_read(self) -> tuple[tuple[ScanView, Progress | None], ...]:
+        """The scans being read (not identified, not unreadable, not put into a page
+        by hand), in add order, each with its latest progress (None: waiting)."""
+        return tuple(
+            (self._view(s), s.progress) for s in self._scans.values() if self._being_read(s)
+        )
+
+    def _reading_counts(self) -> dict[str, int]:
+        """``Summary.reading`` and ``Summary.batch``."""
+        reading = batch = 0
+        for s in self._scans.values():
+            being_read = self._being_read(s)
+            reading += being_read
+            # A scan put into a page by hand is read again once the user leaves
+            # that document: it counts whenever it was added.
+            batch += being_read or s.id >= self._batch_start
+        return {"reading": reading, "batch": batch} if reading else {}
 
     # --- Internals -------------------------------------------------------------
 

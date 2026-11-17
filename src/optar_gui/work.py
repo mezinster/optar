@@ -30,6 +30,7 @@ import hashlib
 import os
 import stat
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -54,14 +55,21 @@ from optar.format import (
     get_layout,
     get_paper,
 )
-from optar.identify import decode_unlabelled, identify_any
+from optar.identify import (
+    STEP_FIND,
+    STEP_IDENTIFY,
+    STEP_SLOW_FIT,
+    STEP_SLOW_SAMPLE,
+    decode_unlabelled,
+    identify_any,
+)
 from optar.imageio import read_scan
 from optar.label import printed_label
 from optar.layout import channel_xy
 from optar.pdf import write_pdf
 from optar.tag import FINGERPRINT_DIGITS, Tag, make_tag, tagged_label
 from optar_gui import text
-from optar_gui.document import PageOutcome, ScanInfo
+from optar_gui.document import PageOutcome, Progress, ScanInfo
 
 __all__ = [
     "NOT_DECODABLE",
@@ -71,6 +79,13 @@ __all__ = [
     "MIN_PIXELS_PER_DOT",
     "NamePreview",
     "PrintPlan",
+    "Progress",
+    "STEP_FIND",
+    "STEP_IDENTIFY",
+    "STEP_OPEN",
+    "STEP_READ",
+    "STEP_SLOW_FIT",
+    "STEP_SLOW_SAMPLE",
     "ScanWork",
     "TOO_LARGE_TO_PROTECT",
     "TOO_MANY_PAGES",
@@ -235,6 +250,76 @@ def too_coarse(
     return layout is not None and scan_dpi < MIN_PIXELS_PER_DOT * float(layout.pixels_per_inch)
 
 
+# The steps of a scan's reading besides the library's (optar.identify.STEP_*):
+# reading the file, and decoding the identified page.
+STEP_OPEN = "open"
+STEP_READ = "read"
+
+# The share of the bar each step of an ordinary reading covers: (start, end).
+# Rough, from where the time goes on a 600 dpi A4 scan: loading it, finding its
+# outline, trying candidates (one, for most pages; more for a page turned or of
+# larger dots), decoding it. A version-1 page is decoded while it is
+# identified: its bar jumps from identifying to the end.
+_SPANS = {
+    STEP_OPEN: (0.0, 0.05),
+    STEP_FIND: (0.05, 0.2),
+    STEP_IDENTIFY: (0.2, 0.5),
+    STEP_READ: (0.5, 1.0),
+}
+# The slower reader takes the rest of the bar from where it starts: its
+# preparation of a candidate (enlarging, locating, sampling) this share, its
+# fits the remainder, evenly. Each fit costs about the same (decoder.soft).
+_SLOW_SAMPLE_SHARE = 0.2
+# Reports of the same step are sent at most this often (seconds); a new step,
+# and the end, are sent at once. Steps change a few times a scan.
+PROGRESS_INTERVAL_S = 0.1
+
+
+class _Reporter:
+    """Turns the steps of one scan's reading into ``Progress`` for ``emit``: a
+    fraction that never decreases, sent no more often than ``PROGRESS_INTERVAL_S``
+    for one step."""
+
+    def __init__(self, emit: Callable[[Progress], None], clock=time.monotonic) -> None:
+        self._emit = emit
+        self._clock = clock
+        self._fraction = 0.0
+        self._slow_from: float | None = None  # where the slower reader started
+        self._sent: Progress | None = None
+        self._sent_at = 0.0
+
+    def __call__(self, step: str, done: int, of: int) -> None:
+        self._fraction = max(self._fraction, self._share(step, done, of))
+        progress = Progress(step, done, of, self._fraction)
+        if progress == self._sent:
+            return
+        now = self._clock()
+        sent = self._sent
+        if (
+            sent is not None
+            and sent.step == step
+            and progress.fraction < 1.0
+            and now - self._sent_at < PROGRESS_INTERVAL_S
+        ):
+            return
+        self._sent, self._sent_at = progress, now
+        self._emit(progress)
+
+    def _share(self, step: str, done: int, of: int) -> float:
+        part = min(max(done / of, 0.0), 1.0) if of > 0 else 0.0
+        if step in (STEP_SLOW_SAMPLE, STEP_SLOW_FIT):
+            if self._slow_from is None:
+                self._slow_from = self._fraction
+            within = 0.0
+            if step == STEP_SLOW_FIT:
+                within = _SLOW_SAMPLE_SHARE + (1 - _SLOW_SAMPLE_SHARE) * part
+            return self._slow_from + (1 - self._slow_from) * within
+        if step not in _SPANS:
+            return self._fraction
+        start, end = _SPANS[step]
+        return start + (end - start) * part
+
+
 def _upright_size(image: np.ndarray, rotation: int) -> tuple[int, int]:
     h, w = image.shape[:2]
     return (int(h), int(w)) if rotation % 2 else (int(w), int(h))
@@ -274,6 +359,7 @@ def process_scan(
     path: str,
     cancelled: Callable[[], bool] = _never,
     on_slow: Callable[[], None] | None = None,
+    on_progress: Callable[[Progress], None] | None = None,
 ) -> ScanWork:
     """Load, identify and decode one scan.
 
@@ -294,7 +380,16 @@ def process_scan(
     not repeated, and its payload kept.
     Checks ``cancelled`` after loading, after identifying and after decoding,
     while a large scan waits for its turn, and throughout the slower reader.
+
+    ``on_progress``, if given, is called on the worker thread with a ``Progress``
+    as the reading goes through its steps (``STEP_OPEN``, the library's
+    ``STEP_FIND``, ``STEP_IDENTIFY``, ``STEP_SLOW_SAMPLE`` and ``STEP_SLOW_FIT``,
+    then ``STEP_READ``): its fraction never decreases and reaches 1 when the page
+    is decoded. Reports of one step come at most every ``PROGRESS_INTERVAL_S``.
     """
+    report = _Reporter(on_progress) if on_progress is not None else None
+    if report is not None:
+        report(STEP_OPEN, 0, 1)
     if _irregular(path):
         return ScanWork(None, text.not_regular_file(path), None, 0, None, (0, 0))
     try:
@@ -312,9 +407,12 @@ def process_scan(
             _wait_turn(cancelled)
             turn = True
 
+    reporting = {} if report is None else {"on_progress": report}
     try:
         try:
-            identity = identify_any(image, cancelled=cancelled, on_slow=slow_started)
+            identity = identify_any(
+                image, cancelled=cancelled, on_slow=slow_started, **reporting
+            )
         except Stopped:
             raise Cancelled() from None
         except IdentifyError as e:
@@ -345,6 +443,8 @@ def process_scan(
         _check(cancelled)
         if header is None or payload is None or result is None:
             payload = result = None
+            if report is not None:
+                report(STEP_READ, 0, 1)
             try:
                 result = decode_located(grid, detail=True)
             except DecodeError as e:
@@ -359,6 +459,8 @@ def process_scan(
     outcome, marks = _outcome(result, slow)
     del result
     _check(cancelled)
+    if report is not None:
+        report(STEP_READ, 1, 1)
     return ScanWork(info, "", outcome, rotation, marks, size, payload=payload, **found)
 
 

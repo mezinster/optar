@@ -101,7 +101,7 @@ def quick_slow_reader(request, monkeypatch):
     if "coarse_case" in request.fixturenames:
         return
 
-    def gives_up(image, options=None, cancelled=None):
+    def gives_up(image, options=None, cancelled=None, on_progress=None):
         raise optar.errors.IdentifyError("label unreadable")
 
     monkeypatch.setattr(optar.decoder.soft, "identify_coarse", gives_up)
@@ -1157,3 +1157,147 @@ def test_the_slower_reader_waits_for_the_large_scan_turn(monkeypatch, tmp_path):
     assert w.reason == text.coarse_scan(150.0, None, slow_tried=True)
     assert work._LARGE_SCAN_TURN.acquire(timeout=1)
     work._LARGE_SCAN_TURN.release()
+
+
+# --- Progress of a scan's reading ----------------------------------------------------
+
+
+def steps(reports):
+    """The step keys of the reports, each run of one key once."""
+    keys = []
+    for p in reports:
+        if not keys or keys[-1] != p.step:
+            keys.append(p.step)
+    return keys
+
+
+def check_rising(reports):
+    fractions = [p.fraction for p in reports]
+    assert all(0.0 <= f <= 1.0 for f in fractions)
+    assert fractions == sorted(fractions), fractions
+    assert all(isinstance(p, work.Progress) for p in reports)
+
+
+def test_process_scan_reports_the_steps_of_an_ordinary_scan(tmp_path, clean_work):
+    _, pages = document()
+    path = write(tmp_path, "p1.png", fake_scan(pages[0].pixels, scale=1))
+    reports = []
+    w = process_scan(path, on_progress=reports.append)
+    assert steps(reports) == [work.STEP_OPEN, work.STEP_FIND, work.STEP_IDENTIFY, work.STEP_READ]
+    check_rising(reports)
+    assert reports[0].fraction == 0.0 and reports[-1].fraction == 1.0
+    assert reports[-1] == work.Progress(work.STEP_READ, 1, 1, 1.0)
+    identifying = [p for p in reports if p.step == work.STEP_IDENTIFY]
+    assert all(0 <= p.done < p.of for p in identifying)
+    # The same result as without a callback.
+    assert w.reason == clean_work.reason == ""
+    assert w.info == clean_work.info and w.rotation == clean_work.rotation
+    assert w.outcome == clean_work.outcome and w.size == clean_work.size
+    assert np.array_equal(w.marks, clean_work.marks)
+
+
+def test_process_scan_reports_the_slower_reader(coarse_case):
+    case, path = coarse_case
+    reports = []
+    w = process_scan(path, on_progress=reports.append)
+    assert w.slow and w.reason == ""
+    keys = steps(reports)
+    assert keys[:3] == [work.STEP_OPEN, work.STEP_FIND, work.STEP_IDENTIFY]
+    assert keys[-3:] == [work.STEP_SLOW_SAMPLE, work.STEP_SLOW_FIT, work.STEP_READ]
+    check_rising(reports)
+    fits = [p for p in reports if p.step == work.STEP_SLOW_FIT]
+    assert [p.done for p in fits] == list(range(optar.decoder.soft.ROUNDS + 1))
+    assert {p.of for p in fits} == {optar.decoder.soft.ROUNDS}
+    assert reports[-1].fraction == 1.0
+
+
+def test_process_scan_of_a_file_that_is_not_an_image_reports_only_opening(tmp_path):
+    path = tmp_path / "notes.png"
+    path.write_bytes(b"not an image")
+    reports = []
+    w = process_scan(str(path), on_progress=reports.append)
+    assert w.info is None and w.reason == process_scan(str(path)).reason != ""
+    assert reports == [work.Progress(work.STEP_OPEN, 0, 1, 0.0)]
+
+
+class Clock:
+    def __init__(self):
+        self.now = 0.0
+
+    def __call__(self):
+        return self.now
+
+
+def test_progress_never_moves_back_when_a_label_is_read_again_slowly():
+    """identify_any's label-only path: the label is read, then the slower reader
+    finds nothing and the label's page is decoded."""
+    reports, clock = [], Clock()
+    report = work._Reporter(reports.append, clock)
+    for step, done, of in [
+        (work.STEP_OPEN, 0, 1), (work.STEP_FIND, 0, 1), (work.STEP_IDENTIFY, 0, 4),
+        (work.STEP_SLOW_SAMPLE, 0, 1), (work.STEP_SLOW_SAMPLE, 0, 2),
+        (work.STEP_SLOW_FIT, 0, 5), (work.STEP_SLOW_FIT, 1, 5),
+        (work.STEP_SLOW_SAMPLE, 1, 2),  # the next candidate starts over
+        (work.STEP_SLOW_FIT, 0, 5), (work.STEP_SLOW_FIT, 1, 5),
+        (work.STEP_READ, 0, 1), (work.STEP_READ, 1, 1),
+    ]:  # fmt: skip
+        clock.now += 1
+        report(step, done, of)
+    check_rising(reports)
+    assert len(reports) == 12
+    assert reports[-1].fraction == 1.0
+    # The slower reader takes the rest of the bar from where it started.
+    assert reports[6].fraction > reports[2].fraction
+
+
+def test_progress_of_one_step_is_sent_at_most_ten_times_a_second():
+    reports, clock = [], Clock()
+    report = work._Reporter(reports.append, clock)
+    for i in range(1000):  # one step reported 1000 times over one second
+        clock.now = i / 1000
+        report(work.STEP_IDENTIFY, i, 1000)
+    assert 9 <= len(reports) <= 11
+    # A new step is sent at once, and so is the end.
+    report(work.STEP_READ, 0, 1)
+    report(work.STEP_READ, 1, 1)
+    assert [p.step for p in reports[-2:]] == [work.STEP_READ, work.STEP_READ]
+    assert reports[-1].fraction == 1.0
+    # A report that changes nothing is not sent again.
+    sent = len(reports)
+    clock.now += 10
+    report(work.STEP_READ, 1, 1)
+    assert len(reports) == sent
+
+
+def test_process_scan_sends_few_reports_however_often_the_reader_reports(
+    monkeypatch, tmp_path
+):
+    path = write(tmp_path, "blank.png", np.full((40, 30), 255, np.uint8))
+
+    def chatty(image, *, cancelled, on_slow, on_progress):
+        start = time.monotonic()
+        while time.monotonic() - start < 0.5:
+            on_progress(work.STEP_IDENTIFY, 1, 2)
+            on_progress(work.STEP_IDENTIFY, 0, 2)
+        raise optar.errors.IdentifyError("label unreadable")
+
+    monkeypatch.setattr(work, "identify_any", chatty)
+    reports = []
+    w = process_scan(path, on_progress=reports.append)
+    assert w.reason == "label unreadable"
+    assert len(reports) <= 2 + 0.5 / work.PROGRESS_INTERVAL_S + 2
+    check_rising(reports)
+
+
+def test_process_scan_without_a_callback_gives_the_reader_none(monkeypatch, tmp_path):
+    path = write(tmp_path, "blank.png", np.full((40, 30), 255, np.uint8))
+    seen = []
+
+    def identify(image, **kw):
+        seen.append(sorted(kw))
+        raise optar.errors.IdentifyError("no page found")
+
+    monkeypatch.setattr(work, "identify_any", identify)
+    process_scan(path)
+    process_scan(path, on_progress=lambda p: None)
+    assert seen == [["cancelled", "on_slow"], ["cancelled", "on_progress", "on_slow"]]

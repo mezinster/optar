@@ -19,6 +19,7 @@ from optar_gui.document import (
     GroupView,
     Health,
     PageView,
+    Progress,
     ScanView,
     Summary,
 )
@@ -169,10 +170,13 @@ def summary_line(s: Summary) -> str:
 
     For a version-1 document an accepted repair result adds what the repair did
     (``repair_line``); one that could not give the file says which pages to add
-    or rescan (``rescan_advice``).
+    or rescan (``rescan_advice``). While scans are being read the bar says how
+    many of them are read (``reading_line``) instead.
     """
     pages = s.good + s.repaired + s.damaged + s.unreadable + s.missing
     repair = s.repair
+    if s.reading:
+        return reading_line(s.reading, s.batch)
     if s.state == DocState.EMPTY:
         return ""
     if s.state == DocState.WORKING:
@@ -683,8 +687,6 @@ def coarse_scan(scan_dpi: float, layout: Layout | None, slow_tried: bool = False
 
 # A scan the ordinary reader could not read, while the slower reader tries it.
 READING_COARSE = "Reading a coarse scan with the slower reader; this takes about a minute"
-# The heading over the scans being read that way.
-READING_COARSE_SECTION = "Coarse scans being read"
 # After "too coarse to read": the slower reader could not read the scan either.
 SLOW_TRIED = "The slower reader for coarse scans was tried too, and could not read it."
 # The health of a page read by the slower reader, in its row.
@@ -702,12 +704,57 @@ def read_by_slow_reader() -> str:
     )
 
 
-def reading_coarse_row(scan: ScanView) -> str:
-    return f"{os.path.basename(scan.path)} · {READING_COARSE}"
+# --- Scans being read --------------------------------------------------------------
+
+# The heading over the scans being read, and the step of one not started yet.
+BEING_READ_SECTION = "Being read"
+WAITING = "Waiting"
+
+# The words of each step of a scan's reading, by its key (``work.STEP_OPEN``,
+# ``optar.identify.STEP_FIND`` and so on; a test checks that they match).
+_STEPS = {
+    "open": "Opening the file",
+    "find": "Finding the page",
+    "identify": "Identifying the page",
+    "read": "Reading the data",
+    "slow-sample": "Slower reader: sampling",
+}
+# The slower reader's fits, one of several.
+_SLOW_FIT = "slow-fit"
+_SLOW_STEPS = ("slow-sample", _SLOW_FIT)
 
 
-def reading_coarse_detail(scan: ScanView) -> tuple[str, ...]:
-    return (os.path.basename(scan.path), f"{READING_COARSE}.")
+def step_text(progress: Progress | None) -> str:
+    """What a scan being read is doing: ``Waiting`` before it starts, then its step
+    (``Slower reader: pass 4 of 5`` while the fourth of five fits runs)."""
+    if progress is None:
+        return WAITING
+    if progress.step == _SLOW_FIT:
+        of = max(progress.of, 1)
+        return f"Slower reader: pass {min(progress.done + 1, of):,} of {of:,}"
+    return _STEPS.get(progress.step, _STEPS["identify"])
+
+
+def reading_slowly(progress: Progress | None) -> bool:
+    """Whether the slower reader for coarse scans is reading the scan."""
+    return progress is not None and progress.step in _SLOW_STEPS
+
+
+def being_read_row(name: str, progress: Progress | None) -> str:
+    """The row of a scan being read, as plain text (the list draws a bar too)."""
+    return f"{name} · {step_text(progress)}"
+
+
+def being_read_detail(scan: ScanView, progress: Progress | None) -> tuple[str, ...]:
+    """The detail of a scan being read; one the slower reader reads says that it
+    takes about a minute."""
+    lines = (os.path.basename(scan.path), f"{step_text(progress)}.")
+    return (*lines, f"{READING_COARSE}.") if reading_slowly(progress) else lines
+
+
+def reading_line(reading: int, batch: int) -> str:
+    """The bottom bar while scans are being read: ``Working… 3 of 6 scans read``."""
+    return f"Working… {batch - reading:,} of {count(batch, 'scan')} read"
 
 
 def _and(items: list[str]) -> str:

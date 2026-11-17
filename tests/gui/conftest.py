@@ -68,7 +68,7 @@ def quick_slow_reader(request, monkeypatch):
     import optar.decoder.soft
     from optar.errors import IdentifyError
 
-    def gives_up(image, options=None, cancelled=None):
+    def gives_up(image, options=None, cancelled=None, on_progress=None):
         raise IdentifyError("label unreadable")
 
     monkeypatch.setattr(optar.decoder.soft, "identify_coarse", gives_up)
