@@ -14,6 +14,10 @@ or more. From 0.3.0 the dots can be printed larger, so that a 200 dpi scanner
 is enough (see "Dot size and protection" below), and the pages can carry extra
 data that repairs damage and even a lost page.
 
+The page format is defined by [docs/format.md](docs/format.md) and by the
+conformance vectors in `tests/vectors`. The original C program, kept in
+`lega-c`, is where the format comes from; see "History" at the end.
+
 Desktop application
 -------------------
 
@@ -371,13 +375,15 @@ supported, selected through `--format` (the sixth field of the format string).
 ### Compatibility with the C version
 
 The Python encoder's pages are byte-identical to the C `optar` output for A4,
-Letter and all five error-correction modes (tested against C). The Python
-decoder's cross positions and sampled bits are bit-identical to the C
-`unoptar` on the synthetic test images.
+Letter and all five error-correction modes. The Python decoder's cross
+positions and sampled bits are bit-identical to the C `unoptar` on the
+synthetic test images. Both are checked against outputs of the C tools that
+were recorded once and are kept in `tests/vectors`; the tests no longer build
+or run the C tools.
 
 Each page of a self-identifying printout is still an ordinary optar page: a C
-`unoptar` built with the same grid size reads its dots exactly (this is tested
-for Large dots on A4 and Medium dots on Letter). What it returns is the data
+`unoptar` built with the same grid size reads its dots exactly (recorded for
+Large dots on A4 and Medium dots on Letter). What it returns is the data
 with the extra details and protection wrapped around the file, not the file.
 
 No automated test yet decodes a real print-and-scan.
@@ -388,10 +394,10 @@ No automated test yet decodes a real print-and-scan.
     .venv/bin/pytest -q
     .venv/bin/ruff check .
 
-`pytest -q` needs no C compiler. `.venv/bin/pytest -q -m "oracle or gs or slow"`
-also needs a C compiler, libpng headers and Ghostscript, and compares against
-the C tools. The `slow` marker includes the simulated-scan tests of the claims
-under "What has and has not been shown":
+No test needs a C compiler. `.venv/bin/pytest -q -m gs` checks the PDF output
+with Ghostscript, and `.venv/bin/pytest -q -m slow` runs the long tests (add
+`-n auto` to use every core). The `slow` marker includes the simulated-scan
+tests of the claims under "What has and has not been shown":
 `.venv/bin/pytest -q -m slow tests/unit/test_claims.py`.
 
 The application's tests need PySide6 and pytest-qt (`pip install -e '.[dev,gui-dev]'`)
@@ -402,12 +408,13 @@ Build the one-file executable and smoke-test it:
     .venv/bin/pyinstaller --onefile --name optar --collect-data optar packaging/entry.py
     python packaging/smoke.py dist/optar
 
-C reference implementation
---------------------------
+History: the original C program
+-------------------------------
 
-The original C programs live in the `lega-c` folder, and the rest of this
-document describes them. They are also the test oracle for the Python version.
-Run the commands below from inside `lega-c`. The C encoder is also called
+The original C programs live in the `lega-c` folder, unchanged, and the rest
+of this document describes them. They are history: the format is defined by
+[docs/format.md](docs/format.md), and nothing in this project builds or runs
+them any more. Run the commands below from inside `lega-c`. The C encoder is also called
 `optar`: `make` builds it there as `./optar`, so run it as `./optar` to avoid
 confusion with the Python command.
 
