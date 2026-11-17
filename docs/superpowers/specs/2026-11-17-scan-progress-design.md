@@ -73,3 +73,39 @@ honestly by the step's name next to the bar.
 
 The exact share of the bar given to each step, the wording of the steps, and
 how the delegate draws the bar within the existing look of the list.
+
+## Addendum: what a page read by the slower reader shows
+
+The owner, on the text "That reader does not count repairs within the page or
+mark them on the scan": "can we improve it? What if to show what's been
+recovered and also implement some counters (if possible, of course)", and,
+to the proposal below, "yes, go ahead once the progress bar is in".
+
+- **Dots corrected within the page.** The slower reader forms an impression
+  of every dot and then decides each symbol as a whole. A dot whose
+  impression lost that decision was corrected. The page shows their number
+  and marks them on the scan preview, as an ordinary page's corrections are.
+  On the owner's coarse scans this is about 8% of the dots (about 265,000 a
+  page), so the marks are dense.
+- **Bytes repaired by the document's protection.** Once the document is
+  verified, the page shows how many of its bytes were wrong and were repaired
+  (the repair already knows this per page).
+- "Beyond repair" stays unknown for such a page: the slower reader always
+  gives a best guess. Such pages stay counted apart from the good ones.
+
+```
+Page 3 · Read by the slower reader · 265,112 dots corrected
+         · 6,912 bytes repaired by the document's protection
+
+Detail:
+  Read by the slower reader for coarse scans.
+  Dots corrected within the page: 265,112 of 3,196,368 (8.3%).
+  After verification: 6,912 of this page's bytes were wrong and were
+  repaired by the document's protection.
+```
+
+The second figure appears only once the document is verified.
+
+Also settled here: while scans are being read, the bottom bar keeps the
+document's state when it has one (for example "File recovered and verified")
+and adds the count of scans read after it, instead of replacing it.

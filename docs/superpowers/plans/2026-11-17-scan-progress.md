@@ -47,3 +47,21 @@
 - [ ] **Step 2:** Implement library, work, document, text.
 - [ ] **Step 3:** GUI tests (marked gui): with a fake reader that reports steps, the rows show "Waiting", then each step's words; the model's fraction role follows; removing a waiting and a running scan; the delegate paints a being-read row without error and paints more filled pixels for a larger fraction (render the row to a QImage); an HTML file name is plain text; the bottom bar's count. Then implement the delegate and the wiring.
 - [ ] **Step 4:** README: the application's description says that each scan is listed with a bar while it is read. `ruff check .`; default suite; `QT_QPA_PLATFORM=offscreen pytest -q -m gui` pass. Commit "Shows the progress of each scan while it is read".
+
+### Task 2: Counters and marks for a page read by the slower reader
+
+**Files:**
+- Modify: `src/optar/decoder/soft.py`, `src/optar/identify.py`, `src/optar_gui/work.py`, `document.py`, `text.py`, `read_tab.py`, `preview.py` as needed, `README.md`
+- Test: `tests/unit/test_soft.py`, `test_work.py`, `test_document.py`, `test_gui_text.py`, `tests/gui/`
+
+**Interfaces:**
+- Consumes: Task 1; `Unwrapped.page_damage` and the existing "by the document's protection" wording (`text.BY_PROTECTION`, `health_label(page, restored)`).
+- Produces:
+  - `read_soft` fills `PageResult.corrected_bits`: the ascending int64 channel positions of the dots whose own sign, in the last fit, differs from the chosen codeword's bit (so `len(corrected_bits) == sum(i * n for i, n in enumerate(stats.error_histogram))`).
+  - `ScanIdentity.enlarged: float = 1.0`: the factor by which the slower reader enlarged the scan before locating the page (the identity's `grid` is in the enlarged scan's coordinates).
+  - `work.py`: a slow page's `PageOutcome` carries the number of corrected dots and marks in the coordinates of the scan as loaded (a point `u` of the enlarged scan is `(u + 0.5) / enlarged - 0.5` in the scan).
+  - `text.py`: the row and detail wording of the design's addendum.
+
+- [ ] **Step 1:** Tests first: `corrected_bits` count equals the histogram's sum and each listed dot's sign differs from its codeword bit; marks of a slow page fall inside the scan as loaded and, on a simulated coarse scan with a known damaged spot (a blot), cluster there; the row and detail words before and after verification, with the per-page repaired bytes taken from the repair; the summary still counts slow pages apart; the bottom bar keeps a document's verdict and adds the count while scans are being read.
+- [ ] **Step 2:** Implement. The preview must stay responsive with about 300,000 marks on a page (measure; draw them in one pass or as a prepared overlay if single items are slow).
+- [ ] **Step 3:** README: what a page read by the slower reader shows. `ruff check .`; default suite; GUI suite pass. Save two screenshots of the application (offscreen render to PNG) to the scratch folder named in the dispatch: one with scans "Being read", one with a document of slow-read pages after verification. Commit "Shows what the slower reader corrected and what the protection repaired".
