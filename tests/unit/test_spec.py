@@ -463,3 +463,11 @@ def test_sections_name_their_vectors():
         assert set(files) <= known, f"unknown vector file in {line!r}"
         named.update(files)
     assert named == known, f"vector files no section names: {sorted(known - named)}"
+
+
+def test_spec_names_only_vector_files_that_exist():
+    vectors = Path(__file__).resolve().parents[1] / "vectors"
+    paths = set(re.findall(r"\b((?:c|py)/[a-z_]+\.json)", _text()))
+    assert paths
+    missing = sorted(p for p in paths if not (vectors / p).is_file())
+    assert not missing, f"vector files that do not exist: {missing}"

@@ -37,7 +37,7 @@ with the code by `tests/unit/test_spec.py`.
 - Counts and indices start at 0, except page numbers and the faces of the
   dodecahedron in section 2.5, which start at 1.
 - A **bit string** is read most significant bit first: bit `n` of a byte
-  string is bit `7 - n mod 8` of byte `n // 8`, where bit 7 of a byte is its
+  string is bit `7 - (n mod 8)` of byte `n // 8`, where bit 7 of a byte is its
   most significant bit. A word of `w` bits taken from a bit string has the
   first bit of the string as its most significant bit.
 - Multi-byte integers in the header (section 4.2) are big-endian: most
@@ -51,8 +51,8 @@ with the code by `tests/unit/test_spec.py`.
 - A **page** is a rectangular image of **page pixels**. Each page pixel is
   either black or white.
 - A black data pixel is the bit 1; a white data pixel is the bit 0.
-- In image files a black pixel has the value 0 and a white pixel the value
-  255 (8-bit grey) or 0 and 1 (1-bit).
+- In 8-bit grey image files a black pixel has the value 0 and a white pixel
+  the value 255. This specification uses no other image encoding.
 - Page coordinates are `(x, y)`: `x` counts columns from the left edge, `y`
   counts rows from the top edge, both from 0. The page is printed and read
   upright, with the label band (section 2.8) at the bottom.
@@ -712,8 +712,8 @@ The **data region** is `D(T)` bytes:
 
 A name longer than `NAME_MAX_BYTES` bytes in UTF-8 is cut to the longest
 whole number of characters that fits. The name is not covered by the
-fingerprint. A character of the name that UTF-8 cannot encode is stored as
-`?`.
+fingerprint. A character of the name that UTF-8 cannot encode (a lone surrogate code
+point, U+D800 to U+DFFF) is stored as `?`.
 
 Codeword `j`, `0 <= j < m`, has the bytes `j * k` to `j * k + k - 1` of the
 data region as its data bytes. With parity 0 a codeword is its 255 data
@@ -816,8 +816,9 @@ When it is not, each page has `net_bits mod 8` unused bits after its payload
 and the payloads of some pages do not start at a byte of the stream.
 
 The stream is printed as section 2.7 says, which gives exactly `T` pages. The
-label of a page is an ordinary label line whose free text is for people; it
-carries no tag. (A valid tag would make a reader take the page for a page of
+label of a page is an ordinary label line whose free text is for people: it is
+the name of the file (the label the user gave, or the file's name), the same on
+every page, and it carries no tag. (A valid tag would make a reader take the page for a page of
 a tagged document, section 6.1.)
 
 With the Golay code `net_bits mod 8` is 0 or 4 and the last payload always
@@ -938,7 +939,8 @@ PDF; `tests/unit/test_pdf.py` does.
 
 Page images are also written as PNG or PGM files with one image pixel per
 page pixel; the vectors identify a page by the SHA-256 of its binary PGM
-(`P5`) file.
+(`P5`) file, whose exact bytes `tests/vectors/README.md` gives: the header
+`P5\n<width> <height>\n255\n` in ASCII, then the pixel bytes row by row.
 
 ### 5.4 The label strip
 
