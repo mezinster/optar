@@ -402,6 +402,17 @@ def record_decoder(builds: Builds, tmp: Path) -> None:
         case["scan_files"] = _stored(name, scan)
         scans = [OUT / f for f in case["scan_files"]]
         out.append(_decode_case(builds, nfmt, case, scans, tmp / f"{name}-dec", pages_expected=1))
+    # Two things no case above has, in one small stored PNG (flipped dots on a clean
+    # scan compress well): Golay symbols beyond repair, which the noise-60 scan leaves
+    # none of in fec_order 1, and a 1200 dpi scan (scale 6), where min/max runs 3 passes
+    # and blur 2 cycles while every scale-3 scan runs 1 of each.
+    name = "flips1000-scale6"
+    scan = fake_scan(small_page.pixels, scale=6, flips=1000, seed=1, fmt=fmt)
+    case = {"format": fmt.to_string(), "group": "small", "name": name, "seed": 11,
+            "size": net, "starts_with_input": False}  # fmt: skip
+    case["scan_files"] = _stored(name, scan)
+    scans = [OUT / f for f in case["scan_files"]]
+    out.append(_decode_case(builds, fmt, case, scans, tmp / f"{name}-dec", pages_expected=1))
     write(
         "decoder",
         "The decoder writes exactly the bytes C unoptar writes for the same scans.",

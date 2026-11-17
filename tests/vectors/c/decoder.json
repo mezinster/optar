@@ -310,6 +310,19 @@
    "seed": 23,
    "size": 2333,
    "starts_with_input": false
+  },
+  {
+   "c_output_sha256": "1292eaca55db60db623260c99af16ecbb1ee16211917188685cd0aec34e112d6",
+   "c_output_size": 1437,
+   "format": "0-6-9-24-3-1-2-24",
+   "group": "small",
+   "name": "flips1000-scale6",
+   "scan_files": [
+    "scans/flips1000-scale6.png"
+   ],
+   "seed": 11,
+   "size": 1437,
+   "starts_with_input": false
   }
  ],
  "pins": "The decoder writes exactly the bytes C unoptar writes for the same scans.",

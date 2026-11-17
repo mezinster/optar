@@ -60,9 +60,10 @@ tried first: there the "flips" case (200 flipped pixels on a page of about 20,00
 bits) leaves an uncorrectable symbol in C and in Python alike, so its output is not the
 input. On 6 x 9 C's output begins with the input for every case except the noise-60 ones.
 
-Left out to keep this directory under 2,000,000 bytes: the scale-6 scan of the old slow
-test, and the DEGRADED cases "noisy" and "rotated", whose noise and rotation are in
-"combined" (and, for rotation, in the degraded scan of `c/decoder_internals.json`).
+Left out to keep this directory under 2,000,000 bytes: the noisy, rotated, blurred scale-6
+scan of the old slow test (its place is taken by `flips1000-scale6`, see `c/decoder.json`),
+and the DEGRADED cases "noisy" and "rotated", whose noise and rotation are in "combined"
+(and, for rotation, in the degraded scan of `c/decoder_internals.json`).
 
 ## c/container_pages.json
 
@@ -102,6 +103,10 @@ count of uncorrectable symbols is not recorded: C does not print it.
   `DEGRADED` cases of `tests/helpers.py` with `seed=1` (clean1 and clean3 by recipe, the
   others stored); and `noise60-fec1`, `-fec2`, `-fec5`: `seeded_bytes(23, net bytes)` in the
   small format with that `fec_order`, `fake_scan(page, scale=3, noise=60, seed=2)`, stored.
+  `flips1000-scale6`: the DEGRADED page as `fake_scan(page, scale=6, flips=1000, seed=1,
+  fmt=fmt)`, stored. It is the one case with Golay symbols beyond repair (13; the
+  noise-60 fec 1 scan has none) and the one scan finer than scale 3 (min/max 3 passes,
+  blur 2 cycles). Added by the break list below.
 
 ## c/decoder_internals.json
 
@@ -172,3 +177,64 @@ generator element 2, roots alpha^0 .. alpha^(parity-1) (first consecutive root 0
 codeword written with its highest-degree coefficient first. With `fcr=1` only 2 of the 10 agree
 (the two all-zero messages, whose parity is zero in any convention), so the agreement depends on
 `fcr=0`. Only the encoder was compared; the repair outcomes are pinned by this code alone.
+
+## What was checked before the C comparison was removed
+
+Before the live comparisons with the C tools (`tests/oracle/`) were deleted, each of their
+test functions was given breaks of the Python code it would catch. Each break was applied
+under `src/`, the vector tests run (`pytest tests/vectors`, then `-m slow` for a break the
+default set missed), and the break reverted. "Set" says where the first failure was: the
+default suite or the slow full-size decode cases. "Oracle" marks breaks also run against
+the live comparison: yes (it failed), no (it passed), blank (not run).
+
+| Comparison | Break | Vector tests that failed | Set | Oracle |
+|---|---|---|---|---|
+| encoder_matches_c | encoder.py: symbol bits LSB first | encoder_pages, container_pages, decodes_like_c_*, sampled_bits_like_c, c_reads_container_pages | default | |
+| encoder_matches_c | fec.py: one Golay generator row (face 6 -> 7) | golay_table, encoder_pages, container_pages, decodes_like_c_*, sampled_bits_like_c | default | |
+| encoder_matches_c | fec.py: Hamming encoder mask 0xF0F0F0F0 drops bit 5 | encoder_pages (fec 3 to 5) | default | |
+| encoder_matches_c | layout.py: bits mirrored within each narrow-strip gap | bit_placement, encoder_pages, container_pages, decodes_like_c_*, sampled_bits_like_c | default | |
+| encoder_matches_c | font.py: label moved one column right | label_band, encoder_pages, container_pages, decodes_like_c_full_size, c_reads_container_pages | default | |
+| encoder_matches_c | font.py: one leading space dropped from the label line | label_band, encoder_pages, container_pages, decodes_like_c_full_size | default | |
+| encoder_matches_c | encoder.py: black cross quadrants drawn as 1, not 0 | encoder_pages, container_pages, decodes_like_c_full_size | default | |
+| encoder_matches_c | encoder.py: last partial word padded with ones | encoder_pages | default | |
+| c_decodes_python_pages | encoder.py and sample.py: data dots inverted on both sides (Python round trip works) | encoder_pages, container_pages, decodes_like_c_*, sampled_bits_like_c | default | yes |
+| python_decodes_c_pages | decoder/\_\_init\_\_.py: payload bits of a word LSB first | decodes_like_c_*, c_reads_container_pages | default | yes |
+| python_decodes_c_pages | fec.py: Hamming order 5 decoder removes bit 15, not 16 | decodes_like_c_stored_scans (noise60-fec5) | default | |
+| python_decodes_c_pages | decoder/\_\_init\_\_.py: bits carried from page to page dropped | decodes_like_c_full_size (fec 2, 4, 5) | slow | |
+| degraded_decodes_like_c | options.py: sync_white_cut 0.10 -> 0.11 | crosses_like_c | default | |
+| degraded_decodes_like_c | sample.py: cell remainder +0.5 -> +0.45 (x) | decodes_like_c_stored_scans | default | yes |
+| degraded_decodes_like_c | filters.py: one min/max pass fewer | decodes_like_c_stored_scans | default | |
+| degraded_decodes_like_c | sample.py: unsharp neighbour distance x 1.1 | decodes_like_c_stored_scans | default | no |
+| degraded_decodes_like_c | options.py: unsharp_mask 7.0 -> 7.5 | decodes_like_c_stored_scans | default | |
+| degraded_decodes_like_c | sample.py: dark below cut + 2 | decodes_like_c_stored_scans | default | no |
+| uncorrectable_symbols | fec.py: Golay decoder writes 0 for a symbol beyond repair | decodes_like_c_stored_scans (flips1000-scale6, added) | default | yes |
+| uncorrectable_symbols | fec.py: Hamming flip skipped when parity is even | decodes_like_c_stored_scans (noise60) | default | yes |
+| 1200_dpi_scan | filters.py: no min passes when there are 2 or more | decodes_like_c_stored_scans (flips1000-scale6, added) | default | yes |
+| 1200_dpi_scan | filters.py: at most 2 min passes | none | | no |
+| 1200_dpi_scan | filters.py: at most 1 blur cycle | none | | no |
+| 1200_dpi_scan | filters.py: blur without +8 rounding from 2 cycles | none | | no |
+| crosses_match_c | crosses.py: cross cut level rounds, not truncates | crosses_like_c | default | yes |
+| crosses_match_c | options.py: white_cut 0.06 -> 0.07 | crosses_like_c, decodes_like_c_stored_scans | default | |
+| crosses_match_c | levels.py: cut level not rounded | crosses_like_c | default | |
+| crosses_match_c | crosses.py: float64 interpolation weights | crosses_like_c | default | |
+| crosses_match_c | crosses.py: a tie in the search goes to the later offset | none | | no |
+| crosses_match_c | geometry.py: C quirk fixed (corner 2 in hpixel) | none | | no |
+| sampled_bits_match_c | sample.py: cell remainder +0.5 -> +0.45 (x) | decodes_like_c_stored_scans | default | yes |
+| container_pages_match_c | layout.py: gap mirroring on grids under 40 crosses only | bit_placement, container_pages, decodes_like_c_stored_scans, sampled_bits_like_c | default | yes |
+| container_pages_match_c | format.py: SPREAD_STEP 7919 -> 7907 | container_pages, c_reads_container_pages, container_streams, spread_positions | default | |
+| container_pages_match_c | container.py: header page and total swapped | container_pages, c_reads_container_pages, container_streams, header_bytes | default | |
+| c_unoptar_reads_container_pages | layout.py: gap mirroring on grids under 40 crosses only | as above | default | yes |
+| c_unoptar_reads_container_pages | encoder.py and sample.py: data dots inverted on both sides | as above | default | yes |
+| encoder_matches_c | font.py: label cut one character shorter | none | | no |
+
+Comparison names drop `test_` (in `tests/oracle/test_*_oracle.py`); vector test names drop
+`test_` (in `test_vectors_c.py`, `test_vectors_py.py`). The SPREAD_STEP and header breaks
+change the stream given to both tools, so the live comparison could not see them.
+
+Gaps found and closed: a Golay symbol beyond repair (no stored scan had one in `fec_order`
+1) and min/max or blur running more than once (every scan was scale 3 or less). The case
+`flips1000-scale6` of `c/decoder.json` was recorded for both.
+
+Not caught by either the vectors or the live comparison: the six rows with "none". The filter changes alter pixels but on these scans no decoded byte; the tie
+rule and the hpixel quirk change nothing on these scans; the label is cut by the page
+width before the shorter cut is reached.
