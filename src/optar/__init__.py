@@ -52,7 +52,13 @@ from optar.format import (  # noqa: E402
     get_paper,
     layout_for_format,
 )
-from optar.identify import ScanIdentity, decode_unlabelled, identify_scan, scan_dpi  # noqa: E402
+from optar.identify import (  # noqa: E402
+    ScanIdentity,
+    decode_unlabelled,
+    identify_any,
+    identify_scan,
+    scan_dpi,
+)
 from optar.imageio import read_scan, write_pgm, write_png  # noqa: E402
 from optar.label import (  # noqa: E402
     LabelInfo,
@@ -110,6 +116,7 @@ __all__ = [
     "printed_label",
     "label_capacity",
     "identify_scan",
+    "identify_any",
     "decode_unlabelled",
     "ScanIdentity",
     "scan_dpi",

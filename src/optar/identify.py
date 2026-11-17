@@ -13,6 +13,7 @@ copies in its data, which only a decode can read.
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import numpy as np
@@ -40,6 +41,7 @@ __all__ = [
     "ScanIdentity",
     "candidate_rotations",
     "decode_unlabelled",
+    "identify_any",
     "identify_scan",
     "scan_dpi",
 ]
@@ -94,6 +96,8 @@ class ScanIdentity:
     payload: PagePayload | None = None  # set with header: the page is already decoded
     result: PageResult | None = None  # set with header (decoded with detail=True)
     scan_dpi: float | None = None  # estimated resolution of the scan
+    # "ordinary", or "slow" for a page read by decoder.soft (identify_coarse).
+    reader: str = "ordinary"
 
 
 def scan_dpi(grid: PageGrid, layout: Layout) -> float:
@@ -369,6 +373,39 @@ def identify_scan(image: np.ndarray, options: DecodeOptions | None = None) -> Sc
                     return done(ident)
         grids.clear()
     raise IdentifyError(LABEL_UNREADABLE, scan_dpi=_outline_dpi(outline))
+
+
+def identify_any(
+    image: np.ndarray,
+    options: DecodeOptions | None = None,
+    *,
+    slow: bool = True,
+    cancelled: Callable[[], bool] | None = None,
+    on_slow: Callable[[], None] | None = None,
+) -> ScanIdentity:
+    """identify_scan, then, if that fails, the slow reader (decoder.soft).
+
+    The slow reader is tried only when slow is true and identify_scan found
+    a page outline (its IdentifyError carries a scan_dpi); on_slow() is
+    called first. If the slow reader fails too, identify_scan's error is
+    raised with slow_tried set. decoder.soft.Stopped propagates when
+    cancelled() returns True during the slow reader.
+    """
+    try:
+        return identify_scan(image, options)
+    except IdentifyError as first:
+        if not slow or first.scan_dpi is None:
+            raise
+        error = first
+    from optar.decoder.soft import identify_coarse  # imports this module
+
+    if on_slow is not None:
+        on_slow()
+    try:
+        return identify_coarse(image, options, cancelled)
+    except IdentifyError:
+        error.slow_tried = True
+        raise error from None
 
 
 def _corrected_bits(result: PageResult) -> int:

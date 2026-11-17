@@ -30,9 +30,15 @@ class IdentifyError(DecodeError):
 
     `scan_dpi` is the scan's resolution estimated from the page outline, or
     None when no outline was found.
+
+    `slow_tried` is True when identify.identify_any also tried the slow
+    reader (decoder.soft) and it failed too.
     """
 
-    def __init__(self, reason: str, scan_dpi: float | None = None) -> None:
+    def __init__(
+        self, reason: str, scan_dpi: float | None = None, slow_tried: bool = False
+    ) -> None:
         super().__init__(reason)
         self.reason = reason
         self.scan_dpi = scan_dpi
+        self.slow_tried = slow_tried
