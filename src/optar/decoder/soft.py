@@ -80,7 +80,7 @@ REGIONS = (16, 22)
 # Fits, the first from the ordinary reader's known symbols. On the owner's six
 # scans the document needed (repaired bytes, worst block of 64) 53039/54
 # after one fit, 42455/40 after two, 41705/40 after three and 41495/40 after
-# five. A fit costs about 2.4 s of an A4 Standard page, so the five of the
+# five. A fit costs about 1.7 s of an A4 Standard page, so the five of the
 # experiment are kept.
 ROUNDS = 5
 # Share of symbols, the most confident, that the next fit learns from.

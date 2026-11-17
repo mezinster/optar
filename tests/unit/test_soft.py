@@ -132,7 +132,7 @@ def check_slow_identity(ident, turns, dpi, page=2):
     assert ident.scan_dpi == pytest.approx(dpi, rel=0.05)
 
 
-@pytest.mark.parametrize("turns", [0, 1])
+@pytest.mark.parametrize("turns", [0, 1, 2, 3])
 def test_identify_coarse_finds_a_version_1_page(only_layout, turns):
     img = scan(**COARSER, turns=turns)
     with pytest.raises(IdentifyError):
@@ -189,7 +189,9 @@ def test_identify_any_keeps_the_ordinary_result():
     ident = object()
     with mock.patch.object(optar.identify, "identify_scan", lambda image, options=None: ident), \
             mock.patch.object(soft, "identify_coarse", mock.Mock(side_effect=AssertionError)):
-        assert identify_any(np.zeros((4, 4), np.uint8), on_slow=mock.Mock()) is ident
+        on_slow = mock.Mock()
+        assert identify_any(np.zeros((4, 4), np.uint8), on_slow=on_slow) is ident
+        on_slow.assert_not_called()
 
 
 def test_identify_any_falls_back(only_layout):
