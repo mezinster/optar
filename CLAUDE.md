@@ -22,6 +22,7 @@ Rules:
 - The vectors under `tests/vectors/c` were recorded from the C tools once and cannot be recorded again without reviving the C build. Never edit them to make a test pass. `tests/vectors` stays under 2,000,000 bytes (a test checks it).
 - Library modules never print, call `sys.exit` or read `sys.argv`; only `cli.py` does.
 - Decoder results are pinned by the vectors. Change them only with real scans as the reason, and then deliberately, updating the vectors in the same pull request.
+- The second, slower reader for coarse scans lives in `decoder/soft.py` (its tuning numbers are named constants there, not in `format.py`). It is tried only after the ordinary reader has failed (`identify.identify_any`) and must not change the ordinary reader's results or the vectors that pin them.
 - `decoder.dirt.remove_border_dirt` is the exact step of the original C decoder; the readers call `isolate_page`, which differs only for a scan whose page frame has a gap (a printer clipped an edge). That came from the owner's real scans.
 - Tests write only under pytest's `tmp_path`.
 - Runtime dependencies are numpy and Pillow only. No JPEG output.

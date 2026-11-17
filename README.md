@@ -144,7 +144,9 @@ Each page in the list has one of these states:
   optar page in the image, or the label could not be read). A scan made below
   400 dpi that cannot be read says so instead, for example "Scanned at about
   200 dpi, which is too coarse to read", with the resolution each dot size
-  needs. Rescan it, or assign it to a page by hand.
+  needs. Before a scan is shown as not readable, the slower reader has been
+  tried on it when a page outline was found (see "Scans that are too coarse:
+  the slower reader"). Rescan it, or assign it to a page by hand.
 - Missing: no scan of this page has been added. Add one. In a protected
   document the other pages may still be enough to recover the file, and the bar
   then says so.
@@ -193,6 +195,35 @@ them. The application accepts PNG, TIFF, BMP, PGM/PPM and JPEG. JPEG is
 accepted but is lossy and a poor choice: use PNG or TIFF, and do not save the
 pages as one PDF. `optar decode` reads only files named `BASE_0001.png`,
 `BASE_0002.png`, ...
+
+### Scans that are too coarse: the slower reader
+
+When the ordinary reader cannot identify a scan, but finds the outline of a
+page in it, the program tries a second, slower reader on the same scan. This
+is meant for a scan made at too low a resolution for its dot size, for
+example a Standard-dot page scanned at 300 dpi instead of 600. The slower
+reader enlarges the scan and learns, from the dots the ordinary reader is
+sure of, how neighbouring dots blur into each other in each part of the page.
+It then reads every dot with that knowledge and chooses each symbol as a
+whole.
+
+- In the application it runs by itself. The scan's row says while the slower
+  reader is at work, and afterwards that the page was read by it.
+- `optar decode` also runs it by itself and says so on stderr for each scan
+  it is tried on. `--no-slow-reader` turns it off.
+- It takes about 20 seconds for an A4 page on the development machine, after
+  the ordinary reader has spent about 20 seconds failing. An image that is not
+  an optar page at all, but in which a page outline is found, costs about 20
+  to 35 seconds more than it did without the slower reader.
+- It identifies a page only by the header in its data. Old 0.2-style pages
+  (identified by the tag in their label) are not covered. The rule that a
+  valid label tag wins over a header does not come into play, because the
+  slower reader runs only when the ordinary reader could not read the label.
+- It does not make a wrong file look right: as always, only the fingerprint
+  makes a file verified.
+
+Scan at the advised resolution when you can. The slower reader recovers some
+coarse scans, not all of them (see "What has and has not been shown").
 
 ### Dot size and protection
 
@@ -259,6 +290,31 @@ printer and one sheet-fed scanner.
 - Big, Large and Extra large dots verified at 200 dpi with no errors.
 - A document of 12 pages verified with one page withheld.
 
+The slower reader (see "Scans that are too coarse: the slower reader") has
+been shown on one real document and one simulated one:
+
+- Real: the owner's document of six A4 pages, Standard dots, High
+  protection, scanned at about 290 dpi where 600 dpi is advised. The ordinary
+  reader identified none of the pages. With the slower reader the file was
+  recovered and verified by its fingerprint: 759,879 bytes, of which 41,495
+  bytes were repaired by the document's protection, the worst block using 40
+  of its budget of 64. This is one document, one printer, one scanner and one
+  resolution. The scans were read where they are and are not part of this
+  repository.
+- Simulated (`tests/unit/test_coarse_claim.py`): a two-page document of the
+  same kind, scanned at 290 dpi with blur 1.8 printer dots. The ordinary
+  reader identifies neither page; with the slower reader the file verifies.
+  At the simulator's default blur (1.0) the ordinary reader reads such a page
+  at 300 dpi on its own, and at 300 dpi with blur 1.8 it accepts each page
+  from its label without a header, so the slower reader is not tried and the
+  file is not recovered. The simulator is milder than the owner's scanner:
+  in the simulation the slower reader repaired nothing, where the real
+  document needed 41,495 bytes repaired.
+
+Standard protection has a budget of 32, below the 40 the real document's
+worst block needed, so a Standard-protection document scanned like this is
+expected to fail. Old 0.2-style pages are not covered by the slower reader.
+
 What is not shown:
 
 - No real scan of a larger-dot page has been read yet.
@@ -301,6 +357,7 @@ Or install from source (Python 3.12 or newer; installs numpy and Pillow):
                  [--dots standard|medium|big|large|xlarge] [--protect none|standard|high]
                  [--compatible] [--format STRING]
     optar decode BASE [-o OUTPUT] [--paper a4|letter] [--format STRING] [--debug-images] [--force]
+                 [--no-slow-reader]
     optar --version
 
 `encode` writes `BASE.pdf` by default (`BASE` defaults to `optar_out`), or
@@ -313,7 +370,10 @@ always zero-padded to a whole page. The desktop application does both.
 
 For self-identifying pages (see "Dot size and protection") `decode` finds out
 from the scans themselves what they are. It takes the scans in any order and
-any orientation, and a scan it cannot read counts as a missing page. (It
+any orientation, and a scan it cannot read counts as a missing page. A scan
+the ordinary reader cannot identify is first given to the slower reader (see
+"Scans that are too coarse: the slower reader"), unless you give
+`--no-slow-reader`. (It
 decides from the first three scans: if none of them can be identified, it
 treats the set as a printout from 0.2.0 or earlier.) It
 repairs the data, cuts it to its true size and checks the fingerprint. It
