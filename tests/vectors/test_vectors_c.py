@@ -1,6 +1,6 @@
 """Check the Python code against results recorded from the C tools (no compiler needed).
 
-The vectors were recorded by lega-c/record_vectors/record.py; tests/vectors/README.md
+The vectors were recorded once from the C tools; tests/vectors/README.md says how and
 defines every digest.
 """
 

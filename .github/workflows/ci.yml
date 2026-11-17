@@ -44,35 +44,35 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e '.[dev]'
-      # C comparisons and Ghostscript checks run in the oracle job on Linux,
-      # slow tests in the slow jobs, the desktop application's tests in the gui job.
-      - run: pytest -q -m "not oracle and not gs and not slow and not gui"
+      # Ghostscript checks run in the ghostscript job on Linux, slow tests in
+      # the slow jobs, the desktop application's tests in the gui job.
+      - run: pytest -q -m "not gs and not slow and not gui"
 
-  # The comparisons with the C tools and the Ghostscript checks.
-  oracle:
+  # The Ghostscript checks of the PDF output.
+  ghostscript:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: "3.15"
-      - run: sudo apt-get update && sudo apt-get install -y libpng-dev ghostscript
+      - run: sudo apt-get update && sudo apt-get install -y ghostscript
       - run: pip install -e '.[dev]'
-      - name: Run oracle and Ghostscript tests
+      - name: Run Ghostscript tests
         run: |
           set -o pipefail
           # tests/gui needs PySide6, which this job does not install. Ignoring
           # the folder keeps its collection skips out of the log checked below.
-          pytest -q -rs -m "(oracle or gs) and not gui" --ignore=tests/gui | tee pytest.log
+          pytest -q -rs -m gs --ignore=tests/gui | tee pytest.log
       - name: Fail on skipped tests other than tests/scans
         run: |
           if grep '^SKIPPED' pytest.log | grep -v 'tests/scans'; then
-            echo "These oracle/gs tests were skipped (only tests/scans may skip)." >&2
+            echo "These gs tests were skipped (only tests/scans may skip)." >&2
             exit 1
           fi
 
-  # The slow tests need no C compiler. They run as four jobs side by side; the
-  # three big files also use every core of their machine.
+  # The slow tests run as four jobs side by side; the three big files also use
+  # every core of their machine.
   slow:
     runs-on: ubuntu-latest
     strategy:
@@ -101,7 +101,7 @@ jobs:
       - name: Run slow tests
         run: |
           set -o pipefail
-          pytest -q -rs -m "slow and not oracle and not gs and not gui" --ignore=tests/gui \
+          pytest -q -rs -m "slow and not gs and not gui" --ignore=tests/gui \
             ${{ matrix.args }} | tee pytest.log
       - name: Fail on skipped tests other than tests/scans
         run: |

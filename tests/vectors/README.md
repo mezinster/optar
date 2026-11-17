@@ -38,14 +38,14 @@ comment), then the width times height pixel bytes, one byte per pixel (0 black, 
 row by row from the top row, left to right (`optar.imageio.pgm_bytes`). Wherever this file
 says "PGM bytes" it means exactly this.
 The first eight cases are the old golden fixtures; the others are the inputs of the old
-`tests/oracle/test_encoder_oracle.py` (a4, letter, a4 with `fec_order` 2 to 5; sizes 0, 1,
+`tests/oracle/test_encoder_oracle.py`, since removed (a4, letter, a4 with `fec_order` 2 to 5; sizes 0, 1,
 777 and two pages plus 5 bytes, seed = position in that list).
 
 ## How the C vectors were recorded
 
 `lega-c/record_vectors/record.py` ran the C tools of commit `c_commit` once (built with
-`tests/cbuild.py`, the optar.h grid and `FEC_ORDER` overridden for each format) and wrote
-every `c/*.json` file and `c/scans/`. A rerun writes the same files. Each C decoder input
+`lega-c/record_vectors/cbuild.py`, at the time `tests/cbuild.py`, with the optar.h grid and
+`FEC_ORDER` overridden for each format) and wrote every `c/*.json` file and `c/scans/`. A rerun writes the same files. Each C decoder input
 is a PNG written with `tests.helpers.save_scan`; the stored scans are the very files C read.
 
 "Scan" below means a `tests.helpers.fake_scan` of a page, saved with `save_scan` and

@@ -204,7 +204,7 @@ def reference_remove_border_dirt(img, fill_cut):
     return np.asarray(img, np.uint8) | np.array(newary, np.uint8)
 
 
-# Degraded scan cases shared by the unit and oracle decoder tests: fake_scan
+# Degraded scan cases shared by the unit decoder tests and the C vectors: fake_scan
 # keyword arguments (cases with flips need fmt= as well). They are defined for
 # scans as decoders see them: saved with save_scan and loaded through
 # optar.imageio.read_scan (gamma linearisation, like C read_png). Every case

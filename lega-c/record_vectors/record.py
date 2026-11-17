@@ -25,6 +25,9 @@ from PIL import Image
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import cbuild  # noqa: E402  (the sibling cbuild.py)
 
 from optar import PageFormat, encode  # noqa: E402
 from optar.container import wrap  # noqa: E402
@@ -32,7 +35,6 @@ from optar.fec import serialize_table  # noqa: E402
 from optar.format import LAYOUTS, get_layout  # noqa: E402
 from optar.imageio import pgm_bytes  # noqa: E402
 from optar.layout import channel_xy  # noqa: E402
-from tests import cbuild  # noqa: E402
 from tests.helpers import DEGRADED, fake_scan, save_scan, seeded_bytes  # noqa: E402
 from tests.vectors.load import array_digest, digest  # noqa: E402
 

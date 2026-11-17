@@ -33,7 +33,6 @@ pythonpath = ["."]
 testpaths = ["tests"]
 addopts = "-m 'not slow'"
 markers = [
-    "oracle: needs a C compiler (builds the original C tools)",
     "gs: needs Ghostscript",
     "slow: long-running test, deselected by default",
     "gui: the desktop application (needs PySide6 and pytest-qt)",
