@@ -8,9 +8,9 @@ states), of the ordered user operations (``switch_to``, ``start_by_hand``,
 ``assign_page``, ``use_scan``, ``remove_scan``) and of which background results
 were known when each user operation was made. It does not depend on the order in
 which background results (``set_working``, ``set_identified``, ``set_outcome``,
-``set_unreadable``, ``set_decoding``, ``set_payload``) arrive between user operations
-(nor on when the state is read): everything shown is
-recomputed from that information after every change, and a user's choice is
+``set_unreadable``, ``set_decoding``, ``set_payload``, ``set_reading_coarse``)
+arrive between user operations (nor on when the state is read): everything shown
+is recomputed from that information after every change, and a user's choice is
 never lost or changed by a passing intermediate state.
 
 Scans. ``add_scan`` refuses a path whose ``os.path.realpath``, after
@@ -185,7 +185,17 @@ kinds of row. ``actions(kind, key)`` says which actions apply to a row, as an
 - another group (key: its key) can be switched to; one with a single scan can
   also have that scan assigned to a page of the document;
 - an unreadable scan (key: its scan) can be removed, and assigned to a page when
-  there is a document.
+  there is a document;
+- a scan the slower reader for coarse scans is reading (key: its scan) can be
+  removed.
+
+Coarse scans. ``set_reading_coarse`` records that the slower reader has started
+on a scan the ordinary reader could not identify; ``reading_coarse()`` lists such
+scans (not identified, not unreadable, not put into a page by hand) until their
+work ends (``set_working(False)``), they are identified or found unreadable. A
+page read by that reader (``PageOutcome.slow``) counts no repairs; its view says
+so (``PageView.slow``), and within a version-1 page a scan read by the ordinary
+reader is preferred to it, whatever their erased bytes.
 
 ``can_start_by_hand`` is true when there is no document but there are unreadable
 scans to put into one. ``replacement_fit(scan_id, page)`` says whether a scan
@@ -346,12 +356,15 @@ class ScanInfo:
 class PageOutcome:
     """The result of decoding one page.
 
-    ``histogram`` counts the symbols with 0, 1, 2 and 3 corrected bits.
+    ``histogram`` counts the symbols with 0, 1, 2 and 3 corrected bits. A page
+    read by the slower reader for coarse scans (``slow``) counts none: that
+    reader measures no repairs, so its histogram is all zeros.
     """
 
     data: bytes
     histogram: tuple[int, int, int, int]
     lost: int
+    slow: bool = False
 
     @property
     def repaired(self) -> int:
@@ -421,6 +434,7 @@ class PageView:
     lost: int
     histogram: tuple[int, int, int, int] | None
     reason: str = ""  # why an unreadable page is unreadable
+    slow: bool = False  # its scan in use was read by the slower reader for coarse scans
 
 
 class DocState:
@@ -443,6 +457,7 @@ class Row:
     SPARE = "spare"  # key: scan id
     OTHER = "other"  # key: group key
     UNREADABLE = "unreadable"  # key: scan id
+    READING_COARSE = "reading coarse"  # key: scan id
 
 
 @dataclass(frozen=True)
@@ -608,6 +623,7 @@ class _Scan:
     path: str  # as given
     real: str  # ``_file_key`` of the path, for spotting the same file added twice
     working: bool = False
+    coarse: bool = False  # the slower reader is reading it (until its work ends)
     info: ScanInfo | None = None
     outcome: PageOutcome | None = None
     outcome_serial: int = 0  # changes with every outcome, for the verdict cache
@@ -764,7 +780,17 @@ class Document:
         Only a scan assigned by hand that is unreadable needs the end: its work is
         decoding it without a label, and until that reports it shows as working.
         """
-        self._get(scan_id).working = working
+        s = self._get(scan_id)
+        s.working = working
+        if not working:
+            s.coarse = False
+        self._changed()
+
+    def set_reading_coarse(self, scan_id: int, reading: bool = True) -> None:
+        """Records that the slower reader for coarse scans has started reading the
+        scan (or, ``reading=False``, that it no longer does). ``set_working(False)``
+        ends it too, as does identifying the scan or finding it unreadable."""
+        self._get(scan_id).coarse = reading
         self._changed()
 
     def set_identified(self, scan_id: int, info: ScanInfo) -> None:
@@ -781,7 +807,9 @@ class Document:
         header = _v1_header(info)
         if header is not None:
             info = replace(info, page=header.page, total=header.total)
-        self._get(scan_id).info = info
+        s = self._get(scan_id)
+        s.info = info
+        s.coarse = False
         self._changed()
 
     def set_payload(self, scan_id: int, payload: PagePayload) -> None:
@@ -821,6 +849,7 @@ class Document:
         s = self._get(scan_id)
         if format is None:
             s.unreadable_reason = reason
+            s.coarse = False
         else:
             s.failed[format] = reason
             s.decoded.pop(format, None)
@@ -1269,6 +1298,8 @@ class Document:
         if lay.current is None:
             if kind == Row.UNREADABLE and self._listed_unreadable(key):
                 return Actions(remove=key)
+            if kind == Row.READING_COARSE and self._listed_coarse(key):
+                return Actions(remove=key)
             return NO_ACTIONS
         if kind == Row.PAGE:
             slots = self.slots()
@@ -1291,7 +1322,21 @@ class Document:
         if kind == Row.UNREADABLE and self._listed_unreadable(key):
             by_hand = lay.current.v1 is None and _v1_header(self._scans[key].info) is None
             return Actions(remove=key, assign=key if by_hand else None)
+        if kind == Row.READING_COARSE and self._listed_coarse(key):
+            return Actions(remove=key)
         return NO_ACTIONS
+
+    def _listed_coarse(self, scan_id: object) -> bool:
+        s = self._scans.get(scan_id) if isinstance(scan_id, int) else None
+        return s is not None and self._reading_coarse(s)
+
+    def _reading_coarse(self, s: _Scan) -> bool:
+        return (
+            s.coarse
+            and s.info is None
+            and s.id not in self._layout.assigned
+            and self._unreadable_reason(s) is None
+        )
 
     def _listed_unreadable(self, scan_id: object) -> bool:
         s = self._scans.get(scan_id) if isinstance(scan_id, int) else None
@@ -1386,6 +1431,11 @@ class Document:
             if s.id not in self._layout.assigned and self._unreadable_reason(s) is not None
         )
 
+    def reading_coarse(self) -> tuple[ScanView, ...]:
+        """The scans the slower reader for coarse scans is reading: not identified,
+        not unreadable, not put into a page by hand, in add order."""
+        return tuple(self._view(s) for s in self._scans.values() if self._reading_coarse(s))
+
     # --- Internals -------------------------------------------------------------
 
     def _get(self, scan_id: int) -> _Scan:
@@ -1459,9 +1509,11 @@ class Document:
         if o is None:
             return (1, 0, 0, scan_id)
         if _v1_header(s.info) is not None and s.id not in self._layout.assigned:
-            # Version 1: fewest erased bytes, then fewest corrected bits.
+            # Version 1: a page read by the ordinary reader before one read by the
+            # slower reader, which marks nothing erased and counts no repairs; then
+            # fewest erased bytes, then fewest corrected bits.
             h = o.histogram
-            return (0, s.erased, h[1] + 2 * h[2] + 3 * h[3], scan_id)
+            return (0, o.slow, s.erased, h[1] + 2 * h[2] + 3 * h[3], scan_id)
         return (0, o.lost, o.repaired, scan_id)
 
     def _state(self, s: _Scan) -> str:
@@ -1550,7 +1602,8 @@ class Document:
                     slot.number, health, slot.scan_id, slot.spare_ids, 0, 0, None, reason
                 )
             return PageView(
-                slot.number, health, slot.scan_id, slot.spare_ids, repaired, o.lost, o.histogram
+                slot.number, health, slot.scan_id, slot.spare_ids, repaired, o.lost, o.histogram,
+                slow=o.slow,
             )
 
         if slot.scan_id is None:

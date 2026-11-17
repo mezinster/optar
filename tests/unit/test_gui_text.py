@@ -713,3 +713,56 @@ def test_a_page_repaired_by_the_protection_does_not_read_as_damaged():
 ])
 def test_margin_line_says_how_close_the_repair_came_to_failing(used, budget, want):
     assert text.margin_line(used, budget) == want
+
+
+# --- The slower reader for coarse scans --------------------------------------------
+
+
+def slow_page(number=2):
+    return PageView(number, Health.GOOD, 1, (), 0, 0, (0, 0, 0, 0), slow=True)
+
+
+def test_a_page_read_by_the_slower_reader_says_so_and_claims_no_repairs():
+    p = slow_page()
+    assert text.health_label(p) == text.READ_SLOWLY
+    assert text.health_label(p, restored=True) == text.READ_SLOWLY
+    assert text.page_row(p) == "Page 2 · Read by the slower reader for coarse scans"
+    lines = text.detail_text(p, "coarse.png", 3)
+    assert lines[0] == "Page 2 of 3 · coarse.png"
+    assert lines[1] == plain(text.read_by_slow_reader())
+    detail = " ".join(lines[1:]).lower()
+    assert "slower reader for coarse scans" in detail
+    # Neither a count of repairs nor a claim that there were none.
+    assert not any(ch.isdigit() for ch in detail)
+    assert "no repairs" not in detail and "good" not in detail and "block" not in detail
+    assert "Spare" in text.spare_row(p, "coarse.png")
+    assert text.READ_SLOWLY in text.spare_row(p, "coarse.png")
+    # An ordinary page is unchanged.
+    assert text.health_label(page(1, Health.GOOD)) == "Good"
+
+
+def test_a_slow_page_does_not_hide_that_it_is_unreadable_or_missing():
+    p = PageView(2, Health.UNREADABLE, 1, (), 0, 0, None, "label unreadable", slow=True)
+    assert text.health_label(p) == "Not readable"
+
+
+def test_a_coarse_scan_being_read_says_it_takes_about_a_minute():
+    scan = ScanView(4, "/scans/coarse.png", "working", None, None, "")
+    row = plain(text.reading_coarse_row(scan))
+    assert row.startswith("coarse.png · ") and "about a minute" in row
+    assert "coarse scan" in row and "slower reader" in row
+    assert text.reading_coarse_detail(scan)[0] == "coarse.png"
+    assert "about a minute" in text.reading_coarse_detail(scan)[1]
+    plain(text.READING_COARSE_SECTION)
+
+
+def test_an_unreadable_coarse_scan_says_the_slower_reader_was_tried():
+    tried = plain(text.coarse_scan(203.0, None, slow_tried=True))
+    assert tried.startswith(text.coarse_scan(203.0, None) + " ")
+    assert "too coarse to read" in tried and "slower reader" in tried and "tried" in tried
+    assert "slower reader" not in text.coarse_scan(203.0, None)
+
+
+def test_a_verified_document_of_slow_pages_still_reads_verified():
+    s = Summary(DocState.VERIFIED, 2, 0, 0, 0, 0, 1234, protection=32, repair=unwrapped())
+    assert text.summary_line(s).startswith("File recovered and verified")

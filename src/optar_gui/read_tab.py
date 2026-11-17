@@ -124,6 +124,20 @@ _VERDICT_JOB = 1
 _SAVE_JOB = 2
 _REPAIR_JOB = 3
 
+# What a scan's reading reports when the slower reader for coarse scans starts.
+_SLOW_STARTED = "slow"
+
+
+def _reading(
+    process: Callable[..., ScanWork],
+    path: str,
+    cancelled: Callable[[], bool],
+    report: Callable[[object], None],
+) -> ScanWork:
+    """A scan's own reading on a worker: ``process(path, cancelled, on_slow)``,
+    reporting when the slower reader starts."""
+    return process(path, cancelled, on_slow=partial(report, _SLOW_STARTED))
+
 
 def _write_chunks(
     path: str, chunks: Iterator[bytes], stop: threading.Event, _cancelled: Callable[[], bool]
@@ -151,7 +165,10 @@ class ReadController(QObject):
     bytes)`` and ``save_failed(message)`` report a save started with ``save``.
     ``replace_rejected(message)`` says why a scan chosen with ``replace`` was not
     used. ``process`` and ``unlabelled`` are ``work.process_scan`` and
-    ``work.process_unlabelled`` unless tests replace them.
+    ``work.process_unlabelled`` unless tests replace them; ``process`` is called
+    as ``process(path, cancelled, on_slow=...)``. While the slower reader for
+    coarse scans reads a scan, the document lists it (``reading_coarse``) and it
+    can be removed, which cancels the reading.
     """
 
     changed = Signal()
@@ -177,6 +194,7 @@ class ReadController(QObject):
         self._read_again: set[int] = set()  # scans to read once their decode reports
         self._runner = JobRunner(self, max_workers)
         self._runner.started.connect(self._on_started)
+        self._runner.progress.connect(self._on_progress)
         self._runner.finished.connect(self._on_finished)
         self._runner.failed.connect(self._on_failed)
         self._tasks = JobRunner(self, max_workers=2)  # saving and checking
@@ -403,7 +421,7 @@ class ReadController(QObject):
     def _read(self, scan_id: int, path: str) -> None:
         """Starts the scan's own reading (``process``): identifying and decoding it."""
         self._reading.add(scan_id)
-        self._runner.submit(scan_id, partial(self._process, path))
+        self._runner.submit(scan_id, partial(_reading, self._process, path), reports=True)
 
     def _decode_for_document(self, scan_id: int) -> None:
         """Decodes the scan without its label, in the current document's format; the
@@ -414,6 +432,7 @@ class ReadController(QObject):
         if scan_id in self._reading:
             self._reading.discard(scan_id)
             self._read_again.add(scan_id)
+            doc.set_reading_coarse(scan_id, False)  # cancelled: it will never report
         self._runner.cancel(scan_id)  # required before submitting the id again
         earlier = self._decoding_in.pop(scan_id, None)
         if earlier is not None:
@@ -542,6 +561,15 @@ class ReadController(QObject):
             return
         self._schedule()
 
+    def _on_progress(self, scan_id: int, what: object) -> None:
+        if what != _SLOW_STARTED or scan_id not in self._reading:
+            return
+        try:
+            self._doc.set_reading_coarse(scan_id)
+        except KeyError:
+            return
+        self._schedule(changed=False)
+
     def _on_finished(self, scan_id: int, work: ScanWork) -> None:
         fmt = self._decoding_in.get(scan_id)  # None: the scan's own reading
         try:
@@ -653,7 +681,7 @@ class _RowModel(QAbstractListModel):
     the spares under it, other groups and unreadable scans) can be selected.
     """
 
-    SELECTABLE = (Row.PAGE, Row.SPARE, Row.OTHER, Row.UNREADABLE)
+    SELECTABLE = (Row.PAGE, Row.SPARE, Row.OTHER, Row.READING_COARSE, Row.UNREADABLE)
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -872,6 +900,10 @@ class ReadTab(QWidget):
         if self._others:
             rows.append(("section", Row.OTHER, text.NOT_PART_OF_THIS_FILE))
             rows.extend((Row.OTHER, k, text.other_group_row(g)) for k, g in self._others.items())
+        coarse = doc.reading_coarse()
+        if coarse:
+            rows.append(("section", Row.READING_COARSE, text.READING_COARSE_SECTION))
+            rows.extend((Row.READING_COARSE, s.id, text.reading_coarse_row(s)) for s in coarse)
         unreadable = doc.unreadable()
         if unreadable:
             rows.append(("section", Row.UNREADABLE, text.NOT_READABLE))
@@ -943,6 +975,8 @@ class ReadTab(QWidget):
                 lines = text.other_group_detail(self._others[key])
             elif kind == Row.UNREADABLE:
                 lines = text.unreadable_detail(doc.scan(key))
+            elif kind == Row.READING_COARSE:
+                lines = text.reading_coarse_detail(doc.scan(key))
         self.detail.setText("\n".join(lines))
         if work is not None:
             self.preview.show_scan(scan_path, work.rotation, work.marks, restored)

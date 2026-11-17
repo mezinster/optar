@@ -151,7 +151,10 @@ MODERATE_MARGIN = 0.8
 
 def health_label(page: PageView, restored: bool = False) -> str:
     """``restored``: the document's protection repaired what its pages lost
-    (``Summary.restored``), so a damaged page is not a problem any more."""
+    (``Summary.restored``), so a damaged page is not a problem any more. A page
+    read by the slower reader says only that: that reader counts no repairs."""
+    if page.slow and page.health in (Health.GOOD, Health.REPAIRED):
+        return READ_SLOWLY
     if page.health == Health.REPAIRED:
         return f"Repaired · {page.repaired:,}"
     if page.health == Health.DAMAGED:
@@ -307,6 +310,8 @@ def detail_text(
     title = f"Page {page.number:,} of {pages:,}"
     if scan_name:
         title += f" · {scan_name}"
+    if page.histogram is not None and page.slow:
+        return (title, read_by_slow_reader())
     if page.histogram is not None:
         blocks = sum(page.histogram) + page.lost
         lost = f"{page.lost:,} lost"
@@ -651,10 +656,11 @@ def _about_dpi(dpi: float) -> str:
     return f"about {int(round(dpi / 10)) * 10:,} dpi"
 
 
-def coarse_scan(scan_dpi: float, layout: Layout | None) -> str:
+def coarse_scan(scan_dpi: float, layout: Layout | None, slow_tried: bool = False) -> str:
     """A scan made at too low a resolution: for an identified page of ``layout``,
     the resolution its dots need; for an unreadable scan (``layout`` None), the
-    resolution every dot size needs."""
+    resolution every dot size needs, and, when ``slow_tried``, that the slower
+    reader for coarse scans could not read it either."""
     if layout is not None:
         return (
             f"Scanned too coarsely for this page: {_about_dpi(scan_dpi)}. "
@@ -667,7 +673,36 @@ def coarse_scan(scan_dpi: float, layout: Layout | None) -> str:
     (first, first_dpi), rest = needs[0], needs[1:]
     listed = ", ".join([f"{first_dpi:,} dpi for {first} dots", *(f"{d:,} {n}" for n, d in rest)])
     # Any image with a page outline has an estimate: this does not claim it is a page.
-    return f"Scanned at {_about_dpi(scan_dpi)}, which is too coarse to read. Scan at {listed}."
+    line = f"Scanned at {_about_dpi(scan_dpi)}, which is too coarse to read. Scan at {listed}."
+    return f"{line} {SLOW_TRIED}" if slow_tried else line
+
+
+# A scan the ordinary reader could not read, while the slower reader tries it.
+READING_COARSE = "Reading a coarse scan with the slower reader; this takes about a minute"
+# The heading over the scans being read that way.
+READING_COARSE_SECTION = "Coarse scans being read"
+# After "too coarse to read": the slower reader could not read the scan either.
+SLOW_TRIED = "The slower reader for coarse scans was tried too, and could not read it."
+# The health of a page read by the slower reader, in its row.
+READ_SLOWLY = "Read by the slower reader for coarse scans"
+
+
+def read_by_slow_reader() -> str:
+    """The detail line of a page read by the slower reader. That reader gives every
+    block its likeliest value, so it neither counts nor marks repairs on the page;
+    the document's protection corrects what it got wrong."""
+    return (
+        f"{READ_SLOWLY}. That reader does not count repairs within the page or mark "
+        "them on the scan; the document's protection corrects what it got wrong."
+    )
+
+
+def reading_coarse_row(scan: ScanView) -> str:
+    return f"{os.path.basename(scan.path)} · {READING_COARSE}"
+
+
+def reading_coarse_detail(scan: ScanView) -> tuple[str, ...]:
+    return (os.path.basename(scan.path), f"{READING_COARSE}.")
 
 
 def _and(items: list[str]) -> str:

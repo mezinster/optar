@@ -59,9 +59,9 @@ def _contents(path):
         return hashlib.sha256(f.read()).hexdigest()
 
 
-def cached_process(path, cancelled=lambda: False):
+def cached_process(path, cancelled=lambda: False, on_slow=None):
     """``process_scan``, remembering each result by the file's contents."""
-    return _remembered(("scan", _contents(path)), lambda: process_scan(path, cancelled))
+    return _remembered(("scan", _contents(path)), lambda: process_scan(path, cancelled, on_slow))
 
 
 def cached_unlabelled(path, format, cancelled=lambda: False):
@@ -248,7 +248,8 @@ def test_replace_with_the_wrong_page_is_rejected(qtbot, make_tab, scans):
     assert notices[2] == (
         "page-1-no-label.png was not used for page 2. Scanned at about 200 dpi, which "
         "is too coarse to read. Scan at 600 dpi for Standard dots, 450 Medium, 360 Big, "
-        "300 Large, 200 Extra large."
+        "300 Large, 200 Extra large. The slower reader for coarse scans was tried too, "
+        "and could not read it."
     )
     assert doc.pages()[1].scan_id == in_use
     assert doc.pages()[0].scan_id == scan_id(tab, paths["page-1.png"])
@@ -262,7 +263,7 @@ def held_back(gate, slow):
     """A ``process`` that reads ``slow`` only once ``gate`` is set; others at once."""
     slow = os.path.realpath(slow)
 
-    def process(path, cancelled=lambda: False):
+    def process(path, cancelled=lambda: False, on_slow=None):
         if os.path.realpath(path) == slow:
             gate.wait(TIMEOUT / 1000)
         return cached_process(path, cancelled)
@@ -426,7 +427,8 @@ def test_assign_unreadable_scan_decodes_it_in_the_best_rotation(qtbot, make_tab,
     row = (  # fake_scan's scale 1 is 200 dpi: too coarse, which is the reason given
         "page-2-no-label-upside-down.png · Scanned at about 200 dpi, which is too coarse "
         "to read. Scan at 600 dpi for Standard dots, 450 Medium, 360 Big, 300 Large, "
-        "200 Extra large."
+        "200 Extra large. The slower reader for coarse scans was tried too, and could "
+        "not read it."
     )
     assert tab.rows()[2:] == ["Page 2 · Missing", text.NOT_READABLE, row]
     select(tab, row)
@@ -615,7 +617,7 @@ class Fakes:
         if name in self.held:
             self.gate.wait(TIMEOUT / 1000)
 
-    def process(self, path, cancelled=lambda: False):
+    def process(self, path, cancelled=lambda: False, on_slow=None):
         name = os.path.basename(path)
         self._hold(name)
         return self.scans[name]
