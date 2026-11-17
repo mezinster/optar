@@ -42,7 +42,7 @@ from optar.decoder import PageResult, decode_located, page_to_scan
 from optar.encoder import check_encodable, encode, page_count
 from optar.errors import DecodeError, IdentifyError, OptarError
 from optar.fileio import io_error, replacing
-from optar.font import FIRST_CHAR, GLYPH_CELLS, label_text
+from optar.font import FIRST_CHAR, GLYPH_CELLS, fine_label, label_text
 from optar.format import (
     DOT_SIZES,
     LAYOUTS,
@@ -440,7 +440,7 @@ def _encode_wrapped(
             page = next(pending, None)
             if page is None:
                 return
-            yield page.pixels
+            yield page.pixels, fine_label(layout, page.number, page.total, name)
 
     with replacing(dest) as temp:
         return write_pdf(temp, pages(), layout)

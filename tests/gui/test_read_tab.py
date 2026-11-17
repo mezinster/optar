@@ -141,7 +141,7 @@ def test_adding_scans_fills_the_page_list(qtbot, make_tab, printouts):
     assert tab.rows() == ["doc.tar · A4 · 2 pages", "Page 1 · Good", "Page 2 · Good"]
     assert tab.controller.summary.state == DocState.VERIFIED
     summary = tab.findChild(type(tab.summary), "summaryLabel")
-    assert summary.text() == f"Verified · {len(data):,} bytes"
+    assert summary.text() == f"File recovered and verified · {len(data):,} bytes"
     assert tab.findChild(type(tab.save_button), "saveButton").isEnabled()
     # Selecting a page shows its details.
     tab.select_row(find_row(tab, "Page 2 · Good"))
@@ -377,7 +377,7 @@ def test_save_verified_document_writes_exact_bytes_without_confirmation(
     saved = (tmp_path / "doc.tar").read_bytes()
     assert len(saved) == len(data) and saved == data
     assert tab.summary.text() == (
-        f"Verified · {len(data):,} bytes — Saved {len(data):,} bytes to doc.tar"
+        f"File recovered and verified · {len(data):,} bytes — Saved {len(data):,} bytes to doc.tar"
     )
     assert tab.save_button.isEnabled()
     assert [p.name for p in tmp_path.iterdir()] == ["doc.tar"]  # no temporary file left
@@ -550,7 +550,7 @@ def test_save_failure_shows_error_and_keeps_existing_file(
     assert target.read_bytes() == b"precious"
     assert not tab.controller.saving
     assert tab.save_button.isEnabled()
-    assert tab.summary.text() == f"Verified · {250_000:,} bytes"
+    assert tab.summary.text() == f"File recovered and verified · {250_000:,} bytes"
     assert sorted(p.name for p in tmp_path.iterdir()) == ["doc.tar"]
 
 
@@ -835,7 +835,7 @@ def test_three_version1_scans_are_verified_and_saved(qtbot, make_tab, v1_printou
     summary = tab.controller.summary
     assert summary.state == DocState.VERIFIED and summary.repair.verified
     assert tab.summary.text() == (
-        f"Verified · {len(data):,} bytes · {text.repair_line(summary.repair)}"
+        f"File recovered and verified · {len(data):,} bytes · {text.repair_line(summary.repair)}"
     )
     assert text.REPAIRING in states  # shown while the repair ran
     assert tab.rows()[1:] == ["Page 1 · Good", "Page 2 · Good", "Page 3 · Good"]

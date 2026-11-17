@@ -27,6 +27,7 @@ from optar.decoder import BitPacker, decode_pages
 from optar.encoder import check_encodable, encode
 from optar.errors import DecodeError, FormatError, IdentifyError, OptarError
 from optar.fileio import io_error, replacing
+from optar.font import fine_label
 from optar.format import DOT_SIZES, PAPERS, PARITY, Layout, PageFormat, Paper, get_layout
 from optar.identify import ScanIdentity, identify_scan
 from optar.imageio import read_scan, write_pgm, write_png
@@ -212,7 +213,14 @@ def _encode_protected(args: argparse.Namespace) -> int:
     if args.to == "pdf":
         path = f"{base}.pdf"
         with replacing(path) as temp:
-            count = write_pdf(temp, (page.pixels for page in encode(stream, fmt, label)), layout)
+            count = write_pdf(
+                temp,
+                (
+                    (page.pixels, fine_label(layout, page.number, page.total, label))
+                    for page in encode(stream, fmt, label)
+                ),
+                layout,
+            )
         written.append(f"{path} ({_plural(count, 'page')})")
     else:
         for page in encode(stream, fmt, label):

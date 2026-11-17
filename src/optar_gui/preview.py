@@ -71,6 +71,8 @@ PREVIEW_MAX_PIXELS = 40_000_000
 # Side of a mark on screen, in device pixels, at any zoom.
 MARK_SIZE = 5
 MARK_COLOUR = QColor(230, 0, 0)
+# Marks of blocks that the document's protection repaired: nothing is lost.
+RESTORED_COLOUR = QColor(240, 170, 0)
 BACKGROUND = QColor(128, 128, 128)
 # Zoom per wheel notch, and the largest zoom (screen pixels per scan pixel).
 ZOOM_STEP = 1.25
@@ -253,11 +255,11 @@ class _ImageItem(QGraphicsItem):
 class _MarksItem(QGraphicsItem):
     """Every mark as a square of MARK_SIZE screen pixels, in one drawing call."""
 
-    def __init__(self, points: QPolygonF, rect: QRectF) -> None:
+    def __init__(self, points: QPolygonF, rect: QRectF, colour: QColor = MARK_COLOUR) -> None:
         super().__init__()
         self._points = points
         self._rect = rect
-        self._pen = QPen(MARK_COLOUR)
+        self._pen = QPen(colour)
         self._pen.setWidthF(MARK_SIZE)
         self._pen.setCosmetic(True)  # the width is in screen pixels
         self._pen.setCapStyle(Qt.PenCapStyle.SquareCap)
@@ -306,6 +308,7 @@ class ScanPreview(QGraphicsView):
         self._path: str | None = None
         self._rotation = 0
         self._marks: np.ndarray | None = None  # as given, to see whether they changed
+        self._mark_colour = MARK_COLOUR
         self._points = QPolygonF()
         self._size: tuple[int, int] | None = None  # upright scan size, once shown
         self._marks_item: _MarksItem | None = None
@@ -341,13 +344,20 @@ class ScanPreview(QGraphicsView):
 
     # --- Showing -----------------------------------------------------------------
 
-    def show_scan(self, path: str | None, rotation: int, marks: np.ndarray | None) -> None:
+    def show_scan(
+        self, path: str | None, rotation: int, marks: np.ndarray | None, restored: bool = False
+    ) -> None:
         """Shows ``path`` turned upright by ``rotation`` counter-clockwise quarter
         turns, with a mark at each (x, y) row of ``marks`` (upright scan pixels).
-        ``None`` clears the view. The same scan and rotation are not loaded again."""
+        ``None`` clears the view. The same scan and rotation are not loaded again.
+        ``restored`` draws the marks in RESTORED_COLOUR: the blocks they show were
+        repaired by the document's protection."""
         rotation %= 4
+        colour = RESTORED_COLOUR if restored else MARK_COLOUR
+        changed = colour != self._mark_colour
+        self._mark_colour = colour
         if path is not None and path == self._path and rotation == self._rotation:
-            if marks is not self._marks:
+            if changed or marks is not self._marks:
                 self._set_marks(marks)
             return
         self._runner.cancel(_LOAD_JOB)
@@ -394,7 +404,9 @@ class ScanPreview(QGraphicsView):
     def _add_marks(self) -> None:
         if self._size is None or self._points.isEmpty():
             return
-        self._marks_item = _MarksItem(self._points, QRectF(0, 0, *self._size))
+        self._marks_item = _MarksItem(
+            self._points, QRectF(0, 0, *self._size), self._mark_colour
+        )
         self._scene.addItem(self._marks_item)
 
     def _on_loaded(self, job: int, result: Loaded) -> None:

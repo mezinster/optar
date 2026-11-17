@@ -4,7 +4,7 @@ import time
 import numpy as np
 import pytest
 
-from optar.decoder.dirt import remove_border_dirt
+from optar.decoder.dirt import isolate_page, remove_border_dirt
 from optar.decoder.geometry import compute_geometry, find_corners
 from optar.decoder.levels import analyze_levels
 from optar.decoder.options import DecodeOptions
@@ -286,3 +286,36 @@ def test_full_a4_scale_3_prepare_is_fast(page):
     elapsed = time.perf_counter() - t0
     assert np.array_equal(cleaned, scan)
     assert elapsed < 10, elapsed
+
+
+def _framed_page(gap: bool) -> np.ndarray:
+    """A page of 2-pixel dots in a black frame, in a white margin, with white
+    rows across it as the padding of a part-filled document prints them."""
+    rng = np.random.default_rng(5)
+    dots = np.where(rng.random((90, 70)) < 0.5, 0, 255).astype(np.uint8)
+    dots[::9] = 255
+    img = np.full((240, 200), 255, np.uint8)
+    img[26:214, 26:174] = 0  # the frame, 4 pixels thick
+    img[30:210, 30:170] = np.kron(dots, np.ones((2, 2), np.uint8))
+    if gap:
+        img[26:214, 170:174] = 255  # the printer clipped the right edge
+    return img
+
+
+def test_isolate_page_is_remove_border_dirt_for_a_whole_frame():
+    img = _framed_page(gap=False)
+    img[5:8, 5:8] = 0  # dirt in the margin
+    assert np.array_equal(isolate_page(img, 128), remove_border_dirt(img, 128))
+    assert isolate_page(img, 128)[6, 6] == 255
+
+
+def test_isolate_page_keeps_a_page_whose_frame_has_a_gap():
+    img = _framed_page(gap=True)
+    # As in C, the white outside runs into the page and most of it is wiped.
+    assert (remove_border_dirt(img, 128) != img).mean() > 0.05
+    img[5:8, 5:8] = 0  # dirt in the margin
+    out = isolate_page(img, 128)
+    assert out[6, 6] == 255
+    assert np.array_equal(out[26:214, 26:174], img[26:214, 26:174])
+    corners = find_corners(out, 128)
+    assert corners.tolist() == [[26, 26], [170, 26], [26, 214], [170, 214]]

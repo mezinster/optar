@@ -31,12 +31,8 @@ def parse_pdf(path) -> list[dict]:
         rb"/Type /Page /Parent[^\n]*?/Contents (\d+) 0 R "
         rb"/Resources << /XObject << /Im0 (\d+) 0 R"
     )
-    for m in re.finditer(page_re, raw):
-        content_n, image_n = int(m.group(1)), int(m.group(2))
-        content_re = rb"\n%d 0 obj\n<< /Length \d+ >>\nstream\n(.*?)\nendstream" % content_n
-        cs = re.search(content_re, raw, re.S)
-        cm = tuple(float(v) for v in re.search(rb"q ([^c]*) cm", cs.group(1)).group(1).split())
-        im = re.search(rb"\n%d 0 obj\n<<([^>]*)>>\nstream\n" % image_n, raw)
+    def image(num):
+        im = re.search(rb"\n%d 0 obj\n<<([^>]*)>>\nstream\n" % num, raw)
         d = im.group(1)
         length = int(re.search(rb"/Length (\d+)", d).group(1))
         data = raw[im.end():im.end() + length]
@@ -45,8 +41,24 @@ def parse_pdf(path) -> list[dict]:
         bits = zlib.decompress(data)
         rowbytes = (width + 7) // 8
         packed = np.frombuffer(bits, np.uint8).reshape(height, rowbytes)
-        px = np.unpackbits(packed, axis=1)[:, :width].astype(np.uint8) * 255
+        return d, np.unpackbits(packed, axis=1)[:, :width].astype(np.uint8) * 255
+
+    for m in re.finditer(page_re, raw):
+        content_n, image_n = int(m.group(1)), int(m.group(2))
+        content_re = rb"\n%d 0 obj\n<< /Length \d+ >>\nstream\n(.*?)\nendstream" % content_n
+        cs = re.search(content_re, raw, re.S)
+        cms = [
+            tuple(float(v) for v in c.split())
+            for c in re.findall(rb"q ([^c]*) cm", cs.group(1))
+        ]
+        cm = cms[0]
+        d, px = image(image_n)
+        height, width = px.shape
+        # The label strip printed over the label band, if the page has one.
+        strip = re.search(rb"/Im1 (\d+) 0 R", raw[m.start():m.end() + 40])
         pages.append({
+            "band": image(int(strip.group(1)))[1] if strip else None,
+            "band_cm": cms[1] if strip else None,
             "mediabox": mediabox,
             "cm": cm,
             "width": width,
@@ -219,8 +231,13 @@ def simulate_scan(
     noise=6.0,
     seed=1,
     quarter_turns=0,
+    band=None,
 ):
     """A grey scan of a printed page (uint8, 2-D, 0 black, 255 white).
+
+    `band` is the label strip write_pdf prints over the label band (see
+    optar.font.fine_label): the band is printed black with the strip over it,
+    three printer dots to a strip pixel, as in the PDF.
 
     Order: 600 dpi print (each page pixel is layout.dots.printer_dots printer
     dots wide, nearest neighbour), Gaussian blur (sigma blur, in 600 dpi dots),
@@ -239,6 +256,13 @@ def simulate_scan(
     rng = np.random.default_rng(seed)
     im = Image.fromarray(np.asarray(pixels, np.uint8))
     big = im.resize((im.width * d, im.height * d), Image.Resampling.NEAREST)
+    if band is not None:
+        f = layout.fmt
+        top, left = (f.border + f.data_height) * d, f.border * d
+        fine = Image.fromarray(np.asarray(band, np.uint8))
+        fine = fine.resize((fine.width * 3, fine.height * 3), Image.Resampling.NEAREST)
+        big.paste(0, (left, top, left + f.data_width * d, top + f.text_height * d))
+        big.paste(fine, (left, top + (f.text_height * d - fine.height) // 2))
     if blur:
         big = big.filter(ImageFilter.GaussianBlur(blur))
     if rotate_deg:

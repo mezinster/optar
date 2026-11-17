@@ -386,7 +386,7 @@ def test_switch_to_other_document(qtbot, make_tab, scans):
         "doc.tar · A4 · 2 pages · 1 scan",
     ]
     assert tab.controller.summary.state == DocState.VERIFIED
-    assert tab.summary.text() == "Verified · 1,000 bytes"
+    assert tab.summary.text() == "File recovered and verified · 1,000 bytes"
 
 
 # --- Assigning by hand -----------------------------------------------------------------
@@ -413,7 +413,7 @@ def test_tag_misread_scan_can_be_assigned_and_document_verifies(qtbot, make_tab,
     wait_settled(qtbot, tab)
     assert tab.rows() == ["doc.tar · A4 · 2 pages", "Page 1 · Good", "Page 2 · Good"]
     assert tab.controller.summary.state == DocState.VERIFIED
-    assert tab.summary.text() == f"Verified · {len(data):,} bytes"
+    assert tab.summary.text() == f"File recovered and verified · {len(data):,} bytes"
     assert tab.preview.path == paths["page-2-misread.png"]
 
 
@@ -837,7 +837,7 @@ def test_a_scan_decoded_in_another_format_keeps_its_own_preview(qtbot, fake_cont
     tab = ReadTab(controller)
     qtbot.addWidget(tab)
     shown = []
-    tab.preview.show_scan = lambda path, rotation, marks: shown.append(
+    tab.preview.show_scan = lambda path, rotation, marks, restored=False: shown.append(
         (path and os.path.basename(path), rotation, None if marks is None else marks.tolist()))
     controller.add_paths(["/x/a1.png", "/x/a2.png"])
     idle(qtbot, controller)

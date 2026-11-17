@@ -7,7 +7,7 @@ from PIL import Image
 
 from optar.cli import main
 from optar.encoder import encode
-from optar.format import PAPERS, PageFormat
+from optar.format import PAPERS, PageFormat, get_layout
 from tests.helpers import fake_scan, parse_pdf, save_scan, seeded_bytes
 
 
@@ -504,6 +504,22 @@ def _encode_v1(tmp_path, src, base="p", *extra):
     args = ["encode", str(src), "-o", str(out), "--to", "png", *extra]
     assert main(args) == 0
     return out
+
+
+def test_protected_pdf_prints_the_label_at_the_standard_size(tmp_path):
+    from optar.font import fine_label
+
+    src = _protected_input(tmp_path, 2)
+    out = tmp_path / "a-name-too-long-for-large-dots"
+    assert main(["encode", "--dots", "large", "-o", str(out), str(src)]) == 0
+    layout = get_layout("a4", "large")
+    pages = parse_pdf(f"{out}.pdf")
+    assert len(pages) == 2
+    for number, got in enumerate(pages, start=1):
+        assert np.array_equal(got["band"], fine_label(layout, number, 2, out.name))
+    # Standard dots already print the label at this size.
+    assert main(["encode", "--dots", "standard", "-o", str(out), str(src)]) == 0
+    assert all(got["band"] is None for got in parse_pdf(f"{out}.pdf"))
 
 
 def test_protected_round_trip_any_order_and_orientation(tmp_path, capsys):

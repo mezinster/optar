@@ -862,8 +862,9 @@ class ReadTab(QWidget):
         if cur is not None:
             rows.append(("title", None, text.document_title(cur)))
         self._pages = doc.pages()
+        restored = self.controller.summary.restored
         for p in self._pages:
-            rows.append((Row.PAGE, p.number, text.page_row(p)))
+            rows.append((Row.PAGE, p.number, text.page_row(p, restored)))
             for spare in p.spare_ids:
                 name = os.path.basename(doc.scan(spare).path)
                 rows.append((Row.SPARE, spare, text.spare_row(doc.page_with(spare), name)))
@@ -913,6 +914,7 @@ class ReadTab(QWidget):
         lines: tuple[str, ...] = ()
         doc = self.controller.document
         scan_path, work = None, None  # the selected page's scan, for the preview
+        restored = False  # whether the selected page's losses were all repaired
         actions = self._actions()
         if self._selected is not None:
             kind, key = self._selected
@@ -923,7 +925,8 @@ class ReadTab(QWidget):
                     scan_path = doc.scan(page.scan_id).path
                     work = self.controller.work_for(page.scan_id, doc.current.format)
                     name = os.path.basename(scan_path)
-                lines = text.detail_text(page, name, len(self._pages))
+                restored = self.controller.summary.restored
+                lines = text.detail_text(page, name, len(self._pages), restored=restored)
                 note = self.controller.scan_note(work)
                 if note is not None:
                     lines = (*lines, note)
@@ -942,7 +945,7 @@ class ReadTab(QWidget):
                 lines = text.unreadable_detail(doc.scan(key))
         self.detail.setText("\n".join(lines))
         if work is not None:
-            self.preview.show_scan(scan_path, work.rotation, work.marks)
+            self.preview.show_scan(scan_path, work.rotation, work.marks, restored)
         else:
             self.preview.show_scan(scan_path, 0, None)
         self.remove_button.setEnabled(actions.remove is not None)

@@ -76,8 +76,8 @@ def test_health_labels():
             "0 of 1,205 pages good · 2 damaged · 3 not readable · 1,200 missing",
         ),
         (S(D.INCOMPLETE, 0, 0, 0, 0, 1, None), "0 of 1 page good · 1 missing"),
-        (S(D.VERIFIED, 4, 1, 0, 0, 0, 2481152), "Verified · 2,481,152 bytes"),
-        (S(D.VERIFIED, 1, 0, 0, 0, 0, 1), "Verified · 1 byte"),
+        (S(D.VERIFIED, 4, 1, 0, 0, 0, 2481152), "File recovered and verified · 2,481,152 bytes"),
+        (S(D.VERIFIED, 1, 0, 0, 0, 0, 1), "File recovered and verified · 1 byte"),
         (S(D.MISMATCH, 5, 0, 0, 0, 0, 9), "Does not match the fingerprint on the paper"),
         (
             S(D.UNVERIFIABLE, 3, 2, 0, 0, 0, None),
@@ -630,7 +630,7 @@ def v1_summary(state, repair=None, missing_pages=(), error="", protection=32):
 def test_summary_line_of_version1_documents():
     u = unwrapped()
     assert text.summary_line(v1_summary(D.VERIFIED, u)) == (
-        f"Verified · 49,119 bytes · {text.repair_line(u)}"
+        f"File recovered and verified · 49,119 bytes · {text.repair_line(u)}"
     )
     recoverable = plain(text.summary_line(v1_summary(D.RECOVERABLE, u, (3,))))
     assert recoverable.startswith("Recoverable: page 3 missing")
@@ -683,3 +683,33 @@ def test_repairing_and_paper_names_of_version1_documents():
         "US Letter, Extra large dots"
     )
     assert text.paper_name(A) == "A4"
+
+
+def test_a_page_repaired_by_the_protection_does_not_read_as_damaged():
+    p = page(7, Health.DAMAGED, repaired=27233, lost=121, histogram=(49249, 21441, 4994, 798))
+    assert text.health_label(p) == "Damaged · 121 lost"
+    assert text.health_label(p, restored=True) == "Repaired · 121 by the document's protection"
+    assert text.page_row(p, restored=True) == (
+        "Page 7 · Repaired · 121 by the document's protection"
+    )
+    assert text.detail_text(p, "s.png", 7, restored=True)[1] == (
+        "76,603 blocks · 27,233 repaired · 121 repaired by the document's protection"
+    )
+    assert text.detail_text(p, "s.png", 7)[1] == "76,603 blocks · 27,233 repaired · 121 lost"
+    clean = page(1, Health.GOOD, histogram=(10, 0, 0, 0))
+    assert text.detail_text(clean, "s.png", 7, restored=True)[1] == (
+        "10 blocks · 0 repaired · 0 lost"
+    )
+
+
+@pytest.mark.parametrize("used,budget,want", [
+    (0, 64, "the worst spot used 0% of its repair capacity (0 of 64): a wide margin"),
+    (11, 64, "the worst spot used 18% of its repair capacity (11 of 64): a wide margin"),
+    (32, 64, "the worst spot used 50% of its repair capacity (32 of 64): a wide margin"),
+    (33, 64, "the worst spot used 52% of its repair capacity (33 of 64): a moderate margin"),
+    (52, 64, "the worst spot used 82% of its repair capacity (52 of 64): close to the limit"),
+    (63, 64, "the worst spot used 99% of its repair capacity (63 of 64): close to the limit"),
+    (64, 64, "the worst spot used 100% of its repair capacity (64 of 64): close to the limit"),
+])
+def test_margin_line_says_how_close_the_repair_came_to_failing(used, budget, want):
+    assert text.margin_line(used, budget) == want

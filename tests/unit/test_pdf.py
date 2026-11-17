@@ -101,3 +101,58 @@ def test_write_pdf_refuses_image_that_is_not_the_layout_page(tmp_path):
     with pytest.raises(FormatError, match="layout"):
         write_pdf(tmp_path / "o.pdf", iter([page]), layout)
     assert not (tmp_path / "o.pdf").exists()
+
+
+@pytest.mark.parametrize("dots,printer_dots", [("large", 6), ("medium", 4), ("xlarge", 9)])
+def test_pdf_prints_the_label_strip_over_the_label_band(tmp_path, dots, printer_dots):
+    from optar.font import fine_label
+
+    layout = get_layout("a4", dots)
+    fmt = layout.fmt
+    (page,) = encode(b"x", fmt, "name.bin")
+    strip = fine_label(layout, 1, 1, "name.bin")
+    assert write_pdf(tmp_path / "o.pdf", iter([(page.pixels, strip)]), layout) == 1
+    (got,) = parse_pdf(tmp_path / "o.pdf")
+    top = fmt.border + fmt.data_height
+    band = (slice(top, top + fmt.text_height), slice(fmt.border, fmt.border + fmt.data_width))
+    # The page's own label is printed black; everything else is as encoded.
+    assert not got["pixels"][band].any()
+    want = page.pixels.copy()
+    want[band] = 0
+    assert np.array_equal(got["pixels"], want)
+    assert np.array_equal(got["band"], strip)
+    # One strip pixel is a standard dot (1/200 inch), whatever the layout.
+    w, _, _, h, x, y = got["band_cm"]
+    assert (w, h) == pytest.approx((strip.shape[1] * 0.36, 24 * 0.36), abs=0.01)
+    unit = 72 * printer_dots / 600
+    assert x == pytest.approx(layout.offset_x_pt + fmt.border * unit, abs=0.01)
+    bottom = layout.offset_y_pt + (fmt.height - top - fmt.text_height) * unit
+    height = fmt.text_height * unit
+    assert y == pytest.approx(bottom + (height - h) / 2, abs=0.01)
+    # The strip lies inside the band.
+    assert y >= bottom and y + h <= bottom + height + 0.01
+    assert x + w <= layout.offset_x_pt + (fmt.border + fmt.data_width) * unit + 0.01
+
+
+def test_pdf_without_a_strip_is_unchanged_by_a_none(tmp_path):
+    layout = get_layout("a4", "large")
+    (page,) = encode(b"x", layout.fmt, "n")
+    write_pdf(tmp_path / "a.pdf", iter([page.pixels]), layout)
+    write_pdf(tmp_path / "b.pdf", iter([(page.pixels, None)]), layout)
+    assert (tmp_path / "a.pdf").read_bytes() == (tmp_path / "b.pdf").read_bytes()
+
+
+def test_write_pdf_refuses_a_strip_it_cannot_place(tmp_path):
+    layout = get_layout("a4", "large")
+    (page,) = encode(b"x", layout.fmt, "n")
+    too_tall = np.zeros((49, 10), np.uint8)
+    too_wide = np.zeros((24, layout.fmt.data_width * 2 + 1), np.uint8)
+    for strip in (too_tall, too_wide):
+        with pytest.raises(FormatError):
+            write_pdf(tmp_path / "o.pdf", iter([(page.pixels, strip)]), layout)
+        assert not (tmp_path / "o.pdf").exists()
+    (standard,) = encode(b"x", PageFormat(65, 93), "n")
+    with pytest.raises(FormatError):
+        write_pdf(tmp_path / "o.pdf", iter([(standard.pixels, too_wide)]), PAPERS["a4"])
+    with pytest.raises(TypeError):
+        write_pdf(tmp_path / "o.pdf", iter([(page.pixels, [[0]])]), layout)

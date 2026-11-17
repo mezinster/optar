@@ -18,6 +18,7 @@ import pytest
 
 from optar import PARITY, encode, get_layout, identify_scan, plan, plan_for, unwrap, wrap
 from optar.errors import IdentifyError
+from optar.font import fine_label
 from tests.helpers import seeded_bytes, simulate_scan
 
 pytestmark = pytest.mark.slow
@@ -63,7 +64,11 @@ class Outcome:
     seconds: float
 
 
-def run_claim(dots, dpi, pages, withheld=(), blur=1.8, paper="a4") -> Outcome:
+def run_claim(
+    dots, dpi, pages, withheld=(), blur=1.8, paper="a4", fine=False, clipped=False
+) -> Outcome:
+    """`fine` prints each page as the PDF does, with its label at the standard size.
+    `clipped` leaves the right edge of the page's frame unprinted."""
     layout, data, images = document(dots, pages, paper)
     start = time.perf_counter()
     payloads, header = {}, None
@@ -71,7 +76,11 @@ def run_claim(dots, dpi, pages, withheld=(), blur=1.8, paper="a4") -> Outcome:
     for number, pixels in enumerate(images, start=1):
         if number in withheld:
             continue
-        scan = simulate_scan(pixels, layout, dpi, blur=blur, seed=number)
+        if clipped:
+            pixels = pixels.copy()
+            pixels[:, -layout.fmt.border :] = 255
+        band = fine_label(layout, number, len(images), "claim.bin") if fine else None
+        scan = simulate_scan(pixels, layout, dpi, blur=blur, seed=number, band=band)
         try:
             ident = identify_scan(scan)
         except IdentifyError:
@@ -100,6 +109,30 @@ def run_claim(dots, dpi, pages, withheld=(), blur=1.8, paper="a4") -> Outcome:
 def test_claim(claim, blur):
     dots, dpi, pages, withheld = CLAIMS[claim]
     outcome = run_claim(dots, dpi, pages, withheld, BLURS[blur])
+    assert not outcome.misplaced and not outcome.headerless, outcome
+    assert outcome.verified, outcome
+
+
+PRINTED = ["medium-300", "medium-200", "big-200", "large-300", "xlarge-200"]
+
+
+@pytest.mark.parametrize("claim", PRINTED)
+def test_claim_holds_for_pages_printed_from_the_pdf(claim):
+    # The PDF prints the label at the standard dot size over the label band;
+    # the band is not data, and the small text in it must not disturb a page.
+    dots, dpi, pages, withheld = CLAIMS[claim]
+    outcome = run_claim(dots, dpi, pages, withheld, BLURS["binding"], fine=True)
+    assert not outcome.misplaced and not outcome.headerless, outcome
+    assert outcome.verified, outcome
+
+
+@pytest.mark.parametrize("claim", PRINTED)
+def test_claim_holds_when_the_printer_clips_the_right_edge(claim):
+    # The owner's printer does not print the right edge of the frame of a
+    # Medium page (4.6 mm from the paper's edge). The seven real scans were
+    # read only once the reader stopped needing a whole frame.
+    dots, dpi, pages, withheld = CLAIMS[claim]
+    outcome = run_claim(dots, dpi, pages, withheld, BLURS["binding"], fine=True, clipped=True)
     assert not outcome.misplaced and not outcome.headerless, outcome
     assert outcome.verified, outcome
 

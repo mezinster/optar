@@ -415,3 +415,17 @@ def test_shows_loading_until_the_image_arrives(qtbot, preview, tmp_path):
     assert preview.loading and len(items) == 1 and items[0].text() == text.PREVIEW_LOADING
     qtbot.waitUntil(lambda: not preview.loading, timeout=TIMEOUT)
     assert all(not hasattr(item, "text") for item in preview.scene().items())
+
+
+def test_marks_of_repaired_blocks_are_drawn_in_their_own_colour(qtbot, preview, scan_files):
+    from optar_gui.preview import MARK_COLOUR, RESTORED_COLOUR
+
+    _, paths = scan_files(nbytes=1000)
+    show_and_wait(qtbot, preview, paths[0])
+    marks = np.array([[10, 10], [20, 20]], np.float32)
+    preview.show_scan(paths[0], 0, marks)
+    assert preview.mark_count == 2
+    assert preview._marks_item._pen.color() == MARK_COLOUR
+    preview.show_scan(paths[0], 0, marks, True)  # the same scan and marks, now repaired
+    assert preview.mark_count == 2
+    assert preview._marks_item._pen.color() == RESTORED_COLOUR

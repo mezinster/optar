@@ -2584,13 +2584,16 @@ def test_version1_suggested_name_comes_from_the_label_then_the_repaired_name():
     data, payloads = v1_pages(2, name="report.txt")
     doc, _ = v1_document(payloads, label_name="")
     assert doc.suggested_name == "recovered.bin"
+    assert doc.current.title == ""
     repaired(doc)
     assert doc.suggested_name == "report.txt"
+    assert doc.current.title == "report.txt"  # the window's title row too
     data, payloads = v1_pages(1, name="../x/evil.txt")
     doc, _ = v1_document(payloads, label_name="label.txt")
     assert doc.suggested_name == "label.txt"
     repaired(doc)
     assert doc.suggested_name == "evil.txt"
+    assert doc.current.title == "evil.txt"
 
 
 def test_version1_choice_follows_its_identity():

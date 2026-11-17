@@ -8,6 +8,7 @@ thousands separators and agree in number with their noun.
 
 from __future__ import annotations
 
+import math
 import os
 from typing import TYPE_CHECKING
 
@@ -138,10 +139,24 @@ def count(n: int, noun: str) -> str:
     return f"{n:,} {noun}" if n == 1 else f"{n:,} {noun}s"
 
 
-def health_label(page: PageView) -> str:
+# A document whose file was recovered and matches its fingerprint.
+VERIFIED = "File recovered and verified"
+BY_PROTECTION = "by the document's protection"
+
+# The share of its repair capacity that the worst spot of a document used, up
+# to which the margin is called wide, and up to which moderate.
+WIDE_MARGIN = 0.5
+MODERATE_MARGIN = 0.8
+
+
+def health_label(page: PageView, restored: bool = False) -> str:
+    """``restored``: the document's protection repaired what its pages lost
+    (``Summary.restored``), so a damaged page is not a problem any more."""
     if page.health == Health.REPAIRED:
         return f"Repaired · {page.repaired:,}"
     if page.health == Health.DAMAGED:
+        if restored:
+            return f"Repaired · {page.lost:,} {BY_PROTECTION}"
         return f"Damaged · {page.lost:,} lost"
     return _HEALTH_LABELS[page.health]
 
@@ -162,7 +177,7 @@ def summary_line(s: Summary) -> str:
     if s.state == DocState.CHECKING:
         return "Checking the fingerprint…"
     if s.state == DocState.VERIFIED:
-        line = f"Verified · {count(s.size, 'byte')}"
+        line = f"{VERIFIED} · {count(s.size, 'byte')}"
         return f"{line} · {repair_line(repair)}" if repair is not None else line
     if s.state == DocState.RECOVERABLE:
         missing = _page_numbers(s.missing_pages)
@@ -281,11 +296,12 @@ def unreadable_reason(reason: str) -> str:
 
 
 def detail_text(
-    page: PageView, scan_name: str | None, pages: int, reason: str = ""
+    page: PageView, scan_name: str | None, pages: int, reason: str = "", restored: bool = False
 ) -> tuple[str, ...]:
     """The detail panel's lines for one page of a document of ``pages`` pages.
 
     ``reason`` defaults to the page's own reason for being unreadable.
+    ``restored`` is as for ``health_label``.
     """
     reason = reason or page.reason
     title = f"Page {page.number:,} of {pages:,}"
@@ -293,7 +309,10 @@ def detail_text(
         title += f" · {scan_name}"
     if page.histogram is not None:
         blocks = sum(page.histogram) + page.lost
-        blocks_line = f"{count(blocks, 'block')} · {page.repaired:,} repaired · {page.lost:,} lost"
+        lost = f"{page.lost:,} lost"
+        if restored and page.lost:
+            lost = f"{page.lost:,} repaired {BY_PROTECTION}"
+        blocks_line = f"{count(blocks, 'block')} · {page.repaired:,} repaired · {lost}"
         lines = [title, blocks_line]
         if page.repaired:
             one, two, three = page.histogram[1:]
@@ -352,8 +371,8 @@ def document_title(group: GroupView) -> str:
     return _group_line(group)
 
 
-def page_row(page: PageView) -> str:
-    return f"Page {page.number:,} · {health_label(page)}"
+def page_row(page: PageView, restored: bool = False) -> str:
+    return f"Page {page.number:,} · {health_label(page, restored)}"
 
 
 def other_group_row(group: GroupView) -> str:
@@ -692,7 +711,24 @@ def repair_line(u: Unwrapped) -> str:
             f"{fixed} · the worst spot needed {u.worst_used:,} of {u.budget:,}: "
             "too much to repair"
         )
-    return f"{fixed} · the worst spot used {u.worst_used:,} of {u.budget:,} of its repair capacity"
+    return f"{fixed} · {margin_line(u.worst_used, u.budget)}"
+
+
+def margin_line(used: int, budget: int) -> str:
+    """How close a repair came to failing: the share of its repair capacity
+    that the worst spot of the document used. At 100% the file is lost."""
+    share = used / budget
+    if share <= WIDE_MARGIN:
+        margin = "a wide margin"
+    elif share <= MODERATE_MARGIN:
+        margin = "a moderate margin"
+    else:
+        margin = "close to the limit"
+    percent = min(math.ceil(100 * share), 100)  # never shown as less than it is
+    return (
+        f"the worst spot used {percent}% of its repair capacity "
+        f"({used:,} of {budget:,}): {margin}"
+    )
 
 
 def rescan_advice(u: Unwrapped) -> str:
