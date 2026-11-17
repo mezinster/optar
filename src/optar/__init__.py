@@ -1,7 +1,7 @@
 # (c) GPL 2007 Karel 'Clock' Kulhavy, Twibright Labs; Python port 2026
 """Python port of optar: store files on paper."""
 
-__version__ = "0.3.1"
+__version__ = "0.4.0"
 
 from optar.container import (  # noqa: E402
     BEST_EFFORT_PAGES,
@@ -52,7 +52,13 @@ from optar.format import (  # noqa: E402
     get_paper,
     layout_for_format,
 )
-from optar.identify import ScanIdentity, decode_unlabelled, identify_scan, scan_dpi  # noqa: E402
+from optar.identify import (  # noqa: E402
+    ScanIdentity,
+    decode_unlabelled,
+    identify_any,
+    identify_scan,
+    scan_dpi,
+)
 from optar.imageio import read_scan, write_pgm, write_png  # noqa: E402
 from optar.label import (  # noqa: E402
     LabelInfo,
@@ -110,6 +116,7 @@ __all__ = [
     "printed_label",
     "label_capacity",
     "identify_scan",
+    "identify_any",
     "decode_unlabelled",
     "ScanIdentity",
     "scan_dpi",

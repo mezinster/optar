@@ -159,6 +159,17 @@ def save_scan(path, array) -> None:
     Image.fromarray(np.ascontiguousarray(array, np.uint8)).save(path, format="PNG")
 
 
+def save_linear_scan(path, array) -> None:
+    """Write a 2-D uint8 array as a PNG that optar.imageio.read_scan loads exactly
+    as it is: its gAMA chunk says 1.0, so no gamma linearisation applies."""
+    import numpy as np
+    from PIL import Image, PngImagePlugin
+
+    info = PngImagePlugin.PngInfo()
+    info.add(b"gAMA", (100_000).to_bytes(4, "big"))
+    Image.fromarray(np.ascontiguousarray(array, np.uint8)).save(path, format="PNG", pnginfo=info)
+
+
 def reference_remove_border_dirt(img, fill_cut):
     """Direct queue-based port of remove_dirt_from_border, for small images."""
     from collections import deque

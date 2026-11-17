@@ -57,6 +57,23 @@ def pytest_collection_modifyitems(config, items):
                 item.add_marker(pytest.mark.qt_log_ignore(*_OFFSCREEN_FONT_WARNINGS))
 
 
+@pytest.fixture(autouse=True)
+def quick_slow_reader(request, monkeypatch):
+    """The slower reader for coarse scans takes tens of seconds on a full page
+    that is not a version-1 page (a page whose label was blacked out, say): tests
+    not about it (those without ``coarse_scans``) get one that gives up at once,
+    as the real one does on their scans."""
+    if "coarse_scans" in request.fixturenames:
+        return
+    import optar.decoder.soft
+    from optar.errors import IdentifyError
+
+    def gives_up(image, options=None, cancelled=None):
+        raise IdentifyError("label unreadable")
+
+    monkeypatch.setattr(optar.decoder.soft, "identify_coarse", gives_up)
+
+
 @pytest.fixture
 def scan_files(tmp_path):
     """Factory writing an encoded document as PNG scans, one per page.

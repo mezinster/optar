@@ -19,6 +19,7 @@ import pytest
 from PIL import Image
 
 import optar.container
+import optar.decoder.soft
 import optar.encoder
 import optar.errors
 import optar.identify
@@ -41,7 +42,14 @@ from optar_gui.work import (
     process_scan,
     process_unlabelled,
 )
-from tests.helpers import fake_scan, parse_pdf, save_scan, seeded_bytes, simulate_scan
+from tests.helpers import (
+    fake_scan,
+    parse_pdf,
+    save_linear_scan,
+    save_scan,
+    seeded_bytes,
+    simulate_scan,
+)
 
 A4 = PageFormat.for_paper(PAPERS["a4"])
 NAME = "doc.tar"
@@ -83,6 +91,20 @@ def cell_centres(scale):
     cx = MARGIN + scale * (xs[pos] + A4.border) + (scale - 1) / 2
     cy = MARGIN + scale * (ys[pos] + A4.border) + (scale - 1) / 2
     return np.column_stack([cx, cy])
+
+
+@pytest.fixture(autouse=True)
+def quick_slow_reader(request, monkeypatch):
+    """The slower reader takes tens of seconds on a full page that is not a
+    version-1 page: tests not about it (those without ``coarse_case``) get one
+    that gives up at once, as the real one does on their scans."""
+    if "coarse_case" in request.fixturenames:
+        return
+
+    def gives_up(image, options=None, cancelled=None):
+        raise optar.errors.IdentifyError("label unreadable")
+
+    monkeypatch.setattr(optar.decoder.soft, "identify_coarse", gives_up)
 
 
 def write(tmp_path, name, image):
@@ -213,7 +235,7 @@ def test_process_scan_never_raises_for_bad_input(tmp_path, make):
     assert w.reason
     if make in (blank_png, random_noise_png):
         # Noise may show a page outline, whose size gives a (coarse) resolution.
-        coarse = text.coarse_scan(w.scan_dpi, None) if w.scan_dpi else None
+        coarse = text.coarse_scan(w.scan_dpi, None, slow_tried=True) if w.scan_dpi else None
         assert w.reason in ("no page found", "label unreadable", coarse)
         assert w.size == (800, 1100)
     elif make is directory:
@@ -259,21 +281,24 @@ class FakeStages:
         self.ran = []
         self.work = clean_work
         monkeypatch.setattr(work, "read_scan", self.read_scan)
-        monkeypatch.setattr(work, "identify_scan", self.identify_scan)
+        monkeypatch.setattr(work, "identify_any", self.identify_any)
         monkeypatch.setattr(work, "decode_located", self.decode_located)
         monkeypatch.setattr(work, "decode_unlabelled", self.decode_unlabelled)
-        monkeypatch.setattr(work, "_outcome", lambda result: (self.work.outcome, self.work.marks))
+        monkeypatch.setattr(
+            work, "_outcome", lambda result, slow=False: (self.work.outcome, self.work.marks)
+        )
 
     def read_scan(self, path):
         self.ran.append("read")
         return np.zeros((20, 10), np.uint8)
 
-    def identify_scan(self, image):
+    def identify_any(self, image, **_):
         self.ran.append("identify")
 
         class Identity:
             fmt, rotation, page, total, name, tag, grid = A4, 0, 1, 2, NAME, None, object()
             header = payload = result = layout = scan_dpi = None
+            reader = "ordinary"
 
         return Identity()
 
@@ -364,7 +389,7 @@ def test_process_scan_of_a_coarse_standard_page_says_so(tmp_path):
     assert w.info is None and w.outcome is None
     assert w.scan_dpi == pytest.approx(200, rel=0.10)
     assert work.too_coarse(w.scan_dpi, None, unreadable=True)
-    assert w.reason == text.coarse_scan(w.scan_dpi, None)
+    assert w.reason == text.coarse_scan(w.scan_dpi, None, slow_tried=True)
     assert "200" in w.reason and "600" in w.reason
     assert w.payload is None and w.header is None
 
@@ -382,16 +407,16 @@ def test_too_coarse_is_below_two_scan_pixels_per_dot():
 
 def test_process_scan_of_an_unreadable_scan_carries_its_resolution(monkeypatch, tmp_path):
     def coarse_or_not(dpi):
-        def identify(image):
+        def identify(image, **_):
             raise optar.errors.IdentifyError("label unreadable", scan_dpi=dpi)
 
         return identify
 
     path = write(tmp_path, "blank.png", np.full((40, 30), 255, np.uint8))
-    monkeypatch.setattr(work, "identify_scan", coarse_or_not(600.0))
+    monkeypatch.setattr(work, "identify_any", coarse_or_not(600.0))
     w = process_scan(path)
     assert (w.reason, w.scan_dpi) == ("label unreadable", 600.0)
-    monkeypatch.setattr(work, "identify_scan", coarse_or_not(None))
+    monkeypatch.setattr(work, "identify_any", coarse_or_not(None))
     assert process_scan(path).reason == "label unreadable"
 
 
@@ -433,7 +458,7 @@ def test_process_unlabelled(tmp_path, turns):
     path = write(tmp_path, "black.png", np.rot90(upright, -turns))
     unread = process_scan(path)  # fake_scan's scale 1: 200 dpi, too coarse to say more
     assert unread.scan_dpi == pytest.approx(200, rel=0.05)
-    assert unread.reason == text.coarse_scan(unread.scan_dpi, None)
+    assert unread.reason == text.coarse_scan(unread.scan_dpi, None, slow_tried=True)
     w = process_unlabelled(path, A4.to_string())
     assert w.info is None and w.reason == ""
     assert w.rotation == turns
@@ -952,7 +977,7 @@ def large_stages(monkeypatch, tmp_path):
     monkeypatch.setattr(work, "LARGE_SCAN_PIXELS", 100)
     monkeypatch.setattr(work, "read_scan", lambda path: np.zeros((20, 10), np.uint8))
 
-    def identify(image):
+    def identify(image, **_):
         overlap.stage()
         raise work.IdentifyError("no page found")
 
@@ -960,7 +985,7 @@ def large_stages(monkeypatch, tmp_path):
         overlap.stage()
         raise DecodeError("nothing")
 
-    monkeypatch.setattr(work, "identify_scan", identify)
+    monkeypatch.setattr(work, "identify_any", identify)
     monkeypatch.setattr(work, "decode_unlabelled", unlabelled)
     path = tmp_path / "large.png"
     path.write_bytes(b"x")
@@ -1033,10 +1058,10 @@ def test_a_cancelled_scan_stops_waiting_for_its_turn(large_stages):
 def test_the_turn_is_released_when_a_stage_raises(large_stages, monkeypatch):
     path = large_stages.path
 
-    def broken(image):
+    def broken(image, **_):
         large_stages.stage(fail=True)
 
-    monkeypatch.setattr(work, "identify_scan", broken)
+    monkeypatch.setattr(work, "identify_any", broken)
     with pytest.raises(RuntimeError, match="stage failed"):
         process_scan(path)
     assert work._LARGE_SCAN_TURN.acquire(timeout=1)
@@ -1045,5 +1070,90 @@ def test_the_turn_is_released_when_a_stage_raises(large_stages, monkeypatch):
                         lambda image, fmt, detail: large_stages.stage(fail=True))  # fmt: skip
     with pytest.raises(RuntimeError, match="stage failed"):
         process_unlabelled(path, A4.to_string())
+    assert work._LARGE_SCAN_TURN.acquire(timeout=1)
+    work._LARGE_SCAN_TURN.release()
+
+
+# --- The slower reader for coarse scans --------------------------------------------
+
+
+@pytest.fixture
+def coarse_case(tmp_path, monkeypatch):
+    """test_soft's small version-1 page, scanned too coarsely for the ordinary
+    reader, as a PNG; identification tries its layout only."""
+    from tests.unit import test_soft as case
+
+    monkeypatch.setattr(optar.identify, "_papers_by_shape", lambda c: [PAPERS["a4"]])
+    monkeypatch.setattr(optar.identify, "_layouts_by_shape", lambda c, p: [case.LAYOUT])
+    path = tmp_path / "coarse.png"
+    save_linear_scan(path, case.scan(**case.COARSER))
+    return case, str(path)
+
+
+def test_process_scan_reads_a_coarse_scan_with_the_slower_reader(coarse_case):
+    case, path = coarse_case
+    on_slow = []
+    w = process_scan(path, on_slow=lambda: on_slow.append(None))
+    assert on_slow == [None]
+    assert w.slow and w.reason == ""
+    assert w.info is not None and w.info.header is not None
+    assert (w.info.page, w.info.total) == (2, 2)
+    assert w.info.format == case.FMT.to_string()
+    assert w.payload is not None and w.layout is case.LAYOUT
+    assert w.scan_dpi == pytest.approx(case.COARSER["dpi"], rel=0.05)
+    # The slower reader's histogram counts overruled dots, not repairs: none is
+    # counted or marked, and the size is that of the scan as loaded.
+    assert w.outcome.slow and w.outcome.histogram == (0, 0, 0, 0) and w.outcome.lost == 0
+    assert w.marks is not None and w.marks.shape == (0, 2)
+    h, wd = case.scan(**case.COARSER).shape
+    assert w.size == (wd, h)
+    assert len(w.outcome.data) == -(-case.FMT.net_bits // 8)
+
+
+def test_process_scan_keeps_ordinary_pages_ordinary(clean_work):
+    assert not clean_work.slow and not clean_work.outcome.slow
+
+
+def test_cancelling_during_the_slower_reader_raises_cancelled(coarse_case):
+    _, path = coarse_case
+    started = threading.Event()
+    begun = time.monotonic()
+    with pytest.raises(Cancelled):
+        process_scan(path, started.is_set, on_slow=started.set)
+    assert started.is_set() and time.monotonic() - begun < 30
+    assert work._LARGE_SCAN_TURN.acquire(timeout=1)  # released
+    work._LARGE_SCAN_TURN.release()
+
+
+def test_an_unreadable_coarse_scan_says_the_slower_reader_was_tried(coarse_case, tmp_path):
+    case, _ = coarse_case
+    data = document()[0][:1000]
+    pixels = next(iter(encode(data, case.FMT, "coarse.bin"))).pixels  # no header
+    img = simulate_scan(pixels, case.LAYOUT, case.COARSER["dpi"], blur=case.COARSER["blur"])
+    path = str(tmp_path / "plain.png")
+    save_linear_scan(path, img)
+    w = process_scan(path, on_slow=lambda: None)
+    assert w.info is None and not w.slow
+    # The outline's resolution is judged against a standard A4 page, which this
+    # small page is not: only the wording is checked.
+    assert w.reason.startswith("Scanned at about ")
+    assert "which is too coarse to read." in w.reason
+    assert w.reason.endswith(text.SLOW_TRIED)
+
+
+def test_the_slower_reader_waits_for_the_large_scan_turn(monkeypatch, tmp_path):
+    path = write(tmp_path, "blank.png", np.full((40, 30), 255, np.uint8))
+    seen = []
+
+    def identify(image, *, cancelled, on_slow):
+        assert not work._LARGE_SCAN_TURN.locked()
+        on_slow()
+        seen.append(work._LARGE_SCAN_TURN.locked())
+        raise optar.errors.IdentifyError("label unreadable", scan_dpi=150.0, slow_tried=True)
+
+    monkeypatch.setattr(work, "identify_any", identify)
+    w = process_scan(path, on_slow=lambda: seen.append("reported"))
+    assert seen == ["reported", True]
+    assert w.reason == text.coarse_scan(150.0, None, slow_tried=True)
     assert work._LARGE_SCAN_TURN.acquire(timeout=1)
     work._LARGE_SCAN_TURN.release()

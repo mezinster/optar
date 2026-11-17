@@ -1192,6 +1192,37 @@ clearly and why free text that is one misread character away from a valid
 tag is refused. These acceptance thresholds belong to this reader, not to
 the format.
 
+### 7.6 The slower reader
+
+When the steps of 7.5 identify nothing but the outline of a page was found,
+or accept a page from an untagged label alone on a scan with fewer than 2.5
+scan pixels to a data pixel while 1% or more of the page's symbols are beyond
+correction, this project tries a second, slower reader (`src/optar/decoder/soft.py`),
+meant for a scan too coarse for its dot size. For each candidate layout and
+rotation, in the order of 7.5, it:
+
+1. enlarges the scan so that a data pixel is about four scan pixels wide,
+   and locates the page as in 7.2 and 7.3;
+2. reads the page as in 7.4 and takes the symbols decoded with at most one
+   corrected bit as known;
+3. samples a 7 by 7 grid of points half a data pixel apart around every data
+   pixel and fits, by least squares, a filter from those samples to the known
+   bits, one filter for each of 16 by 22 regions of the page;
+4. applies the filters to every data pixel, which gives a signed confidence
+   for each bit, and chooses for each Golay symbol the codeword that fits its
+   24 confidences best;
+5. takes the more confident 60% of the symbols as known and repeats from
+   step 3, five fits in all.
+
+A page is accepted only by an acceptable header (section 6.2). A label is not
+read, so a page without a header (a plain or tagged document, part 3) is not
+identified this way. A page whose tag was accepted is never read this way,
+so section 6.1 holds. The result goes
+to the container exactly as the ordinary reader's does, and only the
+fingerprint verifies the file (section 6.3). Nothing in this reader is part
+of the format, and it does not change the results of the decoder of 7.1 to
+7.5.
+
 Vectors: `tests/vectors/c/decoder.json`, `tests/vectors/c/decoder_internals.json`
 (they pin this decoder's results on fixed scans, not the format).
 

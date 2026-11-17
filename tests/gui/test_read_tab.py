@@ -39,13 +39,13 @@ _RESULTS = {}
 _RESULTS_LOCK = threading.Lock()
 
 
-def cached_process(path, cancelled=lambda: False):
+def cached_process(path, cancelled=lambda: False, on_slow=None):
     """``process_scan``, remembering each file's result by its path."""
     key = os.path.realpath(path)
     with _RESULTS_LOCK:
         if key in _RESULTS:
             return _RESULTS[key]
-    work = process_scan(path, cancelled)
+    work = process_scan(path, cancelled, on_slow)
     with _RESULTS_LOCK:
         _RESULTS[key] = work
     return work
@@ -478,7 +478,7 @@ def test_save_document_that_does_not_match_confirms(qtbot, make_tab, printouts, 
     data, paths = printouts["two"]
     wrong = make_tag(seeded_bytes(99, len(data)))  # same size, another fingerprint
 
-    def mislabelled(path, cancelled=lambda: False):
+    def mislabelled(path, cancelled=lambda: False, on_slow=None):
         work = cached_process(path, cancelled)
         return dataclasses.replace(work, info=dataclasses.replace(work.info, tag=wrong))
 
@@ -1032,7 +1032,9 @@ def test_a_coarse_scan_is_noted_on_its_page_and_when_unreadable(qtbot, make_tab)
             None, "label unreadable", None, 0, None, (10, 10), scan_dpi=600.0
         ),
     }
-    tab = make_tab(process=lambda path, cancelled=lambda: False: works[os.path.basename(path)])
+    tab = make_tab(
+        process=lambda path, cancelled=lambda: False, on_slow=None: works[os.path.basename(path)]
+    )
     tab.controller.add_paths(["/scans/page.png", "/scans/coarse.png", "/scans/photo.png"])
     wait_settled(qtbot, tab)
     def starting(prefix):

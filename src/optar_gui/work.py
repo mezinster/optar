@@ -39,6 +39,7 @@ import optar.container
 import optar.encoder
 from optar.container import Header, PagePayload, pages_promised, plan, plan_for, wrap
 from optar.decoder import PageResult, decode_located, page_to_scan
+from optar.decoder.soft import Stopped
 from optar.encoder import check_encodable, encode, page_count
 from optar.errors import DecodeError, IdentifyError, OptarError
 from optar.fileio import io_error, replacing
@@ -53,7 +54,7 @@ from optar.format import (
     get_layout,
     get_paper,
 )
-from optar.identify import decode_unlabelled, identify_scan
+from optar.identify import decode_unlabelled, identify_any
 from optar.imageio import read_scan
 from optar.label import printed_label
 from optar.layout import channel_xy
@@ -120,9 +121,15 @@ def _take_turn(pixels: int, cancelled: Callable[[], bool]) -> bool:
     once for a smaller scan. Raises ``Cancelled`` while waiting, holding nothing."""
     if pixels <= LARGE_SCAN_PIXELS:
         return False
+    _wait_turn(cancelled)
+    return True
+
+
+def _wait_turn(cancelled: Callable[[], bool]) -> None:
+    """Waits until ``_LARGE_SCAN_TURN`` is taken; raises ``Cancelled`` while
+    waiting, holding nothing."""
     while not _LARGE_SCAN_TURN.acquire(timeout=_TURN_POLL_S):
         _check(cancelled)
-    return True
 
 
 def _irregular(path: str) -> bool:
@@ -185,7 +192,10 @@ class ScanWork:
     ``payload`` is a version-1 page's payload (``header`` gives its header,
     from ``info``); ``scan_dpi`` the scan's estimated resolution, also for a
     scan that was found but not identified; ``layout`` the identified page's
-    paper and dot size.
+    paper and dot size. ``slow`` is True when the page was read by the slower
+    reader for coarse scans (``optar.decoder.soft``): its outcome counts no
+    repairs and it has no marks (an empty array), since that reader measures no
+    per-block damage.
     """
 
     info: ScanInfo | None
@@ -197,6 +207,7 @@ class ScanWork:
     payload: PagePayload | None = None
     scan_dpi: float | None = None
     layout: Layout | None = None
+    slow: bool = False
 
     @property
     def header(self) -> Header | None:
@@ -229,13 +240,23 @@ def _upright_size(image: np.ndarray, rotation: int) -> tuple[int, int]:
     return (int(h), int(w)) if rotation % 2 else (int(w), int(h))
 
 
-def _outcome(result: PageResult) -> tuple[PageOutcome, np.ndarray]:
+def _outcome(result: PageResult, slow: bool = False) -> tuple[PageOutcome, np.ndarray]:
     """The page's packed data and statistics, and its corrected bits' scan positions.
 
     Takes only small arrays out of the result: nothing returned refers to
-    the grid or the scan.
+    the grid or the scan. A page read by the slower reader (``slow``) has no
+    corrected bits: its histogram counts the dot decisions that reader
+    overruled, not repairs, so its outcome counts none and it has no marks.
     """
     stats = result.stats
+    if slow:
+        outcome = PageOutcome(
+            data=np.packbits(result.bits).tobytes(),
+            histogram=(0, 0, 0, 0),
+            lost=int(stats.uncorrectable),
+            slow=True,
+        )
+        return outcome, np.empty((0, 2), np.float32)
     outcome = PageOutcome(
         data=np.packbits(result.bits).tobytes(),
         histogram=tuple(int(n) for n in stats.error_histogram[:4]),
@@ -249,8 +270,19 @@ def _outcome(result: PageResult) -> tuple[PageOutcome, np.ndarray]:
     return outcome, marks
 
 
-def process_scan(path: str, cancelled: Callable[[], bool] = _never) -> ScanWork:
+def process_scan(
+    path: str,
+    cancelled: Callable[[], bool] = _never,
+    on_slow: Callable[[], None] | None = None,
+) -> ScanWork:
     """Load, identify and decode one scan.
+
+    A scan the ordinary reader cannot identify, but whose page outline it found,
+    is tried with the slower reader for coarse scans (``identify.identify_any``):
+    ``on_slow()`` is called (on the worker thread) just before that starts, and
+    the work then waits for the large-scan turn, since that reader works on an
+    enlarged copy of the scan. A page it reads comes back with ``slow`` True; if
+    it fails too, a coarse scan's reason says that it was tried.
 
     An unreadable file comes back with ``info=None`` and the reading error as
     the reason; a scan that is not identified with ``info=None`` and the
@@ -260,8 +292,8 @@ def process_scan(path: str, cancelled: Callable[[], bool] = _never) -> ScanWork:
     not decode with its ``info``, no outcome and the decoder's message. A
     version-1 page was decoded while it was identified: that decode is used,
     not repeated, and its payload kept.
-    Checks ``cancelled`` after loading, after identifying and after decoding, and
-    while a large scan waits for its turn.
+    Checks ``cancelled`` after loading, after identifying and after decoding,
+    while a large scan waits for its turn, and throughout the slower reader.
     """
     if _irregular(path):
         return ScanWork(None, text.not_regular_file(path), None, 0, None, (0, 0))
@@ -271,13 +303,24 @@ def process_scan(path: str, cancelled: Callable[[], bool] = _never) -> ScanWork:
         return ScanWork(None, str(e), None, 0, None, (0, 0))
     _check(cancelled)
     turn = _take_turn(image.size, cancelled)
+
+    def slow_started() -> None:
+        nonlocal turn
+        if on_slow is not None:
+            on_slow()
+        if not turn:
+            _wait_turn(cancelled)
+            turn = True
+
     try:
         try:
-            identity = identify_scan(image)
+            identity = identify_any(image, cancelled=cancelled, on_slow=slow_started)
+        except Stopped:
+            raise Cancelled() from None
         except IdentifyError as e:
             reason = e.reason
             if too_coarse(e.scan_dpi, None, unreadable=True):
-                reason = text.coarse_scan(e.scan_dpi, None)
+                reason = text.coarse_scan(e.scan_dpi, None, slow_tried=e.slow_tried)
             size = _upright_size(image, 0)
             return ScanWork(None, reason, None, 0, None, size, scan_dpi=e.scan_dpi)
         except DecodeError as e:
@@ -286,7 +329,8 @@ def process_scan(path: str, cancelled: Callable[[], bool] = _never) -> ScanWork:
         size = _upright_size(image, rotation)
         del image
         header, payload = identity.header, identity.payload
-        found = {"scan_dpi": identity.scan_dpi, "layout": identity.layout}
+        slow = identity.reader == "slow"
+        found = {"scan_dpi": identity.scan_dpi, "layout": identity.layout, "slow": slow}
         info = ScanInfo(
             format=identity.fmt.to_string(),
             total=identity.total,
@@ -312,7 +356,7 @@ def process_scan(path: str, cancelled: Callable[[], bool] = _never) -> ScanWork:
     finally:
         if turn:
             _LARGE_SCAN_TURN.release()
-    outcome, marks = _outcome(result)
+    outcome, marks = _outcome(result, slow)
     del result
     _check(cancelled)
     return ScanWork(info, "", outcome, rotation, marks, size, payload=payload, **found)

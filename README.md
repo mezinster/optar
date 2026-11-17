@@ -144,7 +144,9 @@ Each page in the list has one of these states:
   optar page in the image, or the label could not be read). A scan made below
   400 dpi that cannot be read says so instead, for example "Scanned at about
   200 dpi, which is too coarse to read", with the resolution each dot size
-  needs. Rescan it, or assign it to a page by hand.
+  needs. Before a scan is shown as not readable, the slower reader has been
+  tried on it when a page outline was found (see "Scans that are too coarse:
+  the slower reader"). Rescan it, or assign it to a page by hand.
 - Missing: no scan of this page has been added. Add one. In a protected
   document the other pages may still be enough to recover the file, and the bar
   then says so.
@@ -193,6 +195,41 @@ them. The application accepts PNG, TIFF, BMP, PGM/PPM and JPEG. JPEG is
 accepted but is lossy and a poor choice: use PNG or TIFF, and do not save the
 pages as one PDF. `optar decode` reads only files named `BASE_0001.png`,
 `BASE_0002.png`, ...
+
+### Scans that are too coarse: the slower reader
+
+From 0.4.0, when the ordinary reader cannot identify a scan, but finds the
+outline of a page in it, the program tries a second, slower reader on the same scan. It
+does the same when a coarse scan (fewer than 2.5 scan pixels to a dot) gave
+the ordinary reader only an untagged label and no header, and the page's data
+read badly (1% or more of its symbols beyond correction): on such a scan the
+label can still be legible where the data is not. A page whose data reads
+well is an old page without a header, and is left alone. If the slower reader finds
+nothing there, the label's reading is kept. This is meant for a scan made at too low a resolution for its dot size, for
+example a Standard-dot page scanned at 300 dpi instead of 600. The slower
+reader enlarges the scan and learns, from the dots the ordinary reader is
+sure of, how neighbouring dots blur into each other in each part of the page.
+It then reads every dot with that knowledge and chooses each symbol as a
+whole.
+
+- In the application it runs by itself. The scan's row says while the slower
+  reader is at work, and afterwards that the page was read by it.
+- `optar decode` also runs it by itself and says so on stderr for each scan
+  it is tried on. `--no-slow-reader` turns it off.
+- An A4 page took 40 to 70 seconds in all on the development machine: 20 to
+  35 seconds for the ordinary reader to give up, then 20 to 35 seconds for
+  the slower reader. An image that is not
+  an optar page at all, but in which a page outline is found, costs about 20
+  to 35 seconds more than it did without the slower reader.
+- It identifies a page only by the header in its data. Old 0.2-style pages
+  (identified by the tag in their label) are not covered. The rule that a
+  valid label tag wins over a header is kept: a page whose tag the ordinary
+  reader accepted is never given to the slower reader.
+- It does not make a wrong file look right: as always, only the fingerprint
+  makes a file verified.
+
+Scan at the advised resolution when you can. The slower reader recovers some
+coarse scans, not all of them (see "What has and has not been shown").
 
 ### Dot size and protection
 
@@ -259,6 +296,30 @@ printer and one sheet-fed scanner.
 - Big, Large and Extra large dots verified at 200 dpi with no errors.
 - A document of 12 pages verified with one page withheld.
 
+The slower reader (see "Scans that are too coarse: the slower reader") has
+been shown on one real document and one simulated one:
+
+- Real: the owner's document of six A4 pages, Standard dots, High
+  protection, scanned at about 290 dpi where 600 dpi is advised. The ordinary
+  reader identified none of the pages. With the slower reader the file was
+  recovered and verified by its fingerprint: 759,879 bytes, of which 41,495
+  bytes were repaired by the document's protection, the worst block using 40
+  of its budget of 64. This is one document, one printer, one scanner and one
+  resolution. The scans were read where they are and are not part of this
+  repository.
+- Simulated (`tests/unit/test_coarse_claim.py`): a two-page document of the
+  same kind, scanned at 290 and at 300 dpi with blur 1.8 printer dots. At
+  290 dpi the ordinary reader identifies neither page; at 300 dpi it reads
+  each page's label but no header. In both cases the file verifies with the
+  slower reader. At the simulator's default blur (1.0) the ordinary reader
+  reads such a page at 300 dpi on its own. The simulator is milder than the owner's scanner:
+  at 290 dpi in the simulation the slower reader repaired nothing, where the real
+  document needed 41,495 bytes repaired.
+
+Standard protection has a budget of 32, below the 40 the real document's
+worst block needed, so a Standard-protection document scanned like this is
+expected to fail. Old 0.2-style pages are not covered by the slower reader.
+
 What is not shown:
 
 - No real scan of a larger-dot page has been read yet.
@@ -301,6 +362,7 @@ Or install from source (Python 3.12 or newer; installs numpy and Pillow):
                  [--dots standard|medium|big|large|xlarge] [--protect none|standard|high]
                  [--compatible] [--format STRING]
     optar decode BASE [-o OUTPUT] [--paper a4|letter] [--format STRING] [--debug-images] [--force]
+                 [--no-slow-reader]
     optar --version
 
 `encode` writes `BASE.pdf` by default (`BASE` defaults to `optar_out`), or
@@ -313,7 +375,10 @@ always zero-padded to a whole page. The desktop application does both.
 
 For self-identifying pages (see "Dot size and protection") `decode` finds out
 from the scans themselves what they are. It takes the scans in any order and
-any orientation, and a scan it cannot read counts as a missing page. (It
+any orientation, and a scan it cannot read counts as a missing page. A scan
+the ordinary reader cannot identify is first given to the slower reader (see
+"Scans that are too coarse: the slower reader"), unless you give
+`--no-slow-reader`. (It
 decides from the first three scans: if none of them can be identified, it
 treats the set as a printout from 0.2.0 or earlier.) It
 repairs the data, cuts it to its true size and checks the fingerprint. It

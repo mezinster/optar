@@ -31,7 +31,7 @@ __all__ = ["JobRunner", "default_max_workers"]
 
 log = logging.getLogger(__name__)
 
-_FINISHED, _FAILED, _CANCELLED = range(3)
+_FINISHED, _FAILED, _CANCELLED, _PROGRESS = range(4)
 
 
 def default_max_workers() -> int:
@@ -47,13 +47,14 @@ def _one_line(e: BaseException) -> str:
 
 
 class _Job:
-    __slots__ = ("serial", "scan_id", "fn", "flag")
+    __slots__ = ("serial", "scan_id", "fn", "flag", "reports")
 
-    def __init__(self, serial: int, scan_id: int, fn: Callable) -> None:
+    def __init__(self, serial: int, scan_id: int, fn: Callable, reports: bool = False) -> None:
         self.serial = serial
         self.scan_id = scan_id
         self.fn = fn
         self.flag = threading.Event()
+        self.reports = reports
 
 
 class _Relay(QObject):
@@ -84,7 +85,10 @@ class _Channel:
 def _run(channel: _Channel, job: _Job) -> None:
     """Run one job on a worker thread and hand its outcome to the channel."""
     try:
-        payload = job.fn(job.flag.is_set)
+        if job.reports:
+            payload = job.fn(job.flag.is_set, partial(channel.deliver, job.serial, _PROGRESS))
+        else:
+            payload = job.fn(job.flag.is_set)
         kind = _FINISHED
     except Cancelled:
         payload, kind = None, _CANCELLED
@@ -101,8 +105,10 @@ class JobRunner(QObject):
     Signals, all emitted on the thread that owns the runner: ``started(scan
     id)`` when a job's function is handed to a worker, ``finished(scan id,
     result)`` when it returns, ``failed(scan id, message)`` when it raises
-    (a one-line message; the traceback goes to the ``logging`` module), and
-    ``idle()`` when no job is waiting or running any more.
+    (a one-line message; the traceback goes to the ``logging`` module),
+    ``progress(scan id, payload)`` when a job submitted with ``reports`` calls
+    its ``report(payload)`` while it runs, and ``idle()`` when no job is waiting
+    or running any more. A job's reports arrive before its result.
 
     ``cancelled`` is a callable the function polls; once a job is cancelled
     it emits nothing, ever, whatever its function does. A function raising
@@ -125,6 +131,7 @@ class JobRunner(QObject):
     """
 
     started = Signal(int)
+    progress = Signal(int, object)
     finished = Signal(int, object)
     failed = Signal(int, str)
     idle = Signal()
@@ -157,11 +164,13 @@ class JobRunner(QObject):
         """Jobs waiting or running, counting cancelled functions not yet returned."""
         return len(self._waiting) + len(self._running)
 
-    def submit(self, scan_id: int, fn: Callable[[Callable[[], bool]], object]) -> None:
-        """Queue ``fn(cancelled)`` to run for ``scan_id``."""
+    def submit(self, scan_id: int, fn: Callable[..., object], *, reports: bool = False) -> None:
+        """Queue ``fn(cancelled)`` to run for ``scan_id``; with ``reports``,
+        ``fn(cancelled, report)``, where ``report(payload)``, called on the worker,
+        emits ``progress(scan_id, payload)`` on the runner's thread."""
         if self._closed:
             raise RuntimeError("the job runner has been shut down")
-        job = _Job(next(self._serials), scan_id, fn)
+        job = _Job(next(self._serials), scan_id, fn, reports)
         with self._channel.lock:
             self._channel.flags[job.serial] = job.flag
         self._waiting.append(job)
@@ -231,6 +240,11 @@ class JobRunner(QObject):
             self.started.emit(job.scan_id)
 
     def _receive(self, serial: int, kind: int, payload: object) -> None:
+        if kind == _PROGRESS:
+            job = self._running.get(serial)
+            if job is not None and not self._closed and not job.flag.is_set():
+                self.progress.emit(job.scan_id, payload)
+            return
         job = self._running.pop(serial, None)
         if job is None or self._closed:
             return

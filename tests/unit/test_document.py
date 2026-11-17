@@ -2605,3 +2605,74 @@ def test_version1_choice_follows_its_identity():
     doc.set_unreadable(first, "could not be decoded")  # the choice keeps its identity
     second = add_v1(doc, "v2", payloads[2])  # another page of the same document
     assert doc.current.scan_ids == (second,)
+
+
+# --- The slower reader for coarse scans --------------------------------------------
+
+
+def add_slow_v1(doc, n, payload):
+    """Adds a version-1 scan read by the slower reader: it counts no repairs."""
+    scan_id = add(doc, n)
+    doc.set_identified(scan_id, v1_info(payload, ""))
+    doc.set_payload(scan_id, payload)
+    doc.set_outcome(scan_id, PageOutcome(payload.data, (0, 0, 0, 0), 0, slow=True))
+    return scan_id
+
+
+def test_a_page_read_by_the_slower_reader_says_so_and_counts_no_repairs():
+    data, payloads = v1_pages(2)
+    doc = Document()
+    add_v1(doc, "a", payloads[1])
+    slow = add_slow_v1(doc, "b", payloads[2])
+    first, second = doc.pages()
+    assert not first.slow
+    assert second.slow and second.scan_id == slow
+    assert (second.health, second.repaired, second.lost) == (Health.GOOD, 0, 0)
+    # The summary does not call the slow page good: it counts it apart.
+    assert (doc.summary().good, doc.summary().slow) == (2, 1)
+    repaired(doc)
+    assert doc.summary().slow == 1
+    assert doc.summary().state == DocState.VERIFIED
+    assert doc.save_bytes() == data
+
+
+def test_an_ordinary_reading_of_a_page_is_preferred_to_a_slow_one():
+    _, payloads = v1_pages(1)
+    doc = Document()
+    slow = add_slow_v1(doc, "slow", payloads[1])
+    ordinary = add_v1(doc, "ordinary", erased(payloads[1], 40), corrected=500)
+    slot = doc.slots()[0]
+    assert (slot.scan_id, slot.spare_ids) == (ordinary, (slow,))
+    assert doc.page_with(slow).slow and not doc.pages()[0].slow
+
+
+def test_a_scan_being_read_by_the_slower_reader_is_listed_until_its_work_ends():
+    doc = Document()
+    a, b, c = add(doc, "a"), add(doc, "b"), add(doc, "c")
+    for scan_id in (a, b, c):
+        doc.set_working(scan_id)
+    assert doc.reading_coarse() == ()
+    doc.set_reading_coarse(a)
+    doc.set_reading_coarse(b)
+    doc.set_reading_coarse(c)
+    assert [s.id for s in doc.reading_coarse()] == [a, b, c]
+    assert all(s.state == ScanState.WORKING for s in doc.reading_coarse())
+    assert doc.actions(Row.READING_COARSE, a) == Actions(remove=a)
+    assert doc.actions(Row.READING_COARSE, 99) == NO_ACTIONS
+    doc.set_unreadable(a, "label unreadable")
+    _, payloads = v1_pages(1)
+    doc.set_identified(b, v1_info(payloads[1]))
+    assert [s.id for s in doc.reading_coarse()] == [c]
+    assert doc.actions(Row.READING_COARSE, a) == NO_ACTIONS
+    # With a document current, the row still offers removing the scan.
+    assert doc.current is not None
+    assert doc.actions(Row.READING_COARSE, c) == Actions(remove=c)
+    doc.set_working(c, False)
+    assert doc.reading_coarse() == ()
+    doc.set_working(c)
+    doc.set_reading_coarse(c)
+    doc.set_reading_coarse(c, False)
+    assert doc.reading_coarse() == ()
+    doc.set_reading_coarse(c)
+    doc.remove_scan(c)
+    assert doc.reading_coarse() == ()

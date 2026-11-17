@@ -6,7 +6,7 @@ def test_version_and_errors():
     import optar
     from optar.errors import DecodeError, FormatError, OptarError
 
-    assert optar.__version__ == "0.3.1"
+    assert optar.__version__ == "0.4.0"
     assert issubclass(FormatError, OptarError) and issubclass(FormatError, ValueError)
     assert issubclass(DecodeError, OptarError)
 

@@ -13,6 +13,7 @@ copies in its data, which only a decode can read.
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import numpy as np
@@ -40,6 +41,7 @@ __all__ = [
     "ScanIdentity",
     "candidate_rotations",
     "decode_unlabelled",
+    "identify_any",
     "identify_scan",
     "scan_dpi",
 ]
@@ -94,6 +96,8 @@ class ScanIdentity:
     payload: PagePayload | None = None  # set with header: the page is already decoded
     result: PageResult | None = None  # set with header (decoded with detail=True)
     scan_dpi: float | None = None  # estimated resolution of the scan
+    # "ordinary", or "slow" for a page read by decoder.soft (identify_coarse).
+    reader: str = "ordinary"
 
 
 def scan_dpi(grid: PageGrid, layout: Layout) -> float:
@@ -369,6 +373,79 @@ def identify_scan(image: np.ndarray, options: DecodeOptions | None = None) -> Sc
                     return done(ident)
         grids.clear()
     raise IdentifyError(LABEL_UNREADABLE, scan_dpi=_outline_dpi(outline))
+
+
+# A page accepted from an untagged label alone is read again by the slow reader
+# when its scan has fewer pixels than this to a printed dot (the ordinary
+# reader is made for three).
+COARSE_PIXELS_PER_DOT = 2.5
+# ... and only when the ordinary reader could not correct at least this share
+# of the page's symbols, so that a header may have gone unread. (A header is
+# stored five times; the owner's coarse scans lost 13% or more of their
+# symbols, a clean scan loses none.)
+DAMAGED_SHARE = 0.01
+
+
+def identify_any(
+    image: np.ndarray,
+    options: DecodeOptions | None = None,
+    *,
+    slow: bool = True,
+    cancelled: Callable[[], bool] | None = None,
+    on_slow: Callable[[], None] | None = None,
+) -> ScanIdentity:
+    """identify_scan, then, where that is not enough, the slow reader (decoder.soft).
+
+    The slow reader is tried when slow is true and either
+    - identify_scan failed but found a page outline (its IdentifyError
+      carries a scan_dpi), or
+    - identify_scan accepted the page from an untagged label alone, with no
+      header, on a scan with fewer than COARSE_PIXELS_PER_DOT pixels to a
+      dot whose data the ordinary reader could not read well (DAMAGED_SHARE
+      of its symbols beyond correction): such a label can be read where
+      the data cannot, so a version-1
+      page would pass for an old one and its document would never be found.
+    on_slow() is called first. In the first case, if the slow reader fails
+    too, identify_scan's error is raised with slow_tried set; in the second
+    the label's identity is kept. A valid tag is never questioned.
+    decoder.soft.Stopped propagates when cancelled() returns True during the
+    slow reader.
+    """
+    error = label_only = None
+    try:
+        ident = identify_scan(image, options)
+    except IdentifyError as first:
+        if not slow or first.scan_dpi is None:
+            raise
+        error = first
+    else:
+        if not slow or not _label_only_and_coarse(ident):
+            return ident
+        label_only = ident
+    from optar.decoder.soft import identify_coarse  # imports this module
+
+    if on_slow is not None:
+        on_slow()
+    try:
+        return identify_coarse(image, options, cancelled)
+    except IdentifyError:
+        if label_only is not None:
+            return label_only
+        error.slow_tried = True
+        raise error from None
+
+
+def _label_only_and_coarse(ident: ScanIdentity) -> bool:
+    if ident.header is not None or ident.tag is not None:
+        return False
+    if ident.scan_dpi is None or ident.layout is None:
+        return False
+    if ident.scan_dpi >= COARSE_PIXELS_PER_DOT * float(ident.layout.pixels_per_inch):
+        return False
+    # A page whose data reads cleanly would have shown its header: it is an
+    # old page, and is left alone.
+    stats = decode_located(ident.grid).stats
+    return stats.uncorrectable >= DAMAGED_SHARE * stats.symbols
 
 
 def _corrected_bits(result: PageResult) -> int:

@@ -1,14 +1,18 @@
 # (c) GPL 2007 Karel 'Clock' Kulhavy, Twibright Labs; Python port 2026
 import os
+import struct
+from unittest import mock
 
 import numpy as np
 import pytest
-from PIL import Image
+from PIL import Image, PngImagePlugin
 
+import optar.identify
 from optar.cli import main
 from optar.encoder import encode
 from optar.format import PAPERS, PageFormat, get_layout
 from tests.helpers import fake_scan, parse_pdf, save_scan, seeded_bytes
+from tests.unit import test_soft
 
 
 @pytest.fixture
@@ -712,7 +716,7 @@ def test_unidentified_scan_counts_as_missing_and_names_resolution(tmp_path, caps
 
     src = _protected_input(tmp_path, 12)
     base = _encode_v1(tmp_path, src, "p", "--dots", "large", "--protect", "standard")
-    real = optar.cli.identify_scan
+    real = optar.cli.identify_any
     calls = []
 
     def flaky(image, *a, **k):
@@ -721,7 +725,7 @@ def test_unidentified_scan_counts_as_missing_and_names_resolution(tmp_path, caps
             raise IdentifyError("label unreadable", scan_dpi=201.3)
         return real(image, *a, **k)
 
-    monkeypatch.setattr(optar.cli, "identify_scan", flaky)
+    monkeypatch.setattr(optar.cli, "identify_any", flaky)
     capsys.readouterr()
     out = tmp_path / "out.bin"
     assert main(["decode", str(base), "-o", str(out)]) == 0
@@ -850,3 +854,91 @@ def test_protect_over_size_limit_fails_before_reading(tmp_path, capsys, monkeypa
     assert main(_encode_args(big, tmp_path / "o", "--protect", "standard", "--to", "png")) == 2
     assert "too large to protect" in capsys.readouterr().err
     assert sorted(p.name for p in tmp_path.iterdir()) == ["big.bin"]
+
+
+# The slower reader from the command line (a small coarse document: tests/unit/test_soft.py)
+
+
+@pytest.fixture
+def coarse_document(tmp_path):
+    """BASE_0001.png and BASE_0002.png: both pages of a small version-1 document,
+    scanned too coarsely for the ordinary reader. Returns (base, data)."""
+    data, _, _ = test_soft.document()
+    for page in (1, 2):
+        scan = test_soft.scan(**test_soft.COARSER, page=page)
+        # gAMA 1.0: the simulated scan is already in linear light.
+        info = PngImagePlugin.PngInfo()
+        info.add(b"gAMA", struct.pack(">I", 100000))
+        Image.fromarray(scan).save(tmp_path / f"coarse_{page:04d}.png", pnginfo=info)
+    # Identification tries the small test layout only.
+    with mock.patch.object(optar.identify, "_papers_by_shape", lambda c: [PAPERS["a4"]]), \
+            mock.patch.object(optar.identify, "_layouts_by_shape", lambda c, p: [test_soft.LAYOUT]):
+        yield str(tmp_path / "coarse"), data
+
+
+def test_decode_reads_a_coarse_scan_with_the_slower_reader(tmp_path, coarse_document, capsys):
+    base, data = coarse_document
+    assert main(["decode", base, "-o", str(tmp_path / "out.bin")]) == 0
+    assert (tmp_path / "out.bin").read_bytes() == data
+    err = capsys.readouterr().err
+    assert "coarse_0001.png: the ordinary reader could not read this scan's data" in err
+    assert "slower reader" in err
+    assert "coarse_0002.png: page 2 of 2" in err and "(read by the slower reader)" in err
+    assert "file verified" in err
+
+
+def test_decode_without_the_slower_reader_fails_as_before(tmp_path, coarse_document, capsys):
+    base, _ = coarse_document
+    assert main(["decode", base, "--no-slow-reader", "-o", str(tmp_path / "out.bin")]) != 0
+    assert not (tmp_path / "out.bin").exists()
+    err = capsys.readouterr().err
+    assert "trying the slower reader" not in err and "read by the slower reader" not in err
+    assert "the slower reader was tried too" not in err
+
+
+def test_probe_names_the_slower_reader_when_it_failed_too(tmp_path, capsys):
+    from optar.cli import _probe
+    from optar.errors import IdentifyError
+
+    save_scan(tmp_path / "x_0001.png", np.full((200, 200), 255, np.uint8))
+    path = str(tmp_path / "x_0001.png")
+
+    def fails(image, options=None):
+        raise IdentifyError("no page", scan_dpi=200.0)
+
+    with mock.patch.object(optar.identify, "identify_scan", fails), \
+            mock.patch("optar.decoder.soft.identify_coarse", side_effect=IdentifyError("no")):
+        tried = _probe(path)
+        skipped = _probe(path, slow=False)
+    assert "trying the slower reader" in capsys.readouterr().err.split("\n")[0]
+    assert "not identified (no page)" in tried and "the slower reader was tried too" in tried
+    assert "not identified (no page)" in skipped and "slower reader" not in skipped
+
+
+def test_an_ordinary_reading_of_a_page_is_preferred_to_a_slow_one(capsys):
+    """The slower reader marks no byte unreadable, so the count of unreadable
+    bytes must not make its reading win over an ordinary one."""
+    from types import SimpleNamespace
+
+    from optar import cli
+    from optar.container import Header, PagePayload
+
+    header = Header(page=1, total=1, size=10, fingerprint=b"f" * 16, parity=64)
+
+    def ident(reader, unreadable):
+        erased = np.zeros(8, dtype=bool)
+        erased[:unreadable] = True
+        payload = PagePayload(data=reader.encode().ljust(8, b"."), erased=erased)
+        return SimpleNamespace(header=header, payload=payload, reader=reader, layout=None)
+
+    ordinary, slow = ident("ordinary", 3), ident("slow", 0)
+    for order in (("a", ordinary), ("b", slow)), (("a", slow), ("b", ordinary)):
+        probes = dict(order)
+        with mock.patch.object(cli, "_document_key", lambda i: "doc"):
+            chosen = cli._gather(list(probes), probes, order[0][1])
+        assert chosen == {1: ordinary.payload}
+    # Two readings by the same reader: the fewer unreadable bytes, as before.
+    worse = ident("ordinary", 5)
+    with mock.patch.object(cli, "_document_key", lambda i: "doc"):
+        assert cli._gather(["a", "b"], {"a": worse, "b": ordinary}, worse) == {1: ordinary.payload}
+    capsys.readouterr()

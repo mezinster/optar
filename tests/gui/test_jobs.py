@@ -308,3 +308,41 @@ def test_process_scan_through_the_runner(make_runner, scan_files):
         assert w.info.page == scan_id and w.info.total == 2 and w.info.name == "doc.tar"
         assert w.outcome.lost == 0
     assert finished[1].outcome.data + finished[2].outcome.data[: len(data) - 199773] == data
+
+
+def test_a_reporting_job_reports_on_the_interface_thread_before_its_result(qtbot, make_runner):
+    runner, rec = make_runner(max_workers=1)
+    runner.progress.connect(lambda i, p: rec._add("progress", i, p))
+
+    def fn(cancelled, report):
+        report("one")
+        report("two")
+        return "done"
+
+    runner.submit(5, fn, reports=True)
+    qtbot.waitUntil(lambda: bool(rec.of("idle")), timeout=TIMEOUT)
+    kinds = [e[0] for e in rec.events]
+    assert kinds == ["started", "progress", "progress", "finished", "idle"]
+    assert rec.of("progress") == [(5, "one"), (5, "two")]
+    assert rec.threads == {threading.get_ident()}
+
+
+def test_a_cancelled_job_reports_nothing(qtbot, make_runner):
+    runner, rec = make_runner(max_workers=1)
+    runner.progress.connect(lambda i, p: rec._add("progress", i, p))
+    reported = threading.Event()
+    go_on = threading.Event()
+
+    def fn(cancelled, report):
+        assert go_on.wait(TIMEOUT / 1000)
+        report("late")
+        reported.set()
+        return "done"
+
+    runner.submit(5, fn, reports=True)
+    qtbot.waitUntil(lambda: bool(rec.of("started")), timeout=TIMEOUT)
+    runner.cancel(5)
+    go_on.set()
+    qtbot.waitUntil(lambda: bool(rec.of("idle")), timeout=TIMEOUT)
+    assert reported.is_set()
+    assert rec.of("progress") == [] and rec.of("finished") == []
