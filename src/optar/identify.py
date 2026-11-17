@@ -19,7 +19,7 @@ import numpy as np
 
 from optar.container import Header, PagePayload, document_plan, page_payload, read_header
 from optar.decoder import PageGrid, PageResult, decode_located, locate_page
-from optar.decoder.dirt import remove_border_dirt
+from optar.decoder.dirt import isolate_page
 from optar.decoder.geometry import find_corners
 from optar.decoder.levels import analyze_levels
 from optar.decoder.options import DecodeOptions
@@ -148,7 +148,7 @@ def _outline(upright: np.ndarray, options: DecodeOptions | None = None) -> np.nd
     if upright.size == 0:
         return None
     levels = analyze_levels(upright, options or DecodeOptions())
-    cleaned = remove_border_dirt(upright, levels.fill_cut)
+    cleaned = isolate_page(upright, levels.fill_cut)
     try:
         return find_corners(cleaned, levels.cut)
     except DecodeError:

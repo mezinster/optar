@@ -18,7 +18,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from optar.decoder.crosses import sync_crosses
-from optar.decoder.dirt import remove_border_dirt
+from optar.decoder.dirt import isolate_page
 from optar.decoder.filters import blur, minmax
 from optar.decoder.geometry import Geometry, compute_geometry, find_corners
 from optar.decoder.levels import Levels, analyze_levels
@@ -152,7 +152,7 @@ def locate_page(
     image = _check_image(image, fmt)
 
     levels = analyze_levels(image, opts)
-    cleaned = remove_border_dirt(image, levels.fill_cut)
+    cleaned = isolate_page(image, levels.fill_cut)
     corners = find_corners(cleaned, levels.cut)
     try:
         geom = compute_geometry(corners, fmt, opts)
