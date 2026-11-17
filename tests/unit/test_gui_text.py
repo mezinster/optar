@@ -766,3 +766,15 @@ def test_an_unreadable_coarse_scan_says_the_slower_reader_was_tried():
 def test_a_verified_document_of_slow_pages_still_reads_verified():
     s = Summary(DocState.VERIFIED, 2, 0, 0, 0, 0, 1234, protection=32, repair=unwrapped())
     assert text.summary_line(s).startswith("File recovered and verified")
+
+
+def test_summary_line_does_not_call_slow_read_pages_good():
+    from dataclasses import replace
+
+    s = S(D.INCOMPLETE, 5, 1, 0, 0, 1, 9)
+    assert text.summary_line(s) == "6 of 7 pages good (1 repaired) · 1 missing"
+    assert text.summary_line(replace(s, slow=2)) == (
+        "4 of 7 pages good (1 repaired) · 2 read by the slower reader · 1 missing"
+    )
+    every = replace(S(D.INCOMPLETE, 6, 0, 0, 0, 0, 9), slow=6)
+    assert text.summary_line(every) == "0 of 6 pages good · 6 read by the slower reader"

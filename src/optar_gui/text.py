@@ -200,10 +200,14 @@ def summary_line(s: Summary) -> str:
     if s.state == DocState.UNVERIFIABLE:
         read = f"All {count(pages, 'page')}" if pages > 1 else count(pages, "page")
         return f"{read} read · cannot be verified (no tag)"
-    good = f"{s.good + s.repaired:,} of {count(pages, 'page')} good"
+    # A page read by the slower reader is not called good: that reader cannot
+    # say how much of the page it got wrong.
+    good = f"{s.good + s.repaired - s.slow:,} of {count(pages, 'page')} good"
     if s.repaired:
         good += f" ({s.repaired:,} repaired)"
     parts = [good]
+    if s.slow:
+        parts.append(f"{s.slow:,} {READ_SLOWLY_SHORT}")
     for n, what in ((s.damaged, "damaged"), (s.unreadable, "not readable"), (s.missing, "missing")):
         if n:
             parts.append(f"{n:,} {what}")
@@ -685,6 +689,7 @@ READING_COARSE_SECTION = "Coarse scans being read"
 SLOW_TRIED = "The slower reader for coarse scans was tried too, and could not read it."
 # The health of a page read by the slower reader, in its row.
 READ_SLOWLY = "Read by the slower reader for coarse scans"
+READ_SLOWLY_SHORT = "read by the slower reader"
 
 
 def read_by_slow_reader() -> str:

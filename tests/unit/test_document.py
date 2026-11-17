@@ -2628,7 +2628,10 @@ def test_a_page_read_by_the_slower_reader_says_so_and_counts_no_repairs():
     assert not first.slow
     assert second.slow and second.scan_id == slow
     assert (second.health, second.repaired, second.lost) == (Health.GOOD, 0, 0)
+    # The summary does not call the slow page good: it counts it apart.
+    assert (doc.summary().good, doc.summary().slow) == (2, 1)
     repaired(doc)
+    assert doc.summary().slow == 1
     assert doc.summary().state == DocState.VERIFIED
     assert doc.save_bytes() == data
 

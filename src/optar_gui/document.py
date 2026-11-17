@@ -498,6 +498,10 @@ class Summary:
     missing_pages: tuple[int, ...] = ()  # version 1: pages giving no data
     repair: Unwrapped | None = None  # version 1: the accepted repair result, if any
     repair_error: str = ""  # version 1: why the repair job for these pages raised
+    # Of the good pages, those read by the slower reader for coarse scans. That
+    # reader counts no repairs, so "good" is not known of them: text.py lists
+    # them apart.
+    slow: int = 0
 
     @property
     def restored(self) -> bool:
@@ -1111,6 +1115,7 @@ class Document:
             lacking,
             result,
             error,
+            sum(1 for p in table.views if p.slow and p.health == Health.GOOD),
         )
 
     def _repair_key(self) -> tuple | None:
