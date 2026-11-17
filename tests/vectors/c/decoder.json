@@ -1,0 +1,317 @@
+{
+ "c_commit": "9c8379c25466bf142459a26b0f34521bdde2af12",
+ "cases": [
+  {
+   "c_output_sha256": "4d83e86edcb28be6d88b768bdfdc19cc004d75aa793a5178b20de4553e72ab25",
+   "c_output_size": 399546,
+   "format": "0-65-93-24-3-1-2-24",
+   "group": "full_size",
+   "name": "a4-c-decodes-python",
+   "recipe": {
+    "scale": 1
+   },
+   "seed": 21,
+   "size": 300000,
+   "starts_with_input": true
+  },
+  {
+   "c_output_sha256": "b6705aac2c1e315953f166ce39de1c7eac39ff0877d77d736314569c073b7204",
+   "c_output_size": 399546,
+   "format": "0-65-93-24-3-1-2-24",
+   "group": "full_size",
+   "name": "a4-python-decodes-c",
+   "page_sha256": [
+    "b2933a4730d92228157d581be159eeeeb56a046d22218f34ca3e573f4fe898af",
+    "17663f1074ee8256c8e9874ac612905fa6b71c5aafbb71b49754cdededb8c758"
+   ],
+   "recipe": {
+    "scale": 1
+   },
+   "seed": 22,
+   "size": 300000,
+   "starts_with_input": true
+  },
+  {
+   "c_output_sha256": "31ab6da7cae7688917a68fd381cce4813004b1a1b66b10ceab72f2c8cca34d93",
+   "c_output_size": 385182,
+   "format": "0-67-87-24-3-1-2-24",
+   "group": "full_size",
+   "name": "letter-c-decodes-python",
+   "recipe": {
+    "scale": 1
+   },
+   "seed": 21,
+   "size": 300000,
+   "starts_with_input": true
+  },
+  {
+   "c_output_sha256": "567af168df3c1312075fb13a5ecc852b6d6d3c2840754cadbca72f7f56c03d87",
+   "c_output_size": 385182,
+   "format": "0-67-87-24-3-1-2-24",
+   "group": "full_size",
+   "name": "letter-python-decodes-c",
+   "page_sha256": [
+    "bdd7899c252a73736df537ccd239971c4009e10863b3ed48b8431873ef171c6e",
+    "5bcab1e82c6c02dc14e3c6654d497a56399dc90bc441d184411646d7ac2cab1e"
+   ],
+   "recipe": {
+    "scale": 1
+   },
+   "seed": 22,
+   "size": 300000,
+   "starts_with_input": true
+  },
+  {
+   "c_output_sha256": "1ab3578ca46703d932e8abc0837f9ac66ae41bc9011fb80bde58674dd5f969d8",
+   "c_output_size": 199773,
+   "format": "0-65-93-24-3-2-2-24",
+   "group": "full_size",
+   "name": "fec2-c-decodes-python",
+   "recipe": {
+    "scale": 1
+   },
+   "seed": 21,
+   "size": 101886,
+   "starts_with_input": true
+  },
+  {
+   "c_output_sha256": "c52ae21d7069f608df09b4dc98df18144af7a6c48a53b04d0887b41e7c117bd8",
+   "c_output_size": 199773,
+   "format": "0-65-93-24-3-2-2-24",
+   "group": "full_size",
+   "name": "fec2-python-decodes-c",
+   "page_sha256": [
+    "9f85c7d2e2de4a6c1b053fcfe70b5153145f7675d3899494eed6d961fa4e892e",
+    "5b0dfef0702d9fc5eaf749466e6a38e78fe0fdb5bf7a1ad3b3dd1ede9d88cd55"
+   ],
+   "recipe": {
+    "scale": 1
+   },
+   "seed": 22,
+   "size": 101886,
+   "starts_with_input": true
+  },
+  {
+   "c_output_sha256": "f043feec9344109e2d117104395ac4475f16e8cff303d2b5f92e99a5fa4d0a23",
+   "c_output_size": 399546,
+   "format": "0-65-93-24-3-3-2-24",
+   "group": "full_size",
+   "name": "fec3-c-decodes-python",
+   "recipe": {
+    "scale": 1
+   },
+   "seed": 21,
+   "size": 201773,
+   "starts_with_input": true
+  },
+  {
+   "c_output_sha256": "c71766778c7e451be36984864d0170a43365a8aa9e84e8e1fee6027c9ddaf883",
+   "c_output_size": 399546,
+   "format": "0-65-93-24-3-3-2-24",
+   "group": "full_size",
+   "name": "fec3-python-decodes-c",
+   "page_sha256": [
+    "bad47e0479d49ae70c5fb85c702a02bcebe21bc2b2674d17785d8733b87e18c4",
+    "199e9a7766af3a1abacb5cad0f64d899e57a6fb23d077efe44a60e7116964f85"
+   ],
+   "recipe": {
+    "scale": 1
+   },
+   "seed": 22,
+   "size": 201773,
+   "starts_with_input": true
+  },
+  {
+   "c_output_sha256": "ebb7ce2e16d7c1896710d9927fa72a0f36e5047f48d4e43c0bd670a9fe76f8df",
+   "c_output_size": 549375,
+   "format": "0-65-93-24-3-4-2-24",
+   "group": "full_size",
+   "name": "fec4-c-decodes-python",
+   "recipe": {
+    "scale": 1
+   },
+   "seed": 21,
+   "size": 276687,
+   "starts_with_input": true
+  },
+  {
+   "c_output_sha256": "9dbc81c626a94689477160c500dc65e9f620d1417470a13df139ef14ed2a8957",
+   "c_output_size": 549375,
+   "format": "0-65-93-24-3-4-2-24",
+   "group": "full_size",
+   "name": "fec4-python-decodes-c",
+   "page_sha256": [
+    "8f22e8d1250fd413baa82ee9a3f3a3698b71dbf17b2001a58f6438ec829f1c02",
+    "f4b4b0d02d290bc13e8cf1f6a8b1d2eec48b4ae4971e73487cf2bb3985277801"
+   ],
+   "recipe": {
+    "scale": 1
+   },
+   "seed": 22,
+   "size": 276687,
+   "starts_with_input": true
+  },
+  {
+   "c_output_sha256": "c1eeebdcde34fcd6ebdec169af2203972b5b67ccc256261939d4f2ebcbfc4428",
+   "c_output_size": 649259,
+   "format": "0-65-93-24-3-5-2-24",
+   "group": "full_size",
+   "name": "fec5-c-decodes-python",
+   "recipe": {
+    "scale": 1
+   },
+   "seed": 21,
+   "size": 326629,
+   "starts_with_input": true
+  },
+  {
+   "c_output_sha256": "606a8c370774700b6ca4a751231d4bdd143f4532bb77827fa2688055e2511643",
+   "c_output_size": 649259,
+   "format": "0-65-93-24-3-5-2-24",
+   "group": "full_size",
+   "name": "fec5-python-decodes-c",
+   "page_sha256": [
+    "b2ee11083797fa72406c2373541529f778bb920572d7edbc05cea78b454efa36",
+    "9cbd6a9aaaf0423fe4a40918290b314bb1c9f4f1826c4c98d422dfd4213a93c5"
+   ],
+   "recipe": {
+    "scale": 1
+   },
+   "seed": 22,
+   "size": 326629,
+   "starts_with_input": true
+  },
+  {
+   "c_output_sha256": "085616a357c04df005e0da3f844606316253be16140427a8a0e4da93fdd7a260",
+   "c_output_size": 199773,
+   "format": "0-65-93-24-3-1-2-24",
+   "group": "full_size",
+   "name": "a4-scale3",
+   "recipe": {
+    "scale": 3
+   },
+   "seed": 11,
+   "size": 150000,
+   "starts_with_input": true
+  },
+  {
+   "c_output_sha256": "3f519771f7a89c62812980b78718ad88263dee4473dd25fe3f6bf489a819bbd1",
+   "c_output_size": 1437,
+   "format": "0-6-9-24-3-1-2-24",
+   "group": "small",
+   "name": "clean1",
+   "recipe": {
+    "scale": 1
+   },
+   "seed": 11,
+   "size": 1437,
+   "starts_with_input": true
+  },
+  {
+   "c_output_sha256": "3f519771f7a89c62812980b78718ad88263dee4473dd25fe3f6bf489a819bbd1",
+   "c_output_size": 1437,
+   "format": "0-6-9-24-3-1-2-24",
+   "group": "small",
+   "name": "clean3",
+   "recipe": {
+    "scale": 3
+   },
+   "seed": 11,
+   "size": 1437,
+   "starts_with_input": true
+  },
+  {
+   "c_output_sha256": "3f519771f7a89c62812980b78718ad88263dee4473dd25fe3f6bf489a819bbd1",
+   "c_output_size": 1437,
+   "format": "0-6-9-24-3-1-2-24",
+   "group": "small",
+   "name": "blurred",
+   "scan_files": [
+    "scans/blurred.png"
+   ],
+   "seed": 11,
+   "size": 1437,
+   "starts_with_input": true
+  },
+  {
+   "c_output_sha256": "3f519771f7a89c62812980b78718ad88263dee4473dd25fe3f6bf489a819bbd1",
+   "c_output_size": 1437,
+   "format": "0-6-9-24-3-1-2-24",
+   "group": "small",
+   "name": "specks",
+   "scan_files": [
+    "scans/specks.png"
+   ],
+   "seed": 11,
+   "size": 1437,
+   "starts_with_input": true
+  },
+  {
+   "c_output_sha256": "3f519771f7a89c62812980b78718ad88263dee4473dd25fe3f6bf489a819bbd1",
+   "c_output_size": 1437,
+   "format": "0-6-9-24-3-1-2-24",
+   "group": "small",
+   "name": "flips",
+   "scan_files": [
+    "scans/flips.png"
+   ],
+   "seed": 11,
+   "size": 1437,
+   "starts_with_input": true
+  },
+  {
+   "c_output_sha256": "3f519771f7a89c62812980b78718ad88263dee4473dd25fe3f6bf489a819bbd1",
+   "c_output_size": 1437,
+   "format": "0-6-9-24-3-1-2-24",
+   "group": "small",
+   "name": "combined",
+   "scan_files": [
+    "scans/combined.png"
+   ],
+   "seed": 11,
+   "size": 1437,
+   "starts_with_input": true
+  },
+  {
+   "c_output_sha256": "0be949605e94b5f3b4478b48be9eb777eee97d131179b0ad39294b82835c4fc7",
+   "c_output_size": 1437,
+   "format": "0-6-9-24-3-1-2-24",
+   "group": "small",
+   "name": "noise60-fec1",
+   "scan_files": [
+    "scans/noise60-fec1.png"
+   ],
+   "seed": 23,
+   "size": 1437,
+   "starts_with_input": false
+  },
+  {
+   "c_output_sha256": "7e76d3c8571d6b80e4fe1c615c1b974a9d4df095051537d0d2677bb544dc05ab",
+   "c_output_size": 718,
+   "format": "0-6-9-24-3-2-2-24",
+   "group": "small",
+   "name": "noise60-fec2",
+   "scan_files": [
+    "scans/noise60-fec2.png"
+   ],
+   "seed": 23,
+   "size": 718,
+   "starts_with_input": false
+  },
+  {
+   "c_output_sha256": "60d79dd0d5dd17d2231b9d04a20a25e157ff203c8dbb3399a7e7101f13bd017a",
+   "c_output_size": 2333,
+   "format": "0-6-9-24-3-5-2-24",
+   "group": "small",
+   "name": "noise60-fec5",
+   "scan_files": [
+    "scans/noise60-fec5.png"
+   ],
+   "seed": 23,
+   "size": 2333,
+   "starts_with_input": false
+  }
+ ],
+ "pins": "The decoder writes exactly the bytes C unoptar writes for the same scans.",
+ "source": "c"
+}
