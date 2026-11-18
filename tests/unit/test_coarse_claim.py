@@ -1,6 +1,5 @@
 # (c) GPL 2007 Karel 'Clock' Kulhavy, Twibright Labs; Python port 2026
-"""The slower reader's claim, on a simulated scan (see README, "What has and
-has not been shown").
+"""The slower reader's claim, on a simulated scan (see docs/evidence.md).
 
 A two-page document with Standard dots and High protection on A4 is scanned
 with tests.helpers.simulate_scan, each page identified with identify_any and

@@ -1,0 +1,54 @@
+site_name: optar
+site_description: Store files on paper with a laser printer and a scanner
+site_url: https://mezinster.github.io/optar/
+repo_url: https://github.com/mezinster/optar
+repo_name: mezinster/optar
+edit_uri: edit/master/docs/
+
+docs_dir: docs
+# Working papers (designs and plans) live beside the pages and are not published.
+exclude_docs: |
+  superpowers/
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: blue grey
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: blue grey
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Using optar:
+      - Install: install.md
+      - Put a file on paper: put-on-paper.md
+      - Read it back: read-from-paper.md
+      - Scans that are too coarse: slower-reader.md
+      - Command line: command-line.md
+  - Reference:
+      - How a page identifies itself: identification.md
+      - What has and has not been shown: evidence.md
+      - Format specification: format.md
+  - Project:
+      - Development: development.md
+      - History: history.md

@@ -36,6 +36,7 @@ Rules:
 - A page header is untrusted: one scanned page can claim any document. `container.document_plan` is the one check of what a header may claim, and `unwrap()` must keep its memory and time in proportion to the pages supplied, never to the claim.
 - The claims tests (`tests/unit/test_claims.py`, marked `slow`) are the project's claims about simulated scans. Do not loosen them or change the simulator's defaults to make them pass. Run them with `.venv/bin/pytest -q -m slow tests/unit/test_claims.py`.
 - The user's real scans are never copied into the repository, so `tests/scans` stays empty of scans.
+- The user documentation is the Markdown under `docs/` (not `docs/superpowers`, which is working papers and is not published). `.github/workflows/docs.yml` builds it with MkDocs and publishes it to GitHub Pages from `master`. Check it with `.venv/bin/pip install -e '.[docs]'` and `.venv/bin/mkdocs build --strict`. The README is a short overview that links to the site: user-facing detail goes into `docs/`, not into the README. Screenshots in `docs/img` are made from generated pages only.
 
 ## Desktop application (`src/optar_gui`)
 
