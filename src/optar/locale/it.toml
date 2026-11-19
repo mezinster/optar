@@ -1,0 +1,719 @@
+# Catalogo italiano di optar. Chiavi, ordine e commenti come in en.toml (i commenti restano in inglese); termini secondo docs/superpowers/glossaries/it.md.
+
+[language]
+name = "Italiano"
+
+[format]
+group = "."
+decimal = ","
+
+[cli]
+ACTUAL_SIZE = "Stampa a dimensione reale (100%), non «Adatta alla pagina»."
+PAPER_HINT = "Controlla che --paper corrisponda alla stampa e che la pagina sia stata scansionata nel verso giusto (non ruotata)."
+description = "Conservare file su carta."
+after_encoding = "{actual_size} Scansiona a {dpi} dpi."
+or_two = "{first} o {second}"
+list_separator = ", "
+sentences = "{first} {second}"
+wrote = "scritto il file {path}"
+format_does_not_fit = "il formato {format} non sta su carta {paper}"
+cannot_open = "impossibile aprire {path}"
+line = "optar: {message}"
+line_hint = "optar: {message}. {hint}"
+os_error = "optar: {reason}"
+os_error_file = "optar: {file}: {reason}"
+compatible_conflict = "--compatible non si può usare con {options}"
+format_conflict = "--format non si può usare con {options}"
+slow_reader = "optar: {name}: il metodo di lettura normale non è riuscito a leggere i dati di questa scansione; si prova il metodo lento, che richiede circa un minuto"
+debug_images_unavailable = "optar: --debug-images non è disponibile per le pagine autoidentificanti"
+force_no_effect = "optar: --force non ha effetto sulle stampe della versione 0.2.0 o precedenti"
+gap = "optar: manca il file {missing}, ma il file {existing} esiste"
+page_stats = "pagina {number}: {symbols}, {corrected}, {uncorrectable}"
+force_advice = "--force salva ciò che è stato recuperato, anche se potrebbe essere danneggiato."
+dot_need = "{dpi} dpi per i punti {name}"
+in_scan = "{name}: {message}"
+
+[cli.wrote_pdf]
+one = "scritto il file {path} ({count} pagina)"
+other = "scritto il file {path} ({count} pagine)"
+
+[cli.dot_name]
+standard = "standard"
+medium = "medi"
+big = "grandi"
+large = "grossi"
+xlarge = "molto grossi"
+
+[cli.protection]
+nothing = "Livello di protezione {level}: non si ripara nulla; una pagina persa o danneggiata fa perdere parte del file."
+within = "Livello di protezione {level}: ripara i danni all'interno delle pagine, ma non può compensare una pagina persa."
+
+[cli.protection.lose]
+one = "Livello di protezione {level}: si può perdere {count} pagina su {total} e recuperare comunque il file."
+other = "Livello di protezione {level}: si possono perdere {count} pagine su {total} e recuperare comunque il file."
+
+[cli.scan]
+missing = "optar: {name}: {reason}; conta come pagina mancante."
+page = "{name}: pagina {page} di {total}{note}"
+page_again_better = "{name}: di nuovo la pagina {page} di {total}{note}; si usa la scansione migliore"
+page_again_earlier = "{name}: di nuovo la pagina {page} di {total}{note}; si usa la scansione precedente"
+note_slow = " (letta con il metodo lento)"
+
+[cli.probe]
+unread = "illeggibile ({detail})"
+unidentified = "scansione non identificata ({detail})"
+coarse = "scansione non identificata ({detail}); è stata fatta a circa {dpi} dpi, ma servono {needs}"
+coarse_tried = "scansione non identificata ({detail}); è stata fatta a circa {dpi} dpi (si è provato anche il metodo lento), ma servono {needs}"
+
+[cli.scan.note_unreadable]
+one = ", {count} byte illeggibile"
+other = ", {count} byte illeggibili"
+
+[cli.scan.ignored]
+one = "optar: {count} scansione di un altro documento è stata ignorata: {names}"
+other = "optar: {count} scansioni di un altro documento sono state ignorate: {names}"
+
+[cli.summary]
+too_many_missing = "mancano troppe pagine per riparare il file"
+worst = "la parola di codice peggiore ha usato {used} su {budget}"
+none_missing = "nessuna pagina mancante"
+separator = "; "
+line = "optar: {summary}"
+
+[cli.summary.repaired]
+one = "{count} byte riparato"
+other = "{count} byte riparati"
+
+[cli.summary.blocks_failed]
+one = "non è stato possibile riparare {count} blocco"
+other = "non è stato possibile riparare {count} blocchi"
+
+# {list} is a list of page numbers ("3", "2, 5, 7"). The two forms are chosen by
+# whether the list names exactly one page (single) or more (several), not by a
+# plural rule: in some languages the "one" form also serves 21, 31 and so on.
+[cli.summary.missing]
+single = "manca la pagina {list}"
+several = "mancano le pagine {list}"
+
+[cli.too_few.read]
+one = "optar: non è stato possibile riparare il file, che non è stato salvato (pagine lette: solo {read} su {count})."
+other = "optar: non è stato possibile riparare il file, che non è stato salvato (pagine lette: solo {read} su {count})."
+
+# {list}: the missing pages; single when it names exactly one page, several when more.
+# {fraction}: a number (2: "one page in 2").
+[cli.too_few.rescan]
+single = "Scansiona la pagina {list} e ripeti la decodifica; --force non salva nulla se è stata letta meno di una pagina ogni {fraction}."
+several = "Scansiona le pagine {list} e ripeti la decodifica; --force non salva nulla se è stata letta meno di una pagina ogni {fraction}."
+
+[cli.verified]
+one = "optar: file verificato ({count} byte)"
+other = "optar: file verificato ({count} byte)"
+
+[cli.force_saved]
+unrepaired = "optar: non è stato possibile riparare il file: non ha superato la verifica e potrebbe essere danneggiato. Salvato comunque per via di --force."
+mismatch = "optar: il file non corrisponde alla sua impronta: non ha superato la verifica e potrebbe essere danneggiato. Salvato comunque per via di --force."
+
+[cli.not_saved]
+unrepaired = "optar: non è stato possibile riparare il file, che non è stato salvato. {advice}"
+mismatch = "optar: il file non corrisponde alla sua impronta e non è stato salvato. {advice}"
+
+# {list}: pages to rescan; single when it names exactly one page, several when more.
+# {force}: the sentence cli.force_advice.
+[cli.rescan_advice]
+single = "Scansiona di nuovo la pagina {list} e ripeti la decodifica; {force}"
+several = "Scansiona di nuovo le pagine {list} e ripeti la decodifica; {force}"
+
+[cli.list_more]
+one = "(ancora {count})"
+other = "(altre {count})"
+
+[cli.stat_symbols]
+one = "{count} simbolo"
+other = "{count} simboli"
+
+[cli.stat_corrected]
+one = "{count} corretto"
+other = "{count} corretti"
+
+[cli.stat_uncorrectable]
+one = "{count} non correggibile"
+other = "{count} non correggibili"
+
+[cli.uncorrectable_codewords]
+one = "optar: {count} parola di codice non correggibile. {hint}"
+other = "optar: {count} parole di codice non correggibili. {hint}"
+
+[cli.argparse]
+usage = "uso: "
+positionals = "argomenti posizionali"
+options = "opzioni"
+error = "{prog}: errore: {message}"
+help = "mostra questo messaggio di aiuto ed esce"
+version = "mostra il numero di versione del programma ed esce"
+
+[cli.help]
+paper = "formato della carta (predefinito: a4)"
+format = "sostituisce il formato di pagina"
+encode = "codifica un file in pagine da stampare"
+input = "file da codificare"
+output = "nome base dei file di uscita (predefinito: optar_out)"
+to = "tipo di uscita: un PDF (predefinito) oppure file di pagina PNG o PGM"
+label = "testo stampato su ogni pagina (predefinito: il nome del file indicato con -o)"
+no_tag = "non aggiunge alle etichette delle pagine il contrassegno con dimensione, impronta e controllo"
+dots = "dimensione dei punti (predefinita: standard). Ogni dimensione diversa da standard crea pagine autoidentificanti, con protezione di livello standard se --protect non indica altro"
+protect = "dati di riparazione distribuiti su tutto il documento; crea pagine autoidentificanti, con punti standard se --dots non indica altro. Con «none» si ottengono pagine autoidentificanti senza protezione. Senza --dots e --protect le pagine sono compatibili e senza protezione"
+compatible = "pagine leggibili da optar 0.2 e dal programma in C (il comportamento predefinito senza --dots e --protect)"
+decode = "decodifica le pagine scansionate e ne ricava il file"
+base = "le scansioni sono BASE_0001.png, BASE_0002.png, ..."
+decode_output = "file di uscita (predefinito: stdout)"
+debug_images = "scrive BASE_NNNN_debug.png"
+force = "salva quanto recuperato dalle pagine autoidentificanti anche se non ha superato la verifica"
+no_slow_reader = "non prova il metodo lento sulle scansioni che il metodo normale non riesce a identificare"
+
+# Library errors (optar.errors): each entry is the English text of the error,
+# word for word; a test compares them with the code.
+[err]
+cannot_read = "impossibile leggere {path}: {reason}"
+cannot_write = "impossibile scrivere {path}: {reason}"
+unknown_paper = "formato di carta sconosciuto: {name}; formati noti: {known}"
+unknown_dots = "dimensione dei punti sconosciuta: {name}; dimensioni note: {known}"
+format_syntax = "il formato di pagina deve essere composto da otto numeri interi separati da trattini: {text}"
+label_band = "altezza della banda dell'etichetta errata: {height} invece di {rows} (in righe di pixel)"
+label_font = "impossibile leggere una banda dell'etichetta alta {height}: il font è alto {rows} (in righe di pixel)"
+too_many_pages = "troppe pagine: ne servono {total}, al massimo {limit}"
+too_large_to_protect = "troppo grande per la protezione: {size} byte su carta, al massimo {limit}"
+unknown_parity = "la parità deve essere una tra {known}, non {parity}"
+format_too_small = "il formato di pagina {format} è troppo piccolo per il contenitore"
+format_cannot_end = "con il formato di pagina {format} un flusso non può terminare su una pagina"
+impossible_document = "le pagine descrivono un documento che non può esistere: {total} pag. per un file di {size} byte"
+image_too_large = "impossibile leggere l'immagine {path}: {pixels} pixel superano il limite di {limit} ammesso per una scansione"
+image_size_changed = "impossibile leggere l'immagine {path}: le dimensioni dell'immagine sono cambiate durante il caricamento"
+not_an_image = "impossibile leggere l'immagine {path}: non è un'immagine {formats}"
+image_unreadable = "impossibile leggere l'immagine {path}: {reason}"
+no_page = "nessuna pagina trovata"
+label_unreadable = "etichetta illeggibile"
+scan_not_grey = "la scansione deve essere un'immagine 2-D uint8 in scala di grigi; ricevuta: forma {shape}, dtype {dtype}"
+scan_empty = "la scansione è vuota"
+scan_too_small = "una scansione di {width} × {height} pixel è più piccola della pagina del formato ({page_width} × {page_height})"
+corners_coincide = "gli angoli della pagina sono degeneri (coincidono)"
+page_too_small = "la pagina trovata nella scansione è troppo piccola per individuarne le croci"
+too_few_dots = "sulla pagina ci sono troppo pochi punti noti da cui imparare"
+page_size = "una pagina di {width} × {height} pixel non è la pagina di {page_width} × {page_height} pixel del layout con dimensione dei punti {dots} su carta {paper}"
+page_clipped = "una pagina di {width} × {height} pixel lascia su carta {paper} meno del margine di {margin} pt e verrebbe tagliata dalla stampante"
+strip_needs_layout = "una striscia dell'etichetta richiede il layout della sua pagina"
+strip_too_large = "una striscia dell'etichetta di {width} × {height} non entra nella banda dell'etichetta del layout con dimensione dei punti {dots}"
+no_pages = "nessuna pagina da scrivere"
+
+[err.invalid_format]
+version = "formato di pagina non valido: version deve essere 0"
+fec_order = "formato di pagina non valido: fec_order deve essere da 1 a 5"
+xcrosses = "formato di pagina non valido: xcrosses deve essere >= 2"
+ycrosses = "formato di pagina non valido: ycrosses deve essere >= 2"
+chalf = "formato di pagina non valido: chalf deve essere >= 1"
+cpitch = "formato di pagina non valido: cpitch deve superare 2*chalf"
+border = "formato di pagina non valido: border deve essere >= 1"
+text_height = "formato di pagina non valido: text_height deve essere >= 1"
+
+[err.no_corner]
+upper_left = "impossibile trovare l'angolo in alto a sinistra"
+upper_right = "impossibile trovare l'angolo in alto a destra"
+lower_left = "impossibile trovare l'angolo in basso a sinistra"
+lower_right = "impossibile trovare l'angolo in basso a destra"
+
+[count.page]
+one = "{n} pagina"
+other = "{n} pagine"
+
+[count.byte]
+one = "{n} byte"
+other = "{n} byte"
+
+[count.block]
+one = "{n} blocco"
+other = "{n} blocchi"
+
+[count.dot]
+one = "{n} punto"
+other = "{n} punti"
+
+[count.scan]
+one = "{n} scansione"
+other = "{n} scansioni"
+
+# --- The desktop window (src/optar_gui/text.py) ------------------------------------
+#
+# The window speaks of "protection", "repair" and the "fingerprint", never of parity,
+# codewords or headers. A "block" is one error-correction unit; blocks are "repaired"
+# or "lost". {pages} is a list of page numbers ("3", "2-4, 7 and 9"). An entry that
+# has it comes in two forms, chosen by whether the list names exactly one page
+# (single) or more (several); this is not a plural rule, so the "one" form of your
+# language (which may also serve 21, 31 and so on) plays no part in it.
+
+[gui]
+# The window, its tabs, buttons and dialogs.
+WINDOW_TITLE = "optar"
+READ_TAB = "Leggi da carta"
+ADD_SCANS = "+ Aggiungi scansioni…"
+REMOVE_SCAN = "Rimuovi"
+SAVE_FILE = "Salva file…"
+ADD_SCANS_TITLE = "Aggiungi scansioni"
+SAVE_TITLE = "Salva il file recuperato"
+CONFIRM_SAVE_TITLE = "Salvare comunque?"
+ERROR_TITLE = "Impossibile salvare"
+# Titles of the sections of the list of scans.
+NOT_PART_OF_THIS_FILE = "Non fanno parte di questo file"
+NOT_READABLE = "Illeggibili"
+BEING_READ_SECTION = "In lettura"
+# The actions on the selected row and their dialogs.
+REPLACE_SCAN = "Sostituisci scansione…"
+USE_SPARE = "Usa questa scansione"
+SWITCH_DOCUMENT = "Passa a questo documento"
+ASSIGN_PAGE = "Assegna a una pagina…"
+START_BY_HAND = "Componi un documento a mano…"
+REPLACE_REJECTED_TITLE = "Scansione non usata"
+ASSIGN_TITLE = "Assegna a una pagina"
+PAGE_FIELD = "Pagina:"
+START_BY_HAND_TITLE = "Componi un documento a mano"
+START_BY_HAND_PROMPT = "Non è stato possibile identificare nessuna scansione. Indica la carta e il numero di pagine della stampa, poi assegna ogni scansione alla sua pagina."
+TOTAL_FIELD = "Pagine:"
+# Asked when the window is closed while a file is being written.
+STILL_WRITING_TITLE = "Scrittura del file in corso"
+STILL_WRITING = "Un file è ancora in fase di scrittura. Vuoi attendere che finisca? Se chiudi ora, il file potrebbe non essere scritto."
+# Why a save cannot start (programming errors, never shown in a dialog).
+SAVE_RUNNING = "un salvataggio è già in corso"
+SAVE_AFTER_CLOSE = "la finestra è stata chiusa, quindi non si può salvare altro"
+# The "Put on paper" tab.
+WRITE_TAB = "Scrivi su carta"
+FILE_FIELD = "File:"
+PAPER_FIELD = "Carta:"
+NAME_FIELD = "Nome:"
+PRINTS_AS_FIELD = "Stampato come:"
+DOTS_FIELD = "Punti:"
+PROTECT_FIELD = "Protezione:"
+CHOOSE_FILE = "Scegli…"
+CHOOSE_FILE_TITLE = "Scegli un file da scrivere su carta"
+CREATE_PDF = "Crea PDF…"
+CREATE_TITLE = "Salva il PDF"
+PDF_FILTER = "PDF (*.pdf);;Tutti i file (*)"
+PREPARING = "Lettura del file…"
+CREATING = "Creazione del PDF…"
+COMPATIBLE = "Compatibile con optar 0.2 e con l'optar originale"
+# Why a PDF is not created over the file being put on paper.
+DEST_IS_SOURCE = "il PDF sostituirebbe il file che stai scrivendo su carta; scegli un altro nome"
+# After the pages and size of a protected file that may lose no whole page.
+DAMAGE_REPAIRED = "i danni all'interno delle pagine vengono riparati, ma se si perde una pagina intera si perde il file"
+# What a document without a name is called.
+NO_NAME = "(senza nome)"
+# A document whose file was recovered and matches its fingerprint.
+VERIFIED = "File recuperato e verificato"
+# The bottom bar while scans are being read and the document has nothing else to say.
+WORKING = "Elaborazione…"
+# The bar while a document is repaired and checked in the background.
+REPAIRING = "Riparazione e controllo dell'impronta…"
+# Why a page whose data says it repairs itself gave no data to repair with.
+NO_PAGE_DATA = "Non è stato possibile leggere i dati di questa pagina"
+PREVIEW_LOADING = "Caricamento…"
+# A scan the ordinary reader could not read, while the slower reader tries it.
+READING_COARSE = "Lettura di una scansione a bassa risoluzione con il metodo lento; richiede circa un minuto"
+# After "too coarse to read": the slower reader could not read the scan either.
+SLOW_TRIED = "Si è provato anche il metodo lento per le scansioni a bassa risoluzione, ma neanche questo è riuscito a leggere la scansione."
+# A page read by the slower reader: in its detail (made a sentence by "sentence"
+# below), and in its row.
+READ_SLOWLY = "Letta con il metodo lento per le scansioni a bassa risoluzione"
+READ_SLOWLY_ROW = "Letta con il metodo lento"
+# The step of a scan not started yet.
+WAITING = "In attesa"
+# The choice of language.
+LANGUAGE_MENU = "Lingua"
+SYSTEM_LANGUAGE = "Predefinita del sistema"
+# A phrase made a sentence, where the window shows it as a line of its own after
+# others (a detail panel, a reason after "was not used"): {words} with the full
+# stop of your language. A phrase that already ends with it is shown as it is.
+sentence = "{words}."
+
+# The terminal messages of optar-gui.
+[gui.cli]
+missing_qt = "optar-gui richiede PySide6: esegui pip install '.[gui]' in una copia dei sorgenti, oppure scarica optar-gui dalla sezione Releases del progetto."
+description = "Conservare file su carta e rileggerli."
+version_help = "mostra la versione ed esce"
+
+[gui.button]
+ok = "OK"
+cancel = "Annulla"
+save = "Salva"
+yes = "Sì"
+no = "No"
+
+# Paper names, by the paper's name in optar.format.
+[gui.paper]
+a4 = "A4"
+letter = "US Letter"
+
+# Dot sizes as their selector names them, by their names in optar.format.
+[gui.dots]
+standard = "Standard"
+medium = "Medi"
+big = "Grandi"
+large = "Grossi"
+xlarge = "Molto grossi"
+
+# A paper printed with a dot size other than the standard one.
+[gui.paper_dots]
+standard = "{paper}, punti standard"
+medium = "{paper}, punti medi"
+big = "{paper}, punti grandi"
+large = "{paper}, punti grossi"
+xlarge = "{paper}, punti molto grossi"
+
+[gui.protection]
+none = "Nessuna"
+standard = "Standard"
+high = "Alta"
+
+# The health of a page, in its row.
+[gui.health]
+good = "Buona"
+unreadable = "Illeggibile"
+missing = "Mancante"
+waiting = "In attesa"
+working = "Elaborazione…"
+
+# {n} blocks repaired.
+[gui.health.repaired]
+one = "Riparata · {n}"
+other = "Riparata · {n}"
+
+# {n} blocks lost, which the document's protection repaired.
+[gui.health.restored]
+one = "Riparata dalla protezione del documento · {n}"
+other = "Riparata dalla protezione del documento · {n}"
+
+# {n} blocks lost.
+[gui.health.damaged]
+one = "Danneggiata · {n} perso"
+other = "Danneggiata · {n} persi"
+
+# Of a page read by the slower reader.
+[gui.health.dots_corrected]
+one = "{n} punto corretto"
+other = "{n} punti corretti"
+
+[gui.health.bytes_repaired]
+one = "{n} byte riparato dalla protezione del documento"
+other = "{n} byte riparati dalla protezione del documento"
+
+# The document's state in the bottom bar. Phrases are joined with " · ".
+[gui.state]
+checking = "Controllo dell'impronta…"
+matches = "corrisponde all'impronta"
+mismatch = "Non corrisponde all'impronta sulla carta"
+no_tag = "non verificabile (nessun contrassegno)"
+# {advice}: rescan advice (whole sentences); {repair}: what the repair did.
+advice_with_repair = "{advice} ({repair})"
+# {good}: the "good" phrase below; {repaired}: the "repaired" phrase below.
+good_with_repaired = "{good} ({repaired})"
+
+# {pages}: the missing pages; single when it names exactly one page, several when more.
+[gui.state.recoverable]
+single = "Recuperabile: manca la pagina {pages}, si può ricostruire dalle altre"
+several = "Recuperabile: mancano le pagine {pages}, si possono ricostruire dalle altre"
+
+[gui.state.recovered]
+single = "Recuperabile: manca la pagina {pages}, ricostruita dalle altre"
+several = "Recuperabile: mancano le pagine {pages}, ricostruite dalle altre"
+
+# Every page of a document without a tag is read: one page, or none.
+[gui.state.read]
+one = "{n} pagina letta"
+other = "{n} pagine lette"
+
+# Every page of a document without a tag is read: more than one.
+[gui.state.all_read]
+one = "Letta {n} pagina su {n}"
+other = "Lette tutte le {n} pagine"
+
+# {good} of {n} pages are good.
+[gui.state.good]
+one = "Pagine buone: {good} su {n}"
+other = "Pagine buone: {good} su {n}"
+
+# Of the good pages, {n} were repaired.
+[gui.state.repaired]
+one = "{n} riparata"
+other = "{n} riparate"
+
+# {n} pages.
+[gui.state.slow]
+one = "{n} letta con il metodo lento"
+other = "{n} lette con il metodo lento"
+
+[gui.state.damaged]
+one = "{n} danneggiata"
+other = "{n} danneggiate"
+
+[gui.state.unreadable]
+one = "{n} illeggibile"
+other = "{n} illeggibili"
+
+[gui.state.missing]
+one = "{n} mancante"
+other = "{n} mancanti"
+
+# A run of pages with the same problem, in a save warning: one page, two pages,
+# or the range {first} to {last} (written with the same range mark as gui.list.range).
+# Runs are joined with "; ".
+[gui.run.missing]
+single = "manca la pagina {first}"
+pair = "mancano le pagine {first} e {last}"
+range = "mancano le pagine {first}–{last}"
+
+[gui.run.damaged]
+single = "la pagina {first} è danneggiata"
+pair = "le pagine {first} e {last} sono danneggiate"
+range = "le pagine {first}–{last} sono danneggiate"
+
+[gui.run.unreadable]
+single = "la pagina {first} è illeggibile"
+pair = "le pagine {first} e {last} sono illeggibili"
+range = "le pagine {first}–{last} sono illeggibili"
+
+[gui.run.reading]
+single = "la pagina {first} è ancora in lettura"
+pair = "le pagine {first} e {last} sono ancora in lettura"
+range = "le pagine {first}–{last} sono ancora in lettura"
+
+# What saving must confirm first.
+[gui.save]
+# {runs}: the runs above, then perhaps "more" below.
+incomplete = "Il file salvato sarà incompleto: {runs}."
+# {advice}: rescan advice (whole sentences).
+unrepaired = "{advice} Se salvi ora, il file salvato conterrà solo ciò che è stato possibile recuperare e potrebbe contenere parti errate."
+checking = "L'impronta è ancora in fase di controllo, quindi non si sa ancora se il file recuperato è l'originale."
+empty = "Non c'è niente da salvare."
+mismatch = "Il file recuperato non corrisponde all'impronta stampata sulla carta: alcuni dati sono stati decodificati in modo errato, quindi questo non è il file originale."
+by_hand = "Questo documento è stato composto a mano, quindi il file non può essere verificato e verrà completato con zeri fino a una pagina intera."
+untagged = "Queste pagine non hanno un contrassegno, quindi il file non può essere verificato e verrà completato con zeri fino a una pagina intera."
+
+# After the runs a save warning names: the pages it does not name.
+[gui.save.more]
+one = "e ancora {n} pagina mancante o danneggiata"
+other = "e altre {n} pagine mancanti o danneggiate"
+
+# The standing caution over a document without a tag.
+[gui.caution]
+untagged = "Queste pagine non hanno un contrassegno, quindi non si può confermare che appartengano alla stessa stampa né che il file sia completo. Il file salvato verrà completato con zeri."
+by_hand = "Questo documento è stato composto a mano, quindi non si può confermare che le pagine appartengano alla stessa stampa né che il file sia completo. Il file salvato verrà completato con zeri."
+
+# Why a scan is unreadable, by the reason the program gives.
+[gui.reason]
+no_page = "In questa immagine non è stata trovata nessuna pagina optar"
+label_unreadable = "Non è stato possibile leggere l'etichetta in fondo alla pagina"
+page_number = "Il numero di pagina indicato nell'etichetta non corrisponde a questo documento"
+page_count = "Il numero di pagine indicato nell'etichetta non è possibile"
+size_mismatch = "Questa scansione è di un formato di carta diverso da quello del documento"
+format_mismatch = "Questa scansione è stata decodificata per un formato di carta diverso da quello del documento"
+# A scan assigned to a page by hand that decodes badly whichever way up it is read.
+not_decodable = "Non è stato possibile decodificare la scansione in nessun orientamento"
+
+# The detail panel of a page.
+[gui.detail]
+title = "Pagina {page} di {total}"
+repairs = "Riparazioni: {one} da un bit, {two} da due bit, {three} da tre bit"
+missing = "Non è stata aggiunta nessuna scansione di questa pagina"
+waiting = "In attesa di lettura"
+unreadable = "Non è stato possibile leggere questa scansione"
+reading = "Lettura in corso…"
+
+# After "{n} blocks": {n} of them repaired.
+[gui.detail.repaired]
+one = "{n} riparato"
+other = "{n} riparati"
+
+[gui.detail.lost]
+one = "{n} perso"
+other = "{n} persi"
+
+[gui.detail.restored]
+one = "{n} riparato dalla protezione del documento"
+other = "{n} riparati dalla protezione del documento"
+
+# Rows of the list of scans.
+[gui.row]
+page = "Pagina {page}"
+spare = "Di riserva"
+# After the title of a spare's detail.
+spare_tag = "di riserva"
+spare_not_in_use = "Non in uso: la pagina usa un'altra scansione"
+
+# A group of scans of another printout.
+[gui.row.other_printout]
+one = "{n} scansione di un'altra stampa, non fa parte di questo file"
+other = "{n} scansioni di un'altra stampa, non fanno parte di questo file"
+
+# Why a scan chosen to replace page {page} was not used. {name} is its file name.
+[gui.rejected]
+unusable = "La scansione {name} non è stata usata per la pagina {page}: non è stato possibile leggerla, quindi la pagina {page} mantiene la scansione che ha."
+unusable_reason = "La scansione {name} non è stata usata per la pagina {page}: non è stato possibile leggerla ({reason}), quindi la pagina {page} mantiene la scansione che ha."
+other_page = "La scansione {name} non è stata usata per la pagina {page}: è la pagina {other} di questo documento e compare nell'elenco sotto quella pagina."
+# {printout}: name · paper · pages.
+other_document = "La scansione {name} non è stata usata per la pagina {page}: è la pagina {other} di un'altra stampa ({printout})."
+# {why}: a sentence.
+not_used = "La scansione {name} non è stata usata per la pagina {page}. {why}"
+unread = "Non è stato possibile leggerla."
+
+[gui.dialog]
+replace_title = "Scegli una scansione della pagina {page}"
+assign_prompt = "A quale pagina di questo documento corrisponde la scansione {name}?"
+# After the page number in the page field.
+of_pages = " di {total}"
+scan_filter = "Scansioni ({patterns});;Tutti i file (*)"
+
+[gui.message]
+check_failed = "Non è stato possibile controllare l'impronta: {message}"
+save_failed = "Non è stato possibile salvare il file: {message}"
+not_regular_file = "impossibile leggere {path}: non è un file normale (è una cartella, una pipe o un dispositivo)"
+file_unreadable = "Non è stato possibile leggere il file: {message}"
+created = "File {name} creato"
+create_failed = "Non è stato possibile creare il PDF: {message}"
+size_changed = "le dimensioni dell'immagine sono cambiate durante il caricamento"
+preview_failed = "Impossibile mostrare questa scansione: {message}"
+repair_failed = "Non è stato possibile riparare le pagine: {reason}"
+
+[gui.message.saved]
+one = "Salvato {n} byte nel file {name}"
+other = "Salvati {n} byte nel file {name}"
+
+[gui.message.too_many_pixels]
+one = "{n} pixel supera il limite di {limit} ammesso per una scansione"
+other = "{n} pixel superano il limite di {limit} ammesso per una scansione"
+
+# Putting a file on paper.
+[gui.write]
+dot_size = "{dots} (scansione a {dpi} dpi)"
+
+# Of a protected printout of {total} pages.
+[gui.write.promise]
+one = "si può perdere {n} pagina su {total}"
+other = "si possono perdere {n} pagine su {total}"
+
+# Why a file cannot be put on paper with the chosen dot size and protection.
+[gui.too_large]
+fits_unprotected = "Senza protezione il file entra."
+
+[gui.too_large.protect]
+one = "Questo file è troppo grande per la protezione con questa dimensione dei punti: una stampa con protezione può avere al massimo {n} pagina."
+other = "Questo file è troppo grande per la protezione con questa dimensione dei punti: una stampa con protezione può avere al massimo {n} pagine."
+
+[gui.too_large.pages]
+one = "Questo file è troppo grande per essere scritto su carta con queste scelte: una stampa può avere al massimo {n} pagina."
+other = "Questo file è troppo grande per essere scritto su carta con queste scelte: una stampa può avere al massimo {n} pagine."
+
+[gui.too_large.fits_dots]
+standard = "Il file entra con i punti standard."
+medium = "Il file entra con i punti medi."
+big = "Il file entra con i punti grandi."
+large = "Il file entra con i punti grossi."
+xlarge = "Il file entra con i punti molto grossi."
+
+[gui.too_large.fits_either]
+standard = "Il file entra senza protezione, oppure con i punti standard."
+medium = "Il file entra senza protezione, oppure con i punti medi."
+big = "Il file entra senza protezione, oppure con i punti grandi."
+large = "Il file entra senza protezione, oppure con i punti grossi."
+xlarge = "Il file entra senza protezione, oppure con i punti molto grossi."
+
+# Why the printed name differs from the name typed. Sentences.
+[gui.name]
+dropped = "Questi caratteri non sono nel font dell'etichetta e non vengono stampati: {chars}."
+no_room = "Con questa dimensione dei punti l'etichetta non ha spazio per il nome, quindi il nome non viene stampato."
+cut = "Il nome è troppo lungo per la pagina e viene troncato."
+stored = "Alle pagine non serve: il nome completo è conservato insieme al file."
+printed = "È il nome stampato a identificare le pagine in seguito."
+
+# A scan made at too low a resolution; {measured} is rounded to the nearest 10.
+[gui.coarse]
+page = "Risoluzione troppo bassa per questa pagina: circa {measured} dpi. Scansionala a {needed} dpi."
+# The resolution each dot size needs, by its name in optar.format.
+unreadable = "Scansione fatta a circa {measured} dpi, risoluzione troppo bassa per leggerla. Scansiona a {standard} dpi per i punti standard, {medium} per i medi, {big} per i grandi, {large} per i grossi, {xlarge} per i molto grossi."
+
+# The detail of a page read by the slower reader.
+[gui.slow]
+corrected = "Punti corretti all'interno della pagina: {dots}."
+# {share}: the share below.
+corrected_of = "Punti corretti all'interno della pagina: {dots} su {total} ({share})."
+# {share}: a percentage with one decimal, such as 8.3.
+share = "{share}%"
+share_small = "meno dello 0,1%"
+pending = "La protezione del documento ripara gli errori di questo metodo di lettura; quanti byte di questa pagina abbia riparato si vedrà quando il documento sarà verificato."
+none_wrong = "Dopo la verifica: nessun byte di questa pagina era errato."
+
+[gui.slow.repaired]
+one = "Dopo la verifica: {n} byte di questa pagina era errato ed è stato riparato dalla protezione del documento."
+other = "Dopo la verifica: {n} byte di questa pagina erano errati e sono stati riparati dalla protezione del documento."
+
+# Each step of a scan's reading.
+[gui.step]
+open = "Apertura del file"
+find = "Ricerca della pagina"
+identify = "Identificazione della pagina"
+read = "Lettura dei dati"
+slow-sample = "Metodo lento: campionamento"
+# The {current}th of {total} fits of the slower reader.
+slow-fit = "Metodo lento: passata {current} di {total}"
+# A step with no words of its own.
+other = "Elaborazione"
+
+# {done} of {n} scans are read.
+[gui.scans_read]
+one = "Scansioni lette: {done} su {n}"
+other = "Scansioni lette: {done} su {n}"
+
+# The bar while scans are being read and the document has nothing else to say.
+[gui.scans_read_working]
+one = "Elaborazione… Scansioni lette: {done} su {n}"
+other = "Elaborazione… Scansioni lette: {done} su {n}"
+
+# Lists of page numbers: "1, 3 and 5", "2-4 and 9".
+[gui.list]
+comma = ", "
+and = "{items} e {last}"
+# Three or more pages in a row, from {first} to {last}: your language's range mark.
+range = "{first}–{last}"
+
+# The pages a list does not name.
+[gui.list.more]
+one = "ancora {n}"
+other = "altre {n}"
+
+# What repairing a document did.
+[gui.repair]
+unprotected = "Stampato senza protezione, quindi non è stato possibile riparare nulla"
+too_much = "il punto peggiore richiedeva {used} su {budget}: troppo per ripararlo"
+
+[gui.repair.bytes]
+one = "{n} byte riparato"
+other = "{n} byte riparati"
+
+# How close a repair came to failing: {percent}% of the repair capacity ({used}
+# of {budget}) used at the worst spot.
+[gui.margin]
+wide = "capacità di riparazione usata nel punto peggiore: {percent}% ({used} su {budget}), margine ampio"
+moderate = "capacità di riparazione usata nel punto peggiore: {percent}% ({used} su {budget}), margine moderato"
+close = "capacità di riparazione usata nel punto peggiore: {percent}% ({used} su {budget}), vicino al limite"
+
+# After a repair that could not give the file.
+[gui.rescan]
+nothing = "Non è stato possibile riparare completamente il file. Scansionare di nuovo le pagine può ancora migliorarlo."
+# {what}: "add" and "rescan" below, or both.
+advice = "Non è stato possibile riparare completamente il file. Aggiungere pagine o scansionarle di nuovo può ancora migliorarlo: {what}."
+both = "{add} e {rescan}"
+
+# {pages}: single when it names exactly one page, several when more.
+[gui.rescan.add]
+single = "aggiungi la pagina {pages}"
+several = "aggiungi le pagine {pages}"
+
+# {pages}: at most three pages, the most damaged first; single or several as above.
+[gui.rescan.worst]
+single = "scansiona di nuovo la pagina {pages}, che è la più danneggiata"
+several = "scansiona di nuovo le pagine {pages}, che sono le più danneggiate"
