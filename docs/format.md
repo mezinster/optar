@@ -823,8 +823,9 @@ the stream.
 
 The stream is printed as section 2.7 says, which gives exactly `T` pages. The
 label of a page is an ordinary label line whose free text is for people: it is
-the name of the file (the label the user gave, or the file's name), the same on
-every page, and it carries no tag. (A valid tag would make a reader take the page for a page of
+the label the user gave or, without one, a name the tool chooses (the window
+uses the file's name, the command line the name given with `-o`, which may be
+empty), the same on every page, and it carries no tag. (A valid tag would make a reader take the page for a page of
 a tagged document, section 6.1.)
 
 With the Golay code `net_bits mod 8` is 0 or 4 and the last payload always
