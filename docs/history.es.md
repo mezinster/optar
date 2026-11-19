@@ -4,7 +4,7 @@ source_hash: 3205775811b328fd30b9d40d49b0c5b503e8cced
 
 # Historia { #history }
 
-optar lo escribió en C Karel 'Clock' Kulhavy, de Twibright Labs, en 2007, como
+optar lo escribió en C Karel ‘Clock’ Kulhavy, de Twibright Labs, en 2007, como
 los programas `optar`, `unoptar` y `pgm2ps`. Su página de inicio es
 [ronja.twibright.com/optar](http://ronja.twibright.com/optar/). Colin Dean
 mantuvo disponible el código fuente y lo mejoró de 2012 a 2018 en
@@ -20,7 +20,7 @@ conserva sus instrucciones originales.
 
 | Versión | Qué añadió |
 |---|---|
-| 0.1.0 | La orden `optar` en Python, que lee y escribe las mismas páginas que los programas en C. |
+| 0.1.0 | El comando `optar` en Python, que lee y escribe las mismas páginas que los programas en C. |
 | 0.2.0 | La aplicación de escritorio, y la etiqueta del rótulo con el tamaño y la huella del archivo. |
 | 0.3.0 | Puntos más grandes, protección y páginas que se identifican por sus datos. |
 | 0.4.0 | El lector lento para escaneos de resolución demasiado baja. |
@@ -31,5 +31,5 @@ la parte 8 de la [especificación del formato](format.md).
 
 ## Licencia { #licence }
 
-GPL. © 2007 Karel 'Clock' Kulhavy, de Twibright Labs; mejoras © 2012-2018
+GPL. © 2007 Karel ‘Clock’ Kulhavy, de Twibright Labs; mejoras © 2012-2018
 Colin Dean. Véase `COPYING` en el repositorio.

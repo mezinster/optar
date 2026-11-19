@@ -37,8 +37,8 @@ protección; no hay nada que configurar.
 ![Escaneos en lectura, cada uno con una barra de progreso y su paso](img/being-read.png)
 
 La lista muestra una fila por página con su estado. Al seleccionar una fila se
-muestra el escaneo con las zonas dañadas marcadas: la rueda amplía, arrastrar
-desplaza y un doble clic ajusta la página a la vista.
+muestra el escaneo con las zonas dañadas marcadas: con la rueda se amplía,
+arrastrando se desplaza y con un doble clic la página se ajusta a la vista.
 
 Cuando la barra inferior dice que el archivo está verificado, «Guardar
 archivo…» lo escribe.
@@ -79,9 +79,9 @@ el escaneo pasa a ser su página, o aparece como ilegible.
 |---|---|---|
 | Correcta | La página se leyó sin ningún error que corregir. | Nada. |
 | Reparada · N | N bloques estaban dañados y la corrección de errores los reparó. Los datos están intactos. | Nada. |
-| Dañada · N perdidos | N bloques no se pudieron reparar, así que el archivo guardado tiene datos erróneos en ese lugar. | Vuelva a escanear la página en escala de grises con la resolución que corresponde a su tamaño de punto y reemplace el escaneo. |
+| Dañada · N perdidos | N bloques no se pudieron reparar, así que el archivo guardado tiene datos erróneos en esa parte. | Vuelva a escanear la página en escala de grises con la resolución que corresponde a su tamaño de punto y reemplace el escaneo. |
 | Leída por el lector lento | El escaneo tenía una resolución demasiado baja para el lector normal. Véase [Escaneos de resolución demasiado baja](slower-reader.md). | Compruebe que el documento queda verificado. |
-| Ilegible | No se pudo identificar el escaneo: por ejemplo, no hay ninguna página de optar en la imagen o no se pudo leer el rótulo. | Vuelva a escanearla o asígnela a mano a una página. |
+| Ilegible | No se pudo identificar el escaneo: por ejemplo, no hay ninguna página de optar en la imagen o no se pudo leer el rótulo. | Vuelva a escanear la página o asigne el escaneo a mano a una página. |
 | Ausente | No se ha añadido ningún escaneo de esta página. | Añada uno. En un documento con protección, las demás páginas pueden bastar todavía, y entonces la barra lo dice. |
 
 Un escaneo hecho a menos de 400 dpi que no se puede leer lo dice, por ejemplo

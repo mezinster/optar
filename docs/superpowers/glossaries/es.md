@@ -42,7 +42,8 @@ the one both understand (see "add" and "file" below).
       página de este documento es {name}?»; ¡ is not used (the program does not
       exclaim).
     - Quotes: angle quotes « » first level (RAE's first choice), “ ” inside
-      them. Names of window elements quoted in pages use « »: «Guardar
+      them. A nickname inside a name takes curly single quotes: Karel ‘Clock’
+      Kulhavy. Names of window elements quoted in pages use « »: «Guardar
       archivo…».
     - Dash: raya «—» for an aside in prose, closed on both sides
       («—así—»), sparingly; plain commas are often better.
@@ -169,6 +170,7 @@ the one both understand (see "add" and "file" below).
 | codeword | palabra de código (f) | «palabras de código no corregibles». |
 | byte | byte (m) | «1 byte», «5 bytes». |
 | encode / decode | codificar / decodificar | Command names `encode`, `decode` stay English. "Decode again" «volver a decodificar». |
+| command | comando (m) | «El comando `optar`», column «Comando»; matches «Línea de comandos». Not «orden» (mostly peninsular). |
 | option (of a command) | opción | argparse heading «opciones». |
 | usage, positional arguments | uso, argumentos posicionales | |
 | exit status | código de salida | |
@@ -184,6 +186,8 @@ the one both understand (see "add" and "file" below).
 |---|---|---|
 | page pixel, data pixel, scan pixel | píxel de página, píxel de datos, píxel de escaneo | |
 | page format, format string | formato de página, cadena de formato | |
+| page count | total de páginas | Also in headings (4.8 «El total de páginas y los límites»); kept apart from «número de página». |
+| root mean square | media cuadrática (RMS) | Not «distancia cuadrática media», which reads as the mean squared distance. |
 | layout | diseño | Paper + dot size + page format: «el diseño de puntos medium en papel a4». |
 | grid | cuadrícula | |
 | cross, origin, pitch | cruz, origen, paso | |
@@ -225,8 +229,10 @@ the one both understand (see "add" and "file" below).
   enough; «se puede reconstruir» (possibility) versus «reconstruida» (done).
 - **Promise of the tools** — «puede perder N páginas», «se pueden perder»:
   the modal «poder», not «resiste» (stronger).
-- **"Has been shown"** — «se ha mostrado» / «muestran» (by tests), not
-  «se ha demostrado» or «está probado» (proved).
+- **"Has been shown"** — «muestran las pruebas» (title «Qué muestran las
+  pruebas y qué no», last heading «Qué no muestran las pruebas»); in a sentence
+  «se ha visto». Not «se ha demostrado» or «está probado» (proved), and not
+  «se ha mostrado», which first suggests "displayed".
 - **"May contain wrong parts", "may be damaged"** — keep «puede»: «puede
   contener partes erróneas», «puede estar dañado».
 - **Warnings** stay as firm as English: «no se ha guardado».
@@ -293,7 +299,7 @@ titles exactly as written) and `site_description`.
 | Command line | Línea de comandos |
 | Reference | Referencia |
 | How a page identifies itself | Cómo se identifica una página |
-| What has and has not been shown | Qué se ha mostrado y qué no |
+| What has and has not been shown | Qué muestran las pruebas y qué no |
 | Format specification | Especificación del formato |
 | Project | Proyecto |
 | Development | Desarrollo |
@@ -349,7 +355,7 @@ English page quotes the English in the same place). The most quoted ones:
 | All N pages read · cannot be verified (no tag) | Leídas las N páginas · no se puede verificar (sin etiqueta) | `gui.state.all_read`, `gui.state.no_tag` |
 | 4 of 6 pages good · 1 damaged · 1 missing | 4 de 6 páginas correctas · 1 dañada · 1 ausente | `gui.state.good`, `.damaged`, `.missing` |
 | the worst spot used 57% of its repair capacity (18 of 32): a moderate margin | la peor zona usó el 57 % de su capacidad de reparación (18 de 32): un margen moderado | `gui.margin.moderate` |
-| Reading a coarse scan with the slower reader; this takes about a minute | Leyendo un escaneo de baja resolución con el lector lento; tarda alrededor de un minuto | `gui.READING_COARSE` |
+| Reading a coarse scan with the slower reader; this takes about a minute | Leyendo un escaneo de baja resolución con el lector lento; esto lleva alrededor de un minuto | `gui.READING_COARSE` |
 | Language / System default | Idioma / Idioma del sistema | `gui.LANGUAGE_MENU`, `gui.SYSTEM_LANGUAGE` |
 | Print at actual size (100%), not "fit to page". | Imprima a tamaño real (100 %), no con «Ajustar a la página». | `cli.ACTUAL_SIZE` |
 | the ordinary reader could not read this scan's data; trying the slower reader, which takes about a minute | el lector normal no pudo leer los datos de este escaneo; se prueba el lector lento, que tarda alrededor de un minuto | `cli.slow_reader` |

@@ -16,14 +16,14 @@ Descargue el archivo para su sistema desde la
 | macOS (Apple silicon) | `optar-gui-<tag>-macos-arm64.zip` | `optar-<tag>-macos-arm64` |
 | Windows | `optar-gui-<tag>-windows-x86_64.exe` | `optar-<tag>-windows-x86_64.exe` |
 
-Cada uno es un único archivo y no necesita nada más instalado.
+Cada uno es un único archivo y no requiere instalar nada más.
 
 - **Linux:** ejecute primero `chmod +x` sobre el archivo.
 - **macOS:** ejecute `chmod +x` sobre el archivo de línea de comandos.
   Descomprima la aplicación e intente abrirla. Los programas no están
   firmados, así que macOS puede negarse: abra «Ajustes del Sistema»,
   «Privacidad y seguridad», y elija «Abrir igualmente» (en versiones
-  anteriores de macOS, haga clic derecho en la aplicación y elija «Abrir»).
+  anteriores de macOS, haga clic con el botón derecho en la aplicación y elija «Abrir»).
 - **Windows:** los programas no están firmados, así que Windows puede mostrar
   una advertencia la primera vez que se ejecutan.
 

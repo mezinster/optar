@@ -4,7 +4,7 @@ source_hash: fc438b9b7896988d42b22d54829293c774aa20c2
 
 # Línea de comandos { #command-line }
 
-La orden `optar` codifica un archivo en páginas y decodifica los escaneos para
+El comando `optar` codifica un archivo en páginas y decodifica los escaneos para
 obtenerlo de nuevo. No necesita compilador de C, ni libpng, ni ImageMagick.
 
     optar encode INPUT [-o BASE] [--paper a4|letter] [--to pdf|png|pgm] [--label TEXT] [--no-tag]

@@ -14,12 +14,12 @@ El código fuente está en [github.com/mezinster/optar](https://github.com/mezin
 
 Ninguna prueba necesita un compilador de C.
 
-| Orden | Qué ejecuta |
+| Comando | Qué ejecuta |
 |---|---|
 | `.venv/bin/pytest -q` | el conjunto de pruebas predeterminado |
 | `.venv/bin/pytest -q -m gs` | las comprobaciones de la salida en PDF; necesita Ghostscript |
 | `.venv/bin/pytest -q -m slow` | las pruebas largas; añada `-n auto` para usar todos los núcleos |
-| `.venv/bin/pytest -q -m slow tests/unit/test_claims.py` | las pruebas con escaneos simulados en las que se basa [Qué se ha mostrado y qué no](evidence.md) |
+| `.venv/bin/pytest -q -m slow tests/unit/test_claims.py` | las pruebas con escaneos simulados en las que se basa [Qué muestran las pruebas y qué no](evidence.md) |
 | `QT_QPA_PLATFORM=offscreen .venv/bin/pytest -q -m gui` | las pruebas de la aplicación |
 
 Las pruebas de la aplicación necesitan PySide6 y pytest-qt

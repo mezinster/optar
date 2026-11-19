@@ -18,7 +18,7 @@ archivo a partir de escaneos de esas páginas.
   Con ella el programa repara manchas y esquinas rotas y, en un documento lo
   bastante largo, reconstruye una página perdida.
 - **Una huella digital** del archivo se imprime junto con él. El archivo
-  recuperado se llama verificado solo cuando coincide con esa huella.
+  recuperado solo se considera verificado cuando coincide con esa huella.
 
 Hay dos programas, que usan el mismo código:
 
@@ -34,7 +34,7 @@ Hay dos programas, que usan el mismo código:
 | Recuperar un archivo de una impresión | [Recuperar el archivo](read-from-paper.md) |
 | Leer escaneos hechos con una resolución demasiado baja | [Escaneos de resolución demasiado baja](slower-reader.md) |
 | Usarlo desde scripts | [Línea de comandos](command-line.md) |
-| Saber hasta qué punto puede fiarse | [Qué se ha mostrado y qué no](evidence.md) |
+| Saber hasta qué punto puede fiarse | [Qué muestran las pruebas y qué no](evidence.md) |
 | Escribir su propio lector o codificador | [Especificación del formato](format.md) |
 
 ## En resumen { #in-short }
@@ -50,7 +50,7 @@ Hay dos programas, que usan el mismo código:
 
 ## De dónde viene { #where-it-comes-from }
 
-optar lo escribió en C Karel 'Clock' Kulhavy, de Twibright Labs, en 2007.
+optar lo escribió en C Karel ‘Clock’ Kulhavy, de Twibright Labs, en 2007.
 Este proyecto es una versión en Python que lee y escribe las mismas páginas y
 añade la aplicación de escritorio, los puntos más grandes, la protección y la
 huella. Véase [Historia](history.md).

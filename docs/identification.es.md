@@ -26,7 +26,7 @@ impresión pertenecen, su número, el número de páginas, el tamaño del archiv
 su huella.
 
 El rótulo impreso en la parte inferior es para las personas y no se usa para
-identificarlas. En un PDF se imprime a un mismo tamaño sea cual sea el tamaño
+identificar las páginas. En un PDF se imprime a un mismo tamaño sea cual sea el tamaño
 de punto (el tamaño del rótulo de una página estándar), para que quepa la
 línea entera. Entonces es demasiado pequeño para leerse en un escaneo de baja
 resolución, y la ventana muestra «(sin nombre)» hasta que el archivo se
@@ -36,8 +36,8 @@ ellos.
 
 El espacio que un documento así no usa se rellena con un patrón fijo que
 parece datos, para que todas las páginas se impriman de forma uniforme. La
-versión 0.3.0 lo rellenaba con ceros, que se imprimían como líneas blancas a
-lo largo de las páginas. Ambos se leen, también con 0.3.0: ningún lector mira
+versión 0.3.0 lo rellenaba con ceros, que se imprimían como líneas blancas que
+cruzaban las páginas. Ambos se leen, también con 0.3.0: ningún lector mira
 el relleno.
 
 La cabecera de una página no es fiable por sí sola: una sola página escaneada

@@ -10,7 +10,7 @@ ejemplo una página de puntos estándar escaneada a 300 dpi en lugar de 600.
 
 Escanee a la resolución recomendada siempre que pueda. El lector lento
 recupera algunos escaneos de baja resolución, no todos (véase
-[Qué se ha mostrado y qué no](evidence.md#the-slower-reader)).
+[Qué muestran las pruebas y qué no](evidence.md#the-slower-reader)).
 
 ## Cuándo actúa { #when-it-runs }
 
@@ -75,8 +75,8 @@ de 20 a 35 segundos hasta que el lector normal se rindió y, después, de 20 a
 35 segundos para el lector lento.
 
 Una imagen que no es en absoluto una página de optar, pero en la que se
-encuentra el contorno de una página, cuesta unos 20 a 35 segundos más de lo
-que costaba sin el lector lento.
+encuentra el contorno de una página, tarda entre 20 y 35 segundos más de lo
+que tardaba sin el lector lento.
 
 ## Límites { #limits }
 

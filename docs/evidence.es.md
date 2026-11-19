@@ -2,7 +2,7 @@
 source_hash: 34c3bf2795da00caec5ecf72aeb5391c9d6f4e57
 ---
 
-# Qué se ha mostrado y qué no { #what-has-and-has-not-been-shown }
+# Qué muestran las pruebas y qué no { #what-has-and-has-not-been-shown }
 
 Esta sección dice en qué se basan las afirmaciones del proyecto. La mayor parte
 procede de escaneos simulados, no de papel.
@@ -20,18 +20,19 @@ hojas.
   a 200 dpi.
 - Los puntos grandes, muy grandes y extragrandes quedaron verificados a
   200 dpi sin errores.
-- Un documento de 12 páginas quedó verificado con una página retenida.
+- Un documento de 12 páginas quedó verificado aunque se omitió una de sus
+  páginas.
 
 ## El lector lento { #the-slower-reader }
 
-El [lector lento](slower-reader.md) se ha mostrado con un documento real y uno
-simulado.
+Lo que hace el [lector lento](slower-reader.md) se ha visto en un documento real
+y en uno simulado.
 
 **Real.** El documento del propietario, de seis páginas A4, puntos estándar,
 protección alta, escaneado a unos 290 dpi cuando se recomiendan 600 dpi. El
 lector normal no identificó ninguna de las páginas. Con el lector lento, el
 archivo se recuperó y quedó verificado por su huella: 759.879 bytes, de los
-cuales 41.495 bytes los reparó la protección del documento; el peor bloque usó
+cuales la protección del documento reparó 41.495; el peor bloque usó
 40 de su capacidad de reparación de 64. Es un documento, una impresora, un
 escáner y una resolución. Los escaneos no forman parte del repositorio.
 
@@ -52,7 +53,7 @@ los 40 que necesitó el peor bloque del documento real. Por eso se espera que un
 documento con protección estándar escaneado así falle. Las páginas antiguas al
 estilo de 0.2 no están cubiertas por el lector lento.
 
-## Qué no se ha mostrado { #what-is-not-shown }
+## Qué no muestran las pruebas { #what-is-not-shown }
 
 - Todavía no se ha leído ningún escaneo real de una página de puntos más
   grandes.
@@ -63,7 +64,7 @@ estilo de 0.2 no están cubiertas por el lector lento.
   programa encontró la cuadrícula de puntos en tres escaneos reales.
 - Tres escaneos reales a 300 dpi de una impresión midieron unos 286 dpi, lo que
   significa que esa impresión salió a alrededor del 95 % del tamaño real. Los
-  puntos más pequeños cuestan más de leer, así que imprima a tamaño real
+  puntos más pequeños son más difíciles de leer, así que imprima a tamaño real
   (100 %).
 - Las impresoras de inyección de tinta no se han probado.
 

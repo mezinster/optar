@@ -790,7 +790,7 @@ padding_bytes_30_to_33 = 12863e00
 
 Vectores: `tests/vectors/py/container.json`.
 
-### 4.8 El número de páginas y los límites { #48-the-page-count-and-the-limits }
+### 4.8 El total de páginas y los límites { #48-the-page-count-and-the-limits }
 
 Un documento tiene el menor número de páginas que contienen el archivo, el
 byte de longitud y el nombre:
@@ -849,7 +849,7 @@ El flujo tiene `T * net_bits // 8` bytes. Leído como cadena de bits, la carga
 los demás bits son 0. Cuando `net_bits` es múltiplo de 8, el flujo son
 simplemente las cargas útiles unidas. Cuando no lo es, cada página tiene
 `net_bits mod 8` bits sin usar después de su carga útil, y las cargas útiles
-de algunas páginas no empiezan en un byte del flujo.
+de algunas páginas no empiezan al principio de un byte del flujo.
 
 El flujo se imprime como dice la sección 2.7, lo que da exactamente `T`
 páginas. El rótulo de una página es una línea de rótulo ordinaria cuyo texto
@@ -1146,9 +1146,9 @@ linear_light_of_200 = 149
 Al decodificador se le da el formato de página. Trabaja con la imagen derecha.
 
 1. **Niveles de gris.** El nivel de corte empieza en el valor de gris medio.
-   Hasta 32 veces: `black` es el corte menos la distancia cuadrática media al
-   corte de los píxeles que están por debajo de él, y `white` el corte más la
-   de los píxeles que están por encima; el nuevo corte es
+   Hasta 32 veces: `black` es el corte menos la media cuadrática (RMS) de las
+   distancias al corte de los píxeles que están por debajo de él, y `white` el
+   corte más la de los píxeles que están por encima; el nuevo corte es
    `sync_white_cut * white + (1 - sync_white_cut) * black`, redondeado; el
    proceso se detiene cuando el corte ya no cambia. Un segundo nivel, el corte
    de llenado, está a medio camino entre `black` y `white`.
@@ -1161,8 +1161,8 @@ Al decodificador se le da el formato de página. Trabaja con la imagen derecha.
 3. **Un hueco en el marco.** Si una impresora recortó un lado de la página, el
    borde tiene un hueco, el blanco alrededor de la página se cuela entre los
    puntos y el paso 2 encuentra solo un trozo de la página. Cuando el área
-   encontrada es menor que la mitad de lo que no es borde blanco, se toma en
-   su lugar como blanco alrededor de la página lo que se puede alcanzar a
+   encontrada es menor que la mitad de lo que no es blanco alrededor de la
+   página, se toma en su lugar como blanco alrededor de la página lo que se puede alcanzar a
    través de pasajes de al menos `2 * r + 1` píxeles de ancho, con
    `r = max(5, longest side // 250) // 2`; el blanco entre los puntos es más
    estrecho que eso. Este resultado solo se usa si da una página entera. Es una
@@ -1293,9 +1293,9 @@ formato).
 
 La página de la parte 2 es el formato de Twibright Optar, un programa en C
 escrito por Karel Kulhavy en 2007 y mantenido desde 2012 en `colindean/optar`.
-Sus fuentes se conservan sin cambios en la carpeta `lega-c` de este proyecto,
-tal como estaban en el commit `9c8379c25466bf142459a26b0f34521bdde2af12` de ese
-repositorio. Los vectores de `tests/vectors/c` se grabaron con ese programa;
+Su código fuente se conserva sin cambios en la carpeta `lega-c` de este
+proyecto, tal como estaba en el commit `9c8379c25466bf142459a26b0f34521bdde2af12` de ese
+repositorio. Los vectores de `tests/vectors/c` se registraron con ese programa;
 los de `tests/vectors/py`, con este proyecto.
 
 | Versión | Lo que añadió |

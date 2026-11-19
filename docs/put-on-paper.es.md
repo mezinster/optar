@@ -33,7 +33,7 @@ impresora láser de 600 dpi. Las impresoras de inyección de tinta no se han
 probado.
 
 Una impresión que sale más pequeña que el tamaño real tiene puntos más
-pequeños, que cuestan más de leer. Una impresión real midió alrededor del 95 %
+pequeños, que son más difíciles de leer. Una impresión real midió alrededor del 95 %
 del tamaño real.
 
 ## Tamaño de punto { #dot-size }
