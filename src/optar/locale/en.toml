@@ -178,3 +178,463 @@ other = "{n} dots"
 [count.scan]
 one = "{n} scan"
 other = "{n} scans"
+
+# --- The desktop window (src/optar_gui/text.py) ------------------------------------
+#
+# The window speaks of "protection", "repair" and the "fingerprint", never of parity,
+# codewords or headers. A "block" is one error-correction unit; blocks are "repaired"
+# or "lost". {pages} is a list of page numbers ("3", "2-4, 7 and 9"); the plural form
+# of an entry that has it is chosen by how many pages the list names.
+
+[gui]
+# The window, its tabs, buttons and dialogs.
+WINDOW_TITLE = "optar"
+READ_TAB = "Read from paper"
+ADD_SCANS = "+ Add scans…"
+REMOVE_SCAN = "Remove"
+SAVE_FILE = "Save file…"
+ADD_SCANS_TITLE = "Add scans"
+SAVE_TITLE = "Save the recovered file"
+CONFIRM_SAVE_TITLE = "Save anyway?"
+ERROR_TITLE = "Could not save"
+# Titles of the sections of the list of scans.
+NOT_PART_OF_THIS_FILE = "Not part of this file"
+NOT_READABLE = "Not readable"
+BEING_READ_SECTION = "Being read"
+# The actions on the selected row and their dialogs.
+REPLACE_SCAN = "Replace scan…"
+USE_SPARE = "Use this scan"
+SWITCH_DOCUMENT = "Switch to this document"
+ASSIGN_PAGE = "Assign to page…"
+START_BY_HAND = "Start a document by hand…"
+REPLACE_REJECTED_TITLE = "Scan not used"
+ASSIGN_TITLE = "Assign to a page"
+PAGE_FIELD = "Page:"
+START_BY_HAND_TITLE = "Start a document by hand"
+START_BY_HAND_PROMPT = "No scan could be identified. Give the paper and the number of pages of the printout, then assign each scan to its page."
+TOTAL_FIELD = "Pages:"
+# Asked when the window is closed while a file is being written.
+STILL_WRITING_TITLE = "Still writing a file"
+STILL_WRITING = "A file is still being written. Wait until it is finished? If you close now, it may not be written."
+# Why a save cannot start (programming errors, never shown in a dialog).
+SAVE_RUNNING = "a save is already running"
+SAVE_AFTER_CLOSE = "the window has been closed, so nothing more can be saved"
+# The "Put on paper" tab.
+WRITE_TAB = "Put on paper"
+FILE_FIELD = "File:"
+PAPER_FIELD = "Paper:"
+NAME_FIELD = "Name:"
+PRINTS_AS_FIELD = "Prints as:"
+DOTS_FIELD = "Dot size:"
+PROTECT_FIELD = "Protection:"
+CHOOSE_FILE = "Choose…"
+CHOOSE_FILE_TITLE = "Choose a file to put on paper"
+CREATE_PDF = "Create PDF…"
+CREATE_TITLE = "Save the PDF"
+PDF_FILTER = "PDF (*.pdf);;All files (*)"
+PREPARING = "Reading the file…"
+CREATING = "Creating the PDF…"
+COMPATIBLE = "Compatible with optar 0.2 and the original optar"
+# Why a PDF is not created over the file being put on paper.
+DEST_IS_SOURCE = "the PDF would replace the file being put on paper; choose another name"
+# After the pages and size of a protected file that may lose no whole page.
+DAMAGE_REPAIRED = "damage within pages is repaired, but losing a whole page loses the file"
+# What a document without a name is called.
+NO_NAME = "(no name)"
+# A document whose file was recovered and matches its fingerprint.
+VERIFIED = "File recovered and verified"
+BY_PROTECTION = "by the document's protection"
+# The bottom bar while scans are being read and the document has nothing else to say.
+WORKING = "Working…"
+# The bar while a document is repaired and checked in the background.
+REPAIRING = "Repairing and checking the fingerprint…"
+# Why a page whose data says it repairs itself gave no data to repair with.
+NO_PAGE_DATA = "The data of this page could not be read"
+PREVIEW_LOADING = "Loading…"
+# A scan the ordinary reader could not read, while the slower reader tries it.
+READING_COARSE = "Reading a coarse scan with the slower reader; this takes about a minute"
+# After "too coarse to read": the slower reader could not read the scan either.
+SLOW_TRIED = "The slower reader for coarse scans was tried too, and could not read it."
+# A page read by the slower reader: in its detail, in its row, and lower case.
+READ_SLOWLY = "Read by the slower reader for coarse scans"
+READ_SLOWLY_ROW = "Read by the slower reader"
+READ_SLOWLY_SHORT = "read by the slower reader"
+# The step of a scan not started yet.
+WAITING = "Waiting"
+# The choice of language.
+LANGUAGE_MENU = "Language"
+SYSTEM_LANGUAGE = "System default"
+LANGUAGE_RESTART = "The language changes the next time optar starts."
+
+[gui.button]
+ok = "OK"
+cancel = "Cancel"
+save = "Save"
+yes = "Yes"
+no = "No"
+
+# Paper names, by the paper's name in optar.format.
+[gui.paper]
+a4 = "A4"
+letter = "US Letter"
+
+# Dot sizes as their selector names them, by their names in optar.format.
+[gui.dots]
+standard = "Standard"
+medium = "Medium"
+big = "Big"
+large = "Large"
+xlarge = "Extra large"
+
+# A paper printed with a dot size other than the standard one.
+[gui.paper_dots]
+standard = "{paper}, Standard dots"
+medium = "{paper}, Medium dots"
+big = "{paper}, Big dots"
+large = "{paper}, Large dots"
+xlarge = "{paper}, Extra large dots"
+
+[gui.protection]
+none = "None"
+standard = "Standard"
+high = "High"
+
+# The health of a page, in its row.
+[gui.health]
+good = "Good"
+unreadable = "Not readable"
+missing = "Missing"
+waiting = "Waiting"
+working = "Working…"
+
+# {n} blocks repaired.
+[gui.health.repaired]
+one = "Repaired · {n}"
+other = "Repaired · {n}"
+
+# {n} blocks lost, which the document's protection repaired.
+[gui.health.restored]
+one = "Repaired · {n} by the document's protection"
+other = "Repaired · {n} by the document's protection"
+
+# {n} blocks lost.
+[gui.health.damaged]
+one = "Damaged · {n} lost"
+other = "Damaged · {n} lost"
+
+# Of a page read by the slower reader.
+[gui.health.dots_corrected]
+one = "{n} dot corrected"
+other = "{n} dots corrected"
+
+[gui.health.bytes_repaired]
+one = "{n} byte repaired by the document's protection"
+other = "{n} bytes repaired by the document's protection"
+
+# The document's state in the bottom bar. Phrases are joined with " · ".
+[gui.state]
+checking = "Checking the fingerprint…"
+matches = "matches the fingerprint"
+mismatch = "Does not match the fingerprint on the paper"
+no_tag = "cannot be verified (no tag)"
+# {advice}: rescan advice (whole sentences); {repair}: what the repair did.
+advice_with_repair = "{advice} ({repair})"
+# {good}: the "good" phrase below; {repaired}: the "repaired" phrase below.
+good_with_repaired = "{good} ({repaired})"
+
+[gui.state.recoverable]
+one = "Recoverable: page {pages} missing, can be repaired from the others"
+other = "Recoverable: pages {pages} missing, can be repaired from the others"
+
+[gui.state.recovered]
+one = "Recoverable: page {pages} missing, repaired from the others"
+other = "Recoverable: pages {pages} missing, repaired from the others"
+
+# Every page of a document without a tag is read: one page, or none.
+[gui.state.read]
+one = "{n} page read"
+other = "{n} pages read"
+
+# Every page of a document without a tag is read: more than one.
+[gui.state.all_read]
+one = "All {n} page read"
+other = "All {n} pages read"
+
+# {good} of {n} pages are good.
+[gui.state.good]
+one = "{good} of {n} page good"
+other = "{good} of {n} pages good"
+
+# Of the good pages, {n} were repaired.
+[gui.state.repaired]
+one = "{n} repaired"
+other = "{n} repaired"
+
+# {n} pages.
+[gui.state.slow]
+one = "{n} read by the slower reader"
+other = "{n} read by the slower reader"
+
+[gui.state.damaged]
+one = "{n} damaged"
+other = "{n} damaged"
+
+[gui.state.unreadable]
+one = "{n} not readable"
+other = "{n} not readable"
+
+[gui.state.missing]
+one = "{n} missing"
+other = "{n} missing"
+
+# A run of pages with the same problem, in a save warning: one page, two pages,
+# or the range {first} to {last}. Runs are joined with "; ".
+[gui.run.missing]
+single = "page {first} is missing"
+pair = "pages {first} and {last} are missing"
+range = "pages {first}-{last} are missing"
+
+[gui.run.damaged]
+single = "page {first} is damaged"
+pair = "pages {first} and {last} are damaged"
+range = "pages {first}-{last} are damaged"
+
+[gui.run.unreadable]
+single = "page {first} is not readable"
+pair = "pages {first} and {last} are not readable"
+range = "pages {first}-{last} are not readable"
+
+[gui.run.reading]
+single = "page {first} is still being read"
+pair = "pages {first} and {last} are still being read"
+range = "pages {first}-{last} are still being read"
+
+# What saving must confirm first.
+[gui.save]
+# {runs}: the runs above, then perhaps "more" below.
+incomplete = "The saved file will be incomplete: {runs}."
+# {advice}: rescan advice (whole sentences).
+unrepaired = "{advice} If you save now, the saved file is only what could be recovered and may contain wrong parts."
+checking = "The fingerprint is still being checked, so it is not yet known whether the recovered file is the original."
+empty = "There is nothing to save."
+mismatch = "The recovered file does not match the fingerprint printed on the paper: some data was decoded wrongly, so this is not the original file."
+by_hand = "This document was put together by hand, so the file cannot be verified and will be padded with zeros to a whole page."
+untagged = "These pages carry no tag, so the file cannot be verified and will be padded with zeros to a whole page."
+
+# After the runs a save warning names: the pages it does not name.
+[gui.save.more]
+one = "and {n} more page missing or damaged"
+other = "and {n} more pages missing or damaged"
+
+# The standing caution over a document without a tag.
+[gui.caution]
+untagged = "These pages carry no tag, so it cannot be confirmed that they belong to the same printout or that the file is complete. The saved file will be padded with zeros."
+by_hand = "This document was put together by hand, so it cannot be confirmed that the pages belong to the same printout or that the file is complete. The saved file will be padded with zeros."
+
+# Why a scan is unreadable, by the reason the program gives.
+[gui.reason]
+no_page = "No optar page found in this image"
+label_unreadable = "The label at the bottom of the page could not be read"
+page_number = "The label's page number does not fit this document"
+page_count = "The label's page count is not possible"
+size_mismatch = "This scan is of a different paper size than the document"
+format_mismatch = "This scan was decoded for a different paper size than the document"
+
+# The detail panel of a page.
+[gui.detail]
+title = "Page {page} of {total}"
+repairs = "Repairs: {one} one-bit, {two} two-bit, {three} three-bit"
+missing = "No scan of this page has been added"
+waiting = "Waiting to be read"
+unreadable = "This scan could not be read"
+reading = "Being read…"
+
+# After "{n} blocks": {n} of them repaired.
+[gui.detail.repaired]
+one = "{n} repaired"
+other = "{n} repaired"
+
+[gui.detail.lost]
+one = "{n} lost"
+other = "{n} lost"
+
+[gui.detail.restored]
+one = "{n} repaired by the document's protection"
+other = "{n} repaired by the document's protection"
+
+# Rows of the list of scans.
+[gui.row]
+page = "Page {page}"
+spare = "Spare"
+# After the title of a spare's detail.
+spare_tag = "spare"
+spare_not_in_use = "Not in use: the page uses another scan"
+
+# A group of scans of another printout.
+[gui.row.other_printout]
+one = "{n} scan of another printout, not part of this file"
+other = "{n} scans of another printout, not part of this file"
+
+# Why a scan chosen to replace page {page} was not used. {name} is its file name.
+[gui.rejected]
+unusable = "{name} was not used for page {page}: it could not be read, so page {page} keeps the scan it has."
+unusable_reason = "{name} was not used for page {page}: it could not be read ({reason}), so page {page} keeps the scan it has."
+other_page = "{name} was not used for page {page}: it is page {other} of this document and is listed there."
+# {printout}: name · paper · pages.
+other_document = "{name} was not used for page {page}: it is page {other} of another printout, {printout}."
+# {why}: a sentence.
+not_used = "{name} was not used for page {page}. {why}"
+unread = "It could not be read."
+
+[gui.dialog]
+replace_title = "Choose a scan of page {page}"
+assign_prompt = "Which page of this document is {name}?"
+# After the page number in the page field.
+of_pages = " of {total}"
+scan_filter = "Scans ({patterns});;All files (*)"
+
+[gui.message]
+check_failed = "The fingerprint could not be checked: {message}"
+save_failed = "The file could not be saved: {message}"
+not_regular_file = "cannot read {path}: not a regular file (a folder, a pipe or a device)"
+file_unreadable = "The file could not be read: {message}"
+created = "Created {name}"
+create_failed = "The PDF could not be created: {message}"
+size_changed = "the image's size changed while it was loading"
+preview_failed = "This scan cannot be shown: {message}"
+repair_failed = "The pages could not be repaired: {reason}"
+
+[gui.message.saved]
+one = "Saved {n} byte to {name}"
+other = "Saved {n} bytes to {name}"
+
+[gui.message.too_many_pixels]
+one = "{n} pixels is more than the {limit} a scan may have"
+other = "{n} pixels is more than the {limit} a scan may have"
+
+# Putting a file on paper.
+[gui.write]
+dot_size = "{dots} (scan at {dpi} dpi)"
+
+# Of a protected printout of {total} pages.
+[gui.write.promise]
+one = "can lose {n} page of {total}"
+other = "can lose {n} pages of {total}"
+
+# Why a file cannot be put on paper with the chosen dot size and protection.
+[gui.too_large]
+fits_unprotected = "It fits without protection."
+
+[gui.too_large.protect]
+one = "This file is too large to protect with this dot size: a protected printout may have at most {n} page."
+other = "This file is too large to protect with this dot size: a protected printout may have at most {n} pages."
+
+[gui.too_large.pages]
+one = "This file is too large to put on paper with these choices: a printout may have at most {n} page."
+other = "This file is too large to put on paper with these choices: a printout may have at most {n} pages."
+
+[gui.too_large.fits_dots]
+standard = "It fits with Standard dots."
+medium = "It fits with Medium dots."
+big = "It fits with Big dots."
+large = "It fits with Large dots."
+xlarge = "It fits with Extra large dots."
+
+[gui.too_large.fits_either]
+standard = "It fits without protection, or with Standard dots."
+medium = "It fits without protection, or with Medium dots."
+big = "It fits without protection, or with Big dots."
+large = "It fits without protection, or with Large dots."
+xlarge = "It fits without protection, or with Extra large dots."
+
+# Why the printed name differs from the name typed. Sentences.
+[gui.name]
+dropped = "These characters are not in the label font and are not printed: {chars}."
+no_room = "The label of this dot size has no room for the name, so it is not printed."
+cut = "The name is too long for the page and is cut."
+stored = "The pages do not need it: the full name is kept with the file."
+printed = "The printed name is what identifies the pages later."
+
+# A scan made at too low a resolution; {measured} is rounded to the nearest 10.
+[gui.coarse]
+page = "Scanned too coarsely for this page: about {measured} dpi. Scan it at {needed} dpi."
+# The resolution each dot size needs, by its name in optar.format.
+unreadable = "Scanned at about {measured} dpi, which is too coarse to read. Scan at {standard} dpi for Standard dots, {medium} Medium, {big} Big, {large} Large, {xlarge} Extra large."
+
+# The detail of a page read by the slower reader.
+[gui.slow]
+corrected = "Dots corrected within the page: {dots}."
+# {share}: the share below.
+corrected_of = "Dots corrected within the page: {dots} of {total} ({share})."
+# {share}: a percentage with one decimal, such as 8.3.
+share = "{share}%"
+share_small = "under 0.1%"
+pending = "The document's protection repairs what that reader got wrong; how many of this page's bytes it repaired is shown once the document is verified."
+none_wrong = "After verification: none of this page's bytes were wrong."
+
+[gui.slow.repaired]
+one = "After verification: {n} of this page's bytes was wrong and was repaired by the document's protection."
+other = "After verification: {n} of this page's bytes were wrong and were repaired by the document's protection."
+
+# Each step of a scan's reading.
+[gui.step]
+open = "Opening the file"
+find = "Finding the page"
+identify = "Identifying the page"
+read = "Reading the data"
+slow-sample = "Slower reader: sampling"
+# The {current}th of {total} fits of the slower reader.
+slow-fit = "Slower reader: pass {current} of {total}"
+# A step with no words of its own.
+other = "Working"
+
+# {done} of {n} scans are read.
+[gui.scans_read]
+one = "{done} of {n} scan read"
+other = "{done} of {n} scans read"
+
+# The bar while scans are being read and the document has nothing else to say.
+[gui.scans_read_working]
+one = "Working… {done} of {n} scan read"
+other = "Working… {done} of {n} scans read"
+
+# Lists of page numbers: "1, 3 and 5".
+[gui.list]
+comma = ", "
+and = "{items} and {last}"
+
+# The pages a list does not name.
+[gui.list.more]
+one = "{n} more"
+other = "{n} more"
+
+# What repairing a document did.
+[gui.repair]
+unprotected = "Printed without protection, so nothing could be repaired"
+too_much = "the worst spot needed {used} of {budget}: too much to repair"
+
+[gui.repair.bytes]
+one = "{n} byte repaired"
+other = "{n} bytes repaired"
+
+# How close a repair came to failing: {percent}% of the repair capacity ({used}
+# of {budget}) used at the worst spot.
+[gui.margin]
+wide = "the worst spot used {percent}% of its repair capacity ({used} of {budget}): a wide margin"
+moderate = "the worst spot used {percent}% of its repair capacity ({used} of {budget}): a moderate margin"
+close = "the worst spot used {percent}% of its repair capacity ({used} of {budget}): close to the limit"
+
+# After a repair that could not give the file.
+[gui.rescan]
+nothing = "The file could not be fully repaired. Rescanning the pages may still improve it."
+# {what}: "add" and "rescan" below, or both.
+advice = "The file could not be fully repaired. Adding or rescanning pages can still improve it: {what}."
+both = "{add} and {rescan}"
+
+[gui.rescan.add]
+one = "add page {pages}"
+other = "add pages {pages}"
+
+[gui.rescan.worst]
+one = "rescan page {pages}, which has the most damage"
+other = "rescan pages {pages}, which have the most damage"

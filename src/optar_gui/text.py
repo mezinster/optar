@@ -1,9 +1,16 @@
 # (c) GPL 2007 Karel 'Clock' Kulhavy, Twibright Labs; Python port 2026
 """Every user-visible string of the application, so the widgets hold no wording.
 
-Plain Python, no Qt and no numpy. Plain language: a "block" is one
-error-correction codeword; blocks are "repaired" or "lost". Counts carry
-thousands separators and agree in number with their noun.
+Plain Python, no Qt and no numpy. The wording itself lives in the catalogues
+(``optar/locale/<language>.toml``, tables ``gui`` and ``count``); this module is
+the window's one door to them. A constant such as ``text.READ_TAB`` is looked up
+in the current language each time it is read. Templates are whole sentences or
+whole phrases, and a count that changes their wording chooses a plural form;
+only finished phrases are joined here (with " · ", "; " or " — ").
+
+Plain language: a "block" is one error-correction codeword; blocks are
+"repaired" or "lost". Counts carry the language's thousands separators and
+agree in number with their noun.
 """
 
 from __future__ import annotations
@@ -13,7 +20,11 @@ import os
 from typing import TYPE_CHECKING
 
 from optar_gui.document import (
+    COUNT_OUT_OF_RANGE,
+    FORMAT_MISMATCH,
+    OUT_OF_RANGE,
     SCAN_EXTENSIONS,
+    SIZE_MISMATCH,
     DocState,
     Fit,
     GroupView,
@@ -29,120 +40,90 @@ if TYPE_CHECKING:
     from optar.format import Layout
     from optar_gui.document import Document
 
-# Same wording as the command line's (optar.cli.ACTUAL_SIZE).
-ACTUAL_SIZE = 'Print at actual size (100%), not "fit to page".'
+# Loading the optar package loads numpy, which importing this module must not:
+# optar.i18n (and the rest of optar) is imported inside the functions below.
 
-# Titles of the sections of the list of scans.
-NOT_PART_OF_THIS_FILE = "Not part of this file"
-NOT_READABLE = "Not readable"
 
-# The window, its tabs, buttons and dialogs.
-WINDOW_TITLE = "optar"
-READ_TAB = "Read from paper"
-ADD_SCANS = "+ Add scans…"
-REMOVE_SCAN = "Remove"
-SAVE_FILE = "Save file…"
-ADD_SCANS_TITLE = "Add scans"
-SAVE_TITLE = "Save the recovered file"
-CONFIRM_SAVE_TITLE = "Save anyway?"
-ERROR_TITLE = "Could not save"
+def _t(key: str, /, **values: object) -> str:
+    from optar import i18n
 
-# The actions on the selected row and their dialogs.
-REPLACE_SCAN = "Replace scan…"
-USE_SPARE = "Use this scan"
-SWITCH_DOCUMENT = "Switch to this document"
-ASSIGN_PAGE = "Assign to page…"
-START_BY_HAND = "Start a document by hand…"
-REPLACE_REJECTED_TITLE = "Scan not used"
-ASSIGN_TITLE = "Assign to a page"
-PAGE_FIELD = "Page:"
-START_BY_HAND_TITLE = "Start a document by hand"
-START_BY_HAND_PROMPT = (
-    "No scan could be identified. Give the paper and the number of pages of the "
-    "printout, then assign each scan to its page."
-)
-TOTAL_FIELD = "Pages:"
+    return i18n.t(key, **values)
 
-# Asked when the window is closed while a file is being written.
-STILL_WRITING_TITLE = "Still writing a file"
-STILL_WRITING = (
-    "A file is still being written. Wait until it is finished? If you close now, "
-    "it may not be written."
-)
 
-# Why a save cannot start (programming errors, never shown in a dialog).
-SAVE_RUNNING = "a save is already running"
-SAVE_AFTER_CLOSE = "the window has been closed, so nothing more can be saved"
+def _n(key: str, count: int, /, **values: object) -> str:
+    """A plural entry: the form for ``count``, with ``{n}`` the count as shown."""
+    from optar import i18n
 
-# The "Put on paper" tab.
-WRITE_TAB = "Put on paper"
-FILE_FIELD = "File:"
-PAPER_FIELD = "Paper:"
-NAME_FIELD = "Name:"
-PRINTS_AS_FIELD = "Prints as:"
-CHOOSE_FILE = "Choose…"
-CHOOSE_FILE_TITLE = "Choose a file to put on paper"
-CREATE_PDF = "Create PDF…"
-CREATE_TITLE = "Save the PDF"
-PDF_FILTER = "PDF (*.pdf);;All files (*)"
-PREPARING = "Reading the file…"
-CREATING = "Creating the PDF…"
-# Why a PDF is not created over the file being put on paper.
-DEST_IS_SOURCE = "the PDF would replace the file being put on paper; choose another name"
-# The choices of how the file is put on paper.
-DOTS_FIELD = "Dot size:"
-PROTECT_FIELD = "Protection:"
-COMPATIBLE = "Compatible with optar 0.2 and the original optar"
+    return i18n.n(key, count, **values)
 
-# What a document without a name is called.
-NO_NAME = "(no name)"
 
-# Paper names as the window shows them, by the paper's name in optar.format.
-_PAPER_NAMES = {"a4": "A4", "letter": "US Letter"}
+def _num(value: int) -> str:
+    """An integer with the language's thousands separator."""
+    from optar import i18n
 
-_HEALTH_LABELS = {
-    Health.GOOD: "Good",
-    Health.UNREADABLE: "Not readable",
-    Health.MISSING: "Missing",
-    Health.WAITING: "Waiting",
-    Health.WORKING: "Working…",
-}
+    return i18n.number(value)
 
-_REASONS = {
-    "no page found": "No optar page found in this image",
-    "label unreadable": "The label at the bottom of the page could not be read",
-    "page number out of range": "The label's page number does not fit this document",
-    "page count out of range": "The label's page count is not possible",
-    "page size does not match this document": (
-        "This scan is of a different paper size than the document"
-    ),
-    "decoded for another page format": (
-        "This scan was decoded for a different paper size than the document"
-    ),
+
+def _name(key: str, default: str) -> str:
+    """The catalogue's name under ``key``, or ``default`` for a name it lacks."""
+    try:
+        return _t(key)
+    except KeyError:
+        return default
+
+
+def __getattr__(name: str) -> str:
+    """The public constants (``READ_TAB`` and so on), in the current language."""
+    if name.isupper() and not name.startswith("_"):
+        # Same wording as the command line's (optar.cli.ACTUAL_SIZE).
+        key = "cli.ACTUAL_SIZE" if name == "ACTUAL_SIZE" else f"gui.{name}"
+        try:
+            return _t(key)
+        except KeyError:
+            pass
+    raise AttributeError(name)
+
+
+def button(name: str) -> str:
+    """A dialog button's caption: ``ok``, ``cancel``, ``save``, ``yes`` or ``no``."""
+    return _name(f"gui.button.{name}", name)
+
+
+# Why a file cannot be put on paper with the chosen dot size and protection
+# (``work.PrintPlan.too_large``): more pages than a printout may have, or more
+# than a protected one may have. Codes compared by value and never shown, so
+# they do not change with the language.
+TOO_MANY_PAGES = "too many pages"
+TOO_LARGE_TO_PROTECT = "too large to protect"
+
+# The catalogue's key for each health a page row shows by name.
+_HEALTH_KEYS = {
+    Health.GOOD: "good",
+    Health.UNREADABLE: "unreadable",
+    Health.MISSING: "missing",
+    Health.WAITING: "waiting",
+    Health.WORKING: "working",
 }
 
 # A save warning names at most this many runs of pages, then counts the rest.
 MAX_RUNS = 10
 
-# What a page that spoils the saved file is, in a warning; waiting and working
-# pages read the same.
+# What a page that spoils the saved file is, in a warning (the catalogue's key
+# under ``gui.run``); waiting and working pages read the same.
 _PROBLEMS = {
     Health.MISSING: "missing",
     Health.DAMAGED: "damaged",
-    Health.UNREADABLE: "not readable",
-    Health.WAITING: "still being read",
-    Health.WORKING: "still being read",
+    Health.UNREADABLE: "unreadable",
+    Health.WAITING: "reading",
+    Health.WORKING: "reading",
 }
 
 
 def count(n: int, noun: str) -> str:
-    """``1 page``, ``2 pages``, ``1,205 pages``."""
-    return f"{n:,} {noun}" if n == 1 else f"{n:,} {noun}s"
+    """``1 page``, ``2 pages``, ``1,205 pages``; ``noun`` is ``page``, ``byte``,
+    ``block``, ``dot`` or ``scan``."""
+    return _n(f"count.{noun}", n)
 
-
-# A document whose file was recovered and matches its fingerprint.
-VERIFIED = "File recovered and verified"
-BY_PROTECTION = "by the document's protection"
 
 # The share of its repair capacity that the worst spot of a document used, up
 # to which the margin is called wide, and up to which moderate.
@@ -161,21 +142,20 @@ def health_label(
     (``Summary.repaired_bytes``; None before, and nothing is said of it when it
     is 0)."""
     if page.slow and page.health in (Health.GOOD, Health.REPAIRED):
-        parts = [READ_SLOWLY_ROW, f"{count(page.corrected_dots, 'dot')} corrected"]
+        parts = [
+            _t("gui.READ_SLOWLY_ROW"),
+            _n("gui.health.dots_corrected", page.corrected_dots),
+        ]
         if repaired_bytes:
-            parts.append(f"{count(repaired_bytes, 'byte')} repaired {BY_PROTECTION}")
+            parts.append(_n("gui.health.bytes_repaired", repaired_bytes))
         return " · ".join(parts)
     if page.health == Health.REPAIRED:
-        return f"Repaired · {page.repaired:,}"
+        return _n("gui.health.repaired", page.repaired)
     if page.health == Health.DAMAGED:
         if restored:
-            return f"Repaired · {page.lost:,} {BY_PROTECTION}"
-        return f"Damaged · {page.lost:,} lost"
-    return _HEALTH_LABELS[page.health]
-
-
-# The bottom bar while scans are being read and the document has nothing else to say.
-WORKING = "Working…"
+            return _n("gui.health.restored", page.lost)
+        return _n("gui.health.damaged", page.lost)
+    return _t(f"gui.health.{_HEALTH_KEYS[page.health]}")
 
 
 def summary_line(s: Summary) -> str:
@@ -195,7 +175,7 @@ def with_reading(line: str, s: Summary) -> str:
     is empty or being worked on, the count alone (``reading_line``)."""
     if not s.reading:
         return line
-    if line in ("", WORKING):
+    if line in ("", _t("gui.WORKING")):
         return reading_line(s.reading, s.batch)
     return f"{line} · {scans_read(s.reading, s.batch)}"
 
@@ -206,41 +186,50 @@ def _state_line(s: Summary) -> str:
     if s.state == DocState.EMPTY:
         return ""
     if s.state == DocState.WORKING:
-        return WORKING
+        return _t("gui.WORKING")
     if s.state == DocState.CHECKING:
-        return "Checking the fingerprint…"
+        return _t("gui.state.checking")
     if s.state == DocState.VERIFIED:
-        line = f"{VERIFIED} · {count(s.size, 'byte')}"
-        return f"{line} · {repair_line(repair)}" if repair is not None else line
+        parts = [_t("gui.VERIFIED"), count(s.size, "byte")]
+        if repair is not None:
+            parts.append(repair_line(repair))
+        return " · ".join(parts)
     if s.state == DocState.RECOVERABLE:
-        missing = _page_numbers(s.missing_pages)
+        many, missing = _page_list(s.missing_pages)
         if repair is None:
-            return f"Recoverable: {missing} missing, can be repaired from the others"
-        return (
-            f"Recoverable: {missing} missing, repaired from the others · matches the "
-            f"fingerprint · {count(s.size, 'byte')} · {repair_line(repair)}"
-        )
+            return _n("gui.state.recoverable", many, pages=missing)
+        return " · ".join((
+            _n("gui.state.recovered", many, pages=missing),
+            _t("gui.state.matches"),
+            count(s.size, "byte"),
+            repair_line(repair),
+        ))  # fmt: skip
     if s.state == DocState.MISMATCH:
-        line = "Does not match the fingerprint on the paper"
-        return f"{line} · {repair_line(repair)}" if repair is not None else line
+        line = _t("gui.state.mismatch")
+        return " · ".join((line, repair_line(repair))) if repair is not None else line
     if s.repair_error:
         return repair_failed(s.repair_error)
     if repair is not None:
-        return f"{rescan_advice(repair)} ({repair_line(repair)})"
+        return _t(
+            "gui.state.advice_with_repair",
+            advice=rescan_advice(repair),
+            repair=repair_line(repair),
+        )
     if s.state == DocState.UNVERIFIABLE:
-        read = f"All {count(pages, 'page')}" if pages > 1 else count(pages, "page")
-        return f"{read} read · cannot be verified (no tag)"
+        read = _n("gui.state.all_read" if pages > 1 else "gui.state.read", pages)
+        return " · ".join((read, _t("gui.state.no_tag")))
     # A page read by the slower reader is not called good: that reader cannot
     # say how much of the page it got wrong.
-    good = f"{s.good + s.repaired - s.slow:,} of {count(pages, 'page')} good"
+    good = _n("gui.state.good", pages, good=_num(s.good + s.repaired - s.slow))
     if s.repaired:
-        good += f" ({s.repaired:,} repaired)"
+        repaired = _n("gui.state.repaired", s.repaired)
+        good = _t("gui.state.good_with_repaired", good=good, repaired=repaired)
     parts = [good]
     if s.slow:
-        parts.append(f"{s.slow:,} {READ_SLOWLY_SHORT}")
-    for n, what in ((s.damaged, "damaged"), (s.unreadable, "not readable"), (s.missing, "missing")):
+        parts.append(_n("gui.state.slow", s.slow))
+    for n, what in ((s.damaged, "damaged"), (s.unreadable, "unreadable"), (s.missing, "missing")):
         if n:
-            parts.append(f"{n:,} {what}")
+            parts.append(_n(f"gui.state.{what}", n))
     return " · ".join(parts)
 
 
@@ -259,11 +248,12 @@ def _runs(pages: tuple[PageView, ...]) -> list[tuple[int, int, str]]:
 
 
 def _run_text(first: int, last: int, problem: str) -> str:
+    # Page numbers in a run are shown without thousands separators.
     if first == last:
-        return f"page {first} is {problem}"
+        return _t(f"gui.run.{problem}.single", first=first)
     if last == first + 1:
-        return f"pages {first} and {last} are {problem}"
-    return f"pages {first}-{last} are {problem}"
+        return _t(f"gui.run.{problem}.pair", first=first, last=last)
+    return _t(f"gui.run.{problem}.range", first=first, last=last)
 
 
 def save_warning(doc: Document, summary: Summary | None = None) -> str | None:
@@ -283,53 +273,49 @@ def save_warning(doc: Document, summary: Summary | None = None) -> str | None:
     if s.repair is not None and s.repair.verified:
         return None  # repaired, and the fingerprint matches
     if s.repair is not None and s.repair.data is None:
-        return (
-            f"{rescan_advice(s.repair)} If you save now, the saved file is only what "
-            "could be recovered and may contain wrong parts."
-        )
+        return _t("gui.save.unrepaired", advice=rescan_advice(s.repair))
     if s.repair is not None:
         state = DocState.MISMATCH  # the file as repaired, which is not the original
     if state == DocState.CHECKING:
-        return (
-            "The fingerprint is still being checked, so it is not yet known whether the "
-            "recovered file is the original."
-        )
+        return _t("gui.save.checking")
     if state == DocState.EMPTY:
-        return "There is nothing to save."
+        return _t("gui.save.empty")
     if state == DocState.MISMATCH:
-        return (
-            "The recovered file does not match the fingerprint printed on the paper: "
-            "some data was decoded wrongly, so this is not the original file."
-        )
+        return _t("gui.save.mismatch")
     if state == DocState.UNVERIFIABLE and doc.by_hand:
-        return (
-            "This document was put together by hand, so the file cannot be verified "
-            "and will be padded with zeros to a whole page."
-        )
+        return _t("gui.save.by_hand")
     if state == DocState.UNVERIFIABLE:
-        return (
-            "These pages carry no tag, so the file cannot be verified and will be "
-            "padded with zeros to a whole page."
-        )
+        return _t("gui.save.untagged")
     runs = _runs(doc.pages())
     shown = [_run_text(*run) for run in runs[:MAX_RUNS]]
     rest = sum(last - first + 1 for first, last, _ in runs[MAX_RUNS:])
     if rest:
-        shown.append(f"and {rest:,} more {'page' if rest == 1 else 'pages'} missing or damaged")
-    return f"The saved file will be incomplete: {'; '.join(shown)}."
+        shown.append(_n("gui.save.more", rest))
+    return _t("gui.save.incomplete", runs="; ".join(shown))
 
 
 def untagged_caution() -> str:
-    return (
-        "These pages carry no tag, so it cannot be confirmed that they belong to the "
-        "same printout or that the file is complete. The saved file will be padded "
-        "with zeros."
-    )
+    return _t("gui.caution.untagged")
+
+
+def _reason_key(reason: str) -> str | None:
+    """The catalogue's key (under ``gui.reason``) for a reason the program gives."""
+    from optar.identify import LABEL_UNREADABLE, NO_PAGE
+
+    return {
+        NO_PAGE: "no_page",
+        LABEL_UNREADABLE: "label_unreadable",
+        OUT_OF_RANGE: "page_number",
+        COUNT_OUT_OF_RANGE: "page_count",
+        SIZE_MISMATCH: "size_mismatch",
+        FORMAT_MISMATCH: "format_mismatch",
+    }.get(reason)
 
 
 def unreadable_reason(reason: str) -> str:
     """The library's reason for an unreadable scan, in plain words."""
-    return _REASONS.get(reason, reason)
+    key = _reason_key(reason)
+    return reason if key is None else _t(f"gui.reason.{key}")
 
 
 def detail_text(
@@ -346,37 +332,34 @@ def detail_text(
     ``restored`` and ``repaired_bytes`` are as for ``health_label``.
     """
     reason = reason or page.reason
-    title = f"Page {page.number:,} of {pages:,}"
+    title = _t("gui.detail.title", page=_num(page.number), total=_num(pages))
     if scan_name:
-        title += f" · {scan_name}"
+        title = f"{title} · {scan_name}"
     if page.histogram is not None and page.slow:
         return (title, *slow_reader_detail(page, repaired_bytes))
     if page.histogram is not None:
         blocks = sum(page.histogram) + page.lost
-        lost = f"{page.lost:,} lost"
         if restored and page.lost:
-            lost = f"{page.lost:,} repaired {BY_PROTECTION}"
-        blocks_line = f"{count(blocks, 'block')} · {page.repaired:,} repaired · {lost}"
-        lines = [title, blocks_line]
+            lost = _n("gui.detail.restored", page.lost)
+        else:
+            lost = _n("gui.detail.lost", page.lost)
+        repaired = _n("gui.detail.repaired", page.repaired)
+        lines = [title, " · ".join((count(blocks, "block"), repaired, lost))]
         if page.repaired:
             one, two, three = page.histogram[1:]
-            lines.append(f"Repairs: {one:,} one-bit, {two:,} two-bit, {three:,} three-bit")
+            lines.append(_t("gui.detail.repairs", one=_num(one), two=_num(two), three=_num(three)))
         return tuple(lines)
     if page.health == Health.MISSING:
-        return (title, "No scan of this page has been added")
+        return (title, _t("gui.detail.missing"))
     if page.health == Health.WAITING:
-        return (title, "Waiting to be read")
+        return (title, _t("gui.detail.waiting"))
     if page.health == Health.UNREADABLE:
-        return (title, unreadable_reason(reason) if reason else "This scan could not be read")
-    return (title, "Being read…")
+        return (title, unreadable_reason(reason) if reason else _t("gui.detail.unreadable"))
+    return (title, _t("gui.detail.reading"))
 
 
 def by_hand_caution() -> str:
-    return (
-        "This document was put together by hand, so it cannot be confirmed that the "
-        "pages belong to the same printout or that the file is complete. The saved "
-        "file will be padded with zeros."
-    )
+    return _t("gui.caution.by_hand")
 
 
 def caution(doc: Document) -> str | None:
@@ -397,17 +380,17 @@ def paper_name(format: str) -> str:
 
     for key, paper in PAPERS.items():
         if PageFormat.for_paper(paper).to_string() == format:
-            return _PAPER_NAMES.get(key, paper.name)
+            return _name(f"gui.paper.{key}", paper.name)
     for (key, dots), layout in LAYOUTS.items():
         if layout.fmt.to_string() == format:
-            return f"{_PAPER_NAMES.get(key, key)}, {_DOT_NAMES.get(dots, dots)} dots"
+            return _t(f"gui.paper_dots.{dots}", paper=_name(f"gui.paper.{key}", key))
     return format
 
 
 def _group_line(group: GroupView) -> str:
     pages = max(group.total, 1)  # an empty file prints one page labelled 1/0
-    name = group.title.rstrip(" ") or NO_NAME
-    return f"{name} · {paper_name(group.format)} · {count(pages, 'page')}"
+    name = group.title.rstrip(" ") or _t("gui.NO_NAME")
+    return " · ".join((name, paper_name(group.format), count(pages, "page")))
 
 
 def document_title(group: GroupView) -> str:
@@ -417,34 +400,33 @@ def document_title(group: GroupView) -> str:
 
 def page_row(page: PageView, restored: bool = False, repaired_bytes: int | None = None) -> str:
     """A page's row; ``restored`` and ``repaired_bytes`` are as for ``health_label``."""
-    return f"Page {page.number:,} · {health_label(page, restored, repaired_bytes)}"
+    number = _t("gui.row.page", page=_num(page.number))
+    return " · ".join((number, health_label(page, restored, repaired_bytes)))
 
 
 def other_group_row(group: GroupView) -> str:
     """A row under "Not part of this file": what the group says it is, and its scans."""
-    return f"{_group_line(group)} · {count(len(group.scan_ids), 'scan')}"
+    return " · ".join((_group_line(group), count(len(group.scan_ids), "scan")))
 
 
 def other_group_detail(group: GroupView) -> tuple[str, ...]:
-    return (
-        _group_line(group),
-        f"{count(len(group.scan_ids), 'scan')} of another printout, not part of this file",
-    )
+    return (_group_line(group), _n("gui.row.other_printout", len(group.scan_ids)))
 
 
 def spare_row(page: PageView, scan_name: str) -> str:
     """A row under its page: a spare scan, shown with the health it would give."""
-    return f"    Spare · {scan_name} · {health_label(page)}"
+    return f"    {_t('gui.row.spare')} · {scan_name} · {health_label(page)}"
 
 
 def spare_detail(page: PageView, scan_name: str, pages: int) -> tuple[str, ...]:
     """The detail panel for a spare; ``page`` is the page as it would be with it in use."""
     lines = detail_text(page, scan_name, pages)
-    return (f"{lines[0]} · spare", *lines[1:], "Not in use: the page uses another scan")
+    title = f"{lines[0]} · {_t('gui.row.spare_tag')}"
+    return (title, *lines[1:], _t("gui.row.spare_not_in_use"))
 
 
 def replace_title(page: int) -> str:
-    return f"Choose a scan of page {page:,}"
+    return _t("gui.dialog.replace_title", page=_num(page))
 
 
 def _sentence(words: str) -> str:
@@ -462,38 +444,34 @@ def replace_rejected(
     """
     name = os.path.basename(scan.path)
     info = scan.info
+    page_shown = _num(page)
     if fit == Fit.UNUSABLE:
-        why = f" ({unreadable_reason(scan.reason)})" if scan.reason else ""
-        return (
-            f"{name} was not used for page {page:,}: it could not be read{why}, "
-            f"so page {page:,} keeps the scan it has."
-        )
+        if scan.reason:
+            return _t("gui.rejected.unusable_reason", name=name, page=page_shown,
+                      reason=unreadable_reason(scan.reason))  # fmt: skip
+        return _t("gui.rejected.unusable", name=name, page=page_shown)
     if fit == Fit.OTHER_PAGE and (other_page is not None or info is not None):
         where = other_page if other_page is not None else info.page
-        return (
-            f"{name} was not used for page {page:,}: it is page {where:,} of this "
-            "document and is listed there."
-        )
+        return _t("gui.rejected.other_page", name=name, page=page_shown, other=_num(where))
     if fit == Fit.OTHER_DOCUMENT and info is not None:
-        printout = (
-            f"{info.name.rstrip(' ') or NO_NAME} · {paper_name(info.format)} · "
-            f"{count(max(info.total, 1), 'page')}"
-        )
-        return (
-            f"{name} was not used for page {page:,}: it is page {info.page:,} of another "
-            f"printout, {printout}."
-        )
-    why = unreadable_reason(scan.reason) if scan.reason.strip() else "It could not be read"
-    return f"{name} was not used for page {page:,}. {_sentence(why)}"
+        printout = " · ".join((
+            info.name.rstrip(" ") or _t("gui.NO_NAME"),
+            paper_name(info.format),
+            count(max(info.total, 1), "page"),
+        ))  # fmt: skip
+        return _t("gui.rejected.other_document", name=name, page=page_shown,
+                  other=_num(info.page), printout=printout)  # fmt: skip
+    why = unreadable_reason(scan.reason) if scan.reason.strip() else _t("gui.rejected.unread")
+    return _t("gui.rejected.not_used", name=name, page=page_shown, why=_sentence(why))
 
 
 def assign_prompt(scan_name: str) -> str:
-    return f"Which page of this document is {scan_name}?"
+    return _t("gui.dialog.assign_prompt", name=scan_name)
 
 
 def of_pages(total: int) -> str:
     """After the page number in the page field: how many pages there are."""
-    return f" of {total:,}"
+    return _t("gui.dialog.of_pages", total=_num(total))
 
 
 def unreadable_row(scan: ScanView) -> str:
@@ -510,26 +488,26 @@ def summary_bar(line: str, note: str) -> str:
 
 
 def saved_message(path: str, size: int) -> str:
-    return f"Saved {count(size, 'byte')} to {os.path.basename(path)}"
+    return _n("gui.message.saved", size, name=os.path.basename(path))
 
 
 def check_failed(message: str) -> str:
     """The bar when the fingerprint check itself failed (not a mismatch)."""
-    return f"The fingerprint could not be checked: {message}"
+    return _t("gui.message.check_failed", message=message)
 
 
 def save_failed(message: str) -> str:
-    return f"The file could not be saved: {message}"
+    return _t("gui.message.save_failed", message=message)
 
 
 def paper_label(paper: str) -> str:
     """A paper's name as the window shows it, by its name in optar.format."""
-    return _PAPER_NAMES.get(paper, paper)
+    return _name(f"gui.paper.{paper}", paper)
 
 
 def file_info(total: int, size: int) -> str:
     """Pages and size of a file to put on paper; an empty file prints one page."""
-    return f"{count(max(total, 1), 'page')} · {count(size, 'byte')}"
+    return " · ".join((count(max(total, 1), "page"), count(size, "byte")))
 
 
 def name_warning(
@@ -542,107 +520,86 @@ def name_warning(
     is then only for people. ``printed`` is whether any of the name is printed
     at all; the label of the largest dots has no room for it.
     """
-    parts = []
+    sentences = []
     if dropped and (printed or not cut):
         shown = " ".join(ch if ch.isprintable() else repr(ch)[1:-1] for ch in dropped)
-        parts.append(f"These characters are not in the label font and are not printed: {shown}")
+        sentences.append(_t("gui.name.dropped", chars=shown))
     if cut and not printed:
-        parts.append("The label of this dot size has no room for the name, so it is not printed")
+        sentences.append(_t("gui.name.no_room"))
     elif cut:
-        parts.append("The name is too long for the page and is cut")
-    if not parts:
+        sentences.append(_t("gui.name.cut"))
+    if not sentences:
         return None
-    if stored:
-        ending = "The pages do not need it: the full name is kept with the file."
-    else:
-        ending = "The printed name is what identifies the pages later."
-    return f"{'. '.join(parts)}. {ending}"
+    sentences.append(_t("gui.name.stored" if stored else "gui.name.printed"))
+    return " ".join(sentences)
 
 
 def not_regular_file(path: str) -> str:
     """Why a folder, a named pipe or a device is not read as a scan or a file to print."""
-    return f"cannot read {path}: not a regular file (a folder, a pipe or a device)"
+    return _t("gui.message.not_regular_file", path=path)
 
 
 def file_unreadable(message: str) -> str:
-    return f"The file could not be read: {message}"
+    return _t("gui.message.file_unreadable", message=message)
 
 
 def created_message(path: str, pages: int) -> str:
-    return f"Created {os.path.basename(path)} · {count(max(pages, 1), 'page')}"
+    created = _t("gui.message.created", name=os.path.basename(path))
+    return " · ".join((created, count(max(pages, 1), "page")))
 
 
 def create_failed(message: str) -> str:
-    return f"The PDF could not be created: {message}"
+    return _t("gui.message.create_failed", message=message)
 
 
 def scan_filter() -> str:
     """The file dialog's filter for scans."""
     patterns = " ".join(f"*{ext}" for ext in SCAN_EXTENSIONS)
-    return f"Scans ({patterns});;All files (*)"
-
-
-PREVIEW_LOADING = "Loading…"
+    return _t("gui.dialog.scan_filter", patterns=patterns)
 
 
 def size_changed() -> str:
     """The preview's reason when an image's size changed while it loaded."""
-    return "the image's size changed while it was loading"
+    return _t("gui.message.size_changed")
 
 
 def preview_failed(message: str) -> str:
     """Shown in the preview instead of a scan it could not load."""
-    return f"This scan cannot be shown: {message}"
+    return _t("gui.message.preview_failed", message=message)
 
 
 def too_large_to_show(pixels: int, limit: int) -> str:
-    return f"{pixels:,} pixels is more than the {limit:,} a scan may have"
+    return _n("gui.message.too_many_pixels", pixels, limit=_num(limit))
 
 
-# Dot sizes and protection levels as the window shows them, by their names in optar.format.
-_DOT_NAMES = {
-    "standard": "Standard",
-    "medium": "Medium",
-    "big": "Big",
-    "large": "Large",
-    "xlarge": "Extra large",
-}
-_PROTECTION_NAMES = {"none": "None", "standard": "Standard", "high": "High"}
+def _dots(dots: str) -> str:
+    """A dot size's name as the window shows it, by its name in optar.format."""
+    return _name(f"gui.dots.{dots}", dots)
 
 
 def dot_size_label(dots: str, scan_dpi: int) -> str:
     """A dot size in its selector: its name and the scan resolution to use."""
-    return f"{_DOT_NAMES.get(dots, dots)} (scan at {scan_dpi:,} dpi)"
+    return _t("gui.write.dot_size", dots=_dots(dots), dpi=_num(scan_dpi))
 
 
 def protection_label(protect: str) -> str:
-    return _PROTECTION_NAMES.get(protect, protect)
+    return _name(f"gui.protection.{protect}", protect)
 
 
 def promise(promised: int, total: int) -> str:
     """How many of a protected printout's pages, any of them, may be lost
     without losing the file (``optar.container.pages_promised``)."""
-    return f"can lose {count(promised, 'page')} of {total:,}"
-
-
-DAMAGE_REPAIRED = "damage within pages is repaired, but losing a whole page loses the file"
+    return _n("gui.write.promise", promised, total=_num(total))
 
 
 def print_summary(total: int, size: int, promised: int, protected: bool) -> str:
     """Pages and size of a file to put on paper, and what its protection allows."""
     line = file_info(total, size)
     if promised > 0:
-        return f"{line} · {promise(promised, total)}"
+        return " · ".join((line, promise(promised, total)))
     if protected:
-        return f"{line} · {DAMAGE_REPAIRED}"
+        return " · ".join((line, _t("gui.DAMAGE_REPAIRED")))
     return line
-
-
-# Why a file cannot be put on paper with the chosen dot size and protection
-# (``work.PrintPlan.too_large``): more pages than a printout may have, or more
-# than a protected one may have.
-TOO_MANY_PAGES = "too many pages"
-TOO_LARGE_TO_PROTECT = "too large to protect"
 
 
 def too_large(
@@ -656,22 +613,14 @@ def too_large(
     the file fits at this dot size without protection; ``smaller_dots`` names
     the largest smaller dot size at which it fits with this protection, if any.
     """
-    if reason == TOO_LARGE_TO_PROTECT:
-        why = (
-            "This file is too large to protect with this dot size: a protected "
-            f"printout may have at most {count(limit, 'page')}."
-        )
-    else:
-        why = (
-            "This file is too large to put on paper with these choices: a printout "
-            f"may have at most {count(limit, 'page')}."
-        )
-    ways = []
-    if unprotected_fits:
-        ways.append("without protection")
+    kind = "protect" if reason == TOO_LARGE_TO_PROTECT else "pages"
+    why = _n(f"gui.too_large.{kind}", limit)
     if smaller_dots is not None:
-        ways.append(f"with {_DOT_NAMES.get(smaller_dots, smaller_dots)} dots")
-    return f"{why} It fits {', or '.join(ways)}." if ways else why
+        fits_key = "fits_either" if unprotected_fits else "fits_dots"
+        return " ".join((why, _t(f"gui.too_large.{fits_key}.{smaller_dots}")))
+    if unprotected_fits:
+        return " ".join((why, _t("gui.too_large.fits_unprotected")))
+    return why
 
 
 # --- Documents that repair themselves, and coarse scans ---------------------------
@@ -680,12 +629,6 @@ def too_large(
 # the window speaks of "protection", "repair" and the "fingerprint". Only the
 # fingerprint proves the file is right; nothing below suggests otherwise.
 
-# Why a page whose data says it repairs itself gave no data to repair with.
-NO_PAGE_DATA = "The data of this page could not be read"
-
-# The bar while a document is repaired and checked in the background.
-REPAIRING = "Repairing and checking the fingerprint…"
-
 # How many of the most damaged pages the advice after a failed repair names.
 RESCAN_PAGES = 3
 
@@ -693,7 +636,7 @@ RESCAN_PAGES = 3
 def _about_dpi(dpi: float) -> str:
     """A measured resolution, rounded to the nearest 10: scans measure a few
     percent off (a printout scaled to 95% reads 286 dpi at 300)."""
-    return f"about {int(round(dpi / 10)) * 10:,} dpi"
+    return _num(int(round(dpi / 10)) * 10)
 
 
 def coarse_scan(scan_dpi: float, layout: Layout | None, slow_tried: bool = False) -> str:
@@ -701,36 +644,24 @@ def coarse_scan(scan_dpi: float, layout: Layout | None, slow_tried: bool = False
     the resolution its dots need; for an unreadable scan (``layout`` None), the
     resolution every dot size needs, and, when ``slow_tried``, that the slower
     reader for coarse scans could not read it either."""
+    measured = _about_dpi(scan_dpi)
     if layout is not None:
-        return (
-            f"Scanned too coarsely for this page: {_about_dpi(scan_dpi)}. "
-            f"Scan it at {layout.scan_dpi:,} dpi."
-        )
+        return _t("gui.coarse.page", measured=measured, needed=_num(layout.scan_dpi))
     # Imported here: loading the optar package loads numpy.
     from optar.format import DOT_SIZES
 
-    needs = [(_DOT_NAMES.get(d, d), dots.scan_dpi) for d, dots in DOT_SIZES.items()]
-    (first, first_dpi), rest = needs[0], needs[1:]
-    listed = ", ".join([f"{first_dpi:,} dpi for {first} dots", *(f"{d:,} {n}" for n, d in rest)])
     # Any image with a page outline has an estimate: this does not claim it is a page.
-    line = f"Scanned at {_about_dpi(scan_dpi)}, which is too coarse to read. Scan at {listed}."
-    return f"{line} {SLOW_TRIED}" if slow_tried else line
-
-
-# A scan the ordinary reader could not read, while the slower reader tries it.
-READING_COARSE = "Reading a coarse scan with the slower reader; this takes about a minute"
-# After "too coarse to read": the slower reader could not read the scan either.
-SLOW_TRIED = "The slower reader for coarse scans was tried too, and could not read it."
-# A page read by the slower reader: in its detail, and in its row.
-READ_SLOWLY = "Read by the slower reader for coarse scans"
-READ_SLOWLY_ROW = "Read by the slower reader"
-READ_SLOWLY_SHORT = "read by the slower reader"
+    needs = {name: _num(dots.scan_dpi) for name, dots in DOT_SIZES.items()}
+    line = _t("gui.coarse.unreadable", measured=measured, **needs)
+    return " ".join((line, _t("gui.SLOW_TRIED"))) if slow_tried else line
 
 
 def _share(part: int, whole: int) -> str:
     """``8.3%``; ``under 0.1%`` for a small share that is not none."""
     share = 100 * part / whole
-    return "under 0.1%" if 0 < share < 0.05 else f"{share:.1f}%"
+    if 0 < share < 0.05:
+        return _t("gui.slow.share_small")
+    return _t("gui.slow.share", share=f"{share:.1f}")
 
 
 def slow_reader_detail(page: PageView, repaired_bytes: int | None = None) -> tuple[str, ...]:
@@ -740,46 +671,26 @@ def slow_reader_detail(page: PageView, repaired_bytes: int | None = None) -> tup
     protection repaired. That reader gives every symbol its likeliest value, so it
     finds no block beyond repair; what it got wrong is the protection's to repair."""
     dots = page.corrected_dots
-    corrected = f"Dots corrected within the page: {dots:,}"
     if page.dots:
-        corrected += f" of {page.dots:,} ({_share(dots, page.dots)})"
-    if repaired_bytes is None:
-        after = (
-            "The document's protection repairs what that reader got wrong; how many of "
-            "this page's bytes it repaired is shown once the document is verified."
-        )
-    elif repaired_bytes == 0:
-        after = "After verification: none of this page's bytes were wrong."
-    elif repaired_bytes == 1:
-        after = (
-            f"After verification: 1 of this page's bytes was wrong and was repaired "
-            f"{BY_PROTECTION}."
-        )
+        corrected = _t("gui.slow.corrected_of", dots=_num(dots), total=_num(page.dots),
+                       share=_share(dots, page.dots))  # fmt: skip
     else:
-        after = (
-            f"After verification: {repaired_bytes:,} of this page's bytes were wrong and "
-            f"were repaired {BY_PROTECTION}."
-        )
-    return (f"{READ_SLOWLY}.", f"{corrected}.", after)
+        corrected = _t("gui.slow.corrected", dots=_num(dots))
+    if repaired_bytes is None:
+        after = _t("gui.slow.pending")
+    elif repaired_bytes == 0:
+        after = _t("gui.slow.none_wrong")
+    else:
+        after = _n("gui.slow.repaired", repaired_bytes)
+    return (f"{_t('gui.READ_SLOWLY')}.", corrected, after)
 
 
 # --- Scans being read --------------------------------------------------------------
 
-# The heading over the scans being read, and the step of one not started yet.
-BEING_READ_SECTION = "Being read"
-WAITING = "Waiting"
-
-# The words of each step of a scan's reading, by its key (``work.STEP_OPEN``,
-# ``optar.identify.STEP_FIND`` and so on; a test checks that they match).
-_STEPS = {
-    "open": "Opening the file",
-    "find": "Finding the page",
-    "identify": "Identifying the page",
-    "read": "Reading the data",
-    "slow-sample": "Slower reader: sampling",
-}
-# The step of a scan whose step key has no words above (none should).
-_SOME_STEP = "Working"
+# The steps of a scan's reading that have words of their own (under ``gui.step``),
+# by their keys (``work.STEP_OPEN``, ``optar.identify.STEP_FIND`` and so on; a test
+# checks that they match).
+_STEPS = ("open", "find", "identify", "read", "slow-sample")
 # The slower reader's fits, one of several.
 _SLOW_FIT = "slow-fit"
 _SLOW_STEPS = ("slow-sample", _SLOW_FIT)
@@ -789,11 +700,14 @@ def step_text(progress: Progress | None) -> str:
     """What a scan being read is doing: ``Waiting`` before it starts, then its step
     (``Slower reader: pass 4 of 5`` while the fourth of five fits runs)."""
     if progress is None:
-        return WAITING
+        return _t("gui.WAITING")
     if progress.step == _SLOW_FIT:
         of = max(progress.of, 1)
-        return f"Slower reader: pass {min(progress.done + 1, of):,} of {of:,}"
-    return _STEPS.get(progress.step, _SOME_STEP)
+        current = min(progress.done + 1, of)
+        return _t("gui.step.slow-fit", current=_num(current), total=_num(of))
+    if progress.step in _STEPS:
+        return _t(f"gui.step.{progress.step}")
+    return _t("gui.step.other")  # a step with no words of its own (none should be)
 
 
 def reading_slowly(progress: Progress | None) -> bool:
@@ -810,32 +724,33 @@ def being_read_detail(scan: ScanView, progress: Progress | None) -> tuple[str, .
     """The detail of a scan being read; one the slower reader reads says that it
     takes about a minute."""
     lines = (os.path.basename(scan.path), f"{step_text(progress)}.")
-    return (*lines, f"{READING_COARSE}.") if reading_slowly(progress) else lines
+    return (*lines, f"{_t('gui.READING_COARSE')}.") if reading_slowly(progress) else lines
 
 
 def scans_read(reading: int, batch: int) -> str:
     """How many of a batch of scans are read: ``3 of 6 scans read``."""
-    return f"{batch - reading:,} of {count(batch, 'scan')} read"
+    return _n("gui.scans_read", batch, done=_num(batch - reading))
 
 
 def reading_line(reading: int, batch: int) -> str:
     """The bottom bar while scans are being read and the document has nothing else
     to say: ``Working… 3 of 6 scans read``."""
-    return f"{WORKING} {scans_read(reading, batch)}"
+    return _n("gui.scans_read_working", batch, done=_num(batch - reading))
 
 
 def _and(items: list[str]) -> str:
     """``a``, ``a and b``, ``a, b and c``."""
-    return items[0] if len(items) == 1 else f"{', '.join(items[:-1])} and {items[-1]}"
+    if len(items) <= 1:
+        return "".join(items)
+    return _t("gui.list.and", items=_t("gui.list.comma").join(items[:-1]), last=items[-1])
 
 
-def _page_numbers(numbers: tuple[int, ...] | list[int], in_order: bool = True) -> str:
-    """``page 3``, ``pages 3 and 7``, ``pages 2-4 and 9``. ``in_order`` sorts the
-    numbers and joins runs; else they are named in the order given. At most
-    ``MAX_RUNS`` items are named, then the pages left are counted."""
+def _page_list(numbers: tuple[int, ...] | list[int], in_order: bool = True) -> tuple[int, str]:
+    """How many pages ``numbers`` names, and the list of them: ``3``, ``3 and 7``,
+    ``2-4 and 9``. ``in_order`` sorts the numbers and joins runs; else they are
+    named in the order given. At most ``MAX_RUNS`` items are named, then the
+    pages left are counted."""
     numbers = list(dict.fromkeys(numbers))
-    if not numbers:
-        return "no pages"
     spans: list[tuple[int, int]] = []  # (first, last) of each item named
     if in_order:
         for n in sorted(numbers):
@@ -847,25 +762,23 @@ def _page_numbers(numbers: tuple[int, ...] | list[int], in_order: bool = True) -
         spans = [s for a, b in spans for s in ([(a, a), (b, b)] if b == a + 1 else [(a, b)])]
     else:
         spans = [(n, n) for n in numbers]
-    items = [f"{a:,}" if a == b else f"{a:,}-{b:,}" for a, b in spans[:MAX_RUNS]]
+    items = [_num(a) if a == b else f"{_num(a)}-{_num(b)}" for a, b in spans[:MAX_RUNS]]
     rest = sum(b - a + 1 for a, b in spans[MAX_RUNS:])
     if rest:
-        items.append(f"{rest:,} more")
-    return f"page {items[0]}" if len(numbers) == 1 else f"pages {_and(items)}"
+        items.append(_n("gui.list.more", rest))
+    return len(numbers), _and(items)
 
 
 def repair_line(u: Unwrapped) -> str:
     """What repairing a document did: the bytes it repaired, and how much of its
     capacity the worst spot used (``worst_used`` of ``budget``)."""
     if u.budget == 0:
-        return "Printed without protection, so nothing could be repaired"
-    fixed = f"{count(u.repaired_bytes, 'byte')} repaired"
+        return _t("gui.repair.unprotected")
+    fixed = _n("gui.repair.bytes", u.repaired_bytes)
     if u.worst_used > u.budget:
-        return (
-            f"{fixed} · the worst spot needed {u.worst_used:,} of {u.budget:,}: "
-            "too much to repair"
-        )
-    return f"{fixed} · {margin_line(u.worst_used, u.budget)}"
+        too_much = _t("gui.repair.too_much", used=_num(u.worst_used), budget=_num(u.budget))
+        return " · ".join((fixed, too_much))
+    return " · ".join((fixed, margin_line(u.worst_used, u.budget)))
 
 
 def margin_line(used: int, budget: int) -> str:
@@ -873,16 +786,13 @@ def margin_line(used: int, budget: int) -> str:
     that the worst spot of the document used. At 100% the file is lost."""
     share = used / budget
     if share <= WIDE_MARGIN:
-        margin = "a wide margin"
+        margin = "wide"
     elif share <= MODERATE_MARGIN:
-        margin = "a moderate margin"
+        margin = "moderate"
     else:
-        margin = "close to the limit"
+        margin = "close"
     percent = min(math.ceil(100 * share), 100)  # never shown as less than it is
-    return (
-        f"the worst spot used {percent}% of its repair capacity "
-        f"({used:,} of {budget:,}): {margin}"
-    )
+    return _t(f"gui.margin.{margin}", percent=percent, used=_num(used), budget=_num(budget))
 
 
 def rescan_advice(u: Unwrapped) -> str:
@@ -892,18 +802,22 @@ def rescan_advice(u: Unwrapped) -> str:
     worst = sorted(
         (p for p in u.page_damage if p not in missing), key=lambda p: (-u.page_damage[p], p)
     )[:RESCAN_PAGES]
-    parts = []
+    add = rescan = None
     if missing:
-        parts.append(f"add {_page_numbers(sorted(missing))}")
+        many, pages = _page_list(sorted(missing))
+        add = _n("gui.rescan.add", many, pages=pages)
     if worst:
-        which = "which has" if len(worst) == 1 else "which have"
-        parts.append(f"rescan {_page_numbers(worst, in_order=False)}, {which} the most damage")
-    advice = "The file could not be fully repaired."
-    if not parts:
-        return f"{advice} Rescanning the pages may still improve it."
-    return f"{advice} Adding or rescanning pages can still improve it: {' and '.join(parts)}."
+        many, pages = _page_list(worst, in_order=False)
+        rescan = _n("gui.rescan.worst", many, pages=pages)
+    if add is None and rescan is None:
+        return _t("gui.rescan.nothing")
+    if add is not None and rescan is not None:
+        what = _t("gui.rescan.both", add=add, rescan=rescan)
+    else:
+        what = add if add is not None else rescan
+    return _t("gui.rescan.advice", what=what)
 
 
 def repair_failed(reason: str) -> str:
     """The bar when repairing the pages itself failed (an error, not damage)."""
-    return f"The pages could not be repaired: {reason}"
+    return _t("gui.message.repair_failed", reason=reason)
