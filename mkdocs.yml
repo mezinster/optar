@@ -67,6 +67,139 @@ plugins:
             Project: Проект
             Development: Разработка
             History: История
+        - locale: uk
+          name: Українська
+          build: true
+          site_description: Зберігання файлів на папері за допомогою лазерного принтера й сканера
+          nav_translations:
+            Home: Головна
+            Using optar: Робота з optar
+            Install: Встановлення
+            Put a file on paper: Записати файл на папір
+            Read it back: Отримати файл назад
+            Scans that are too coarse: Скани з надто низькою роздільною здатністю
+            Command line: Командний рядок
+            Reference: Довідка
+            How a page identifies itself: Як розпізнається сторінка
+            What has and has not been shown: Що показано, а що ні
+            Format specification: Специфікація формату
+            Project: Проєкт
+            Development: Розробка
+            History: Історія
+        - locale: be
+          name: Беларуская
+          build: true
+          site_description: Захоўванне файлаў на паперы з дапамогай лазернага прынтара і сканера
+          nav_translations:
+            Home: Галоўная
+            Using optar: Праца з optar
+            Install: Усталяванне
+            Put a file on paper: Запісаць файл на паперу
+            Read it back: Атрымаць файл назад
+            Scans that are too coarse: Сканы з занадта нізкай раздзяляльнасцю
+            Command line: Камандны радок
+            Reference: Даведка
+            How a page identifies itself: Як старонка сябе апазнае
+            What has and has not been shown: Што паказана, а што не
+            Format specification: Спецыфікацыя фармату
+            Project: Праект
+            Development: Распрацоўка
+            History: Гісторыя
+        - locale: pl
+          name: Polski
+          build: true
+          site_description: Przechowywanie plików na papierze za pomocą drukarki laserowej i skanera
+          nav_translations:
+            Home: Strona główna
+            Using optar: Korzystanie z optar
+            Install: Instalacja
+            Put a file on paper: Zapisywanie pliku na papierze
+            Read it back: Odczytywanie pliku
+            Scans that are too coarse: Skany o zbyt niskiej rozdzielczości
+            Command line: Wiersz poleceń
+            Reference: Szczegóły techniczne
+            How a page identifies itself: Jak strona się identyfikuje
+            What has and has not been shown: Co wykazano, a czego nie
+            Format specification: Specyfikacja formatu
+            Project: Projekt
+            Development: Rozwój
+            History: Historia
+        - locale: ka
+          name: ქართული
+          build: true
+          site_description: ფაილების ქაღალდზე შენახვა ლაზერული პრინტერითა და სკანერით
+          nav_translations:
+            Home: მთავარი
+            Using optar: optar-ით მუშაობა
+            Install: ინსტალაცია
+            Put a file on paper: ფაილის ქაღალდზე ჩაწერა
+            Read it back: ფაილის უკან წაკითხვა
+            Scans that are too coarse: ზედმეტად დაბალი გარჩევადობის სკანები
+            Command line: ბრძანების სტრიქონი
+            Reference: ცნობარი
+            How a page identifies itself: როგორ ამოიცნობა გვერდი
+            What has and has not been shown: რა არის ნაჩვენები და რა — არა
+            Format specification: ფორმატის სპეციფიკაცია
+            Project: პროექტი
+            Development: შემუშავება
+            History: ისტორია
+        - locale: tr
+          name: Türkçe
+          build: true
+          site_description: Lazer yazıcı ve tarayıcı ile dosyaları kâğıtta saklama
+          nav_translations:
+            Home: Giriş
+            Using optar: optar ile çalışma
+            Install: Kurulum
+            Put a file on paper: Dosyayı kâğıda yazma
+            Read it back: Dosyayı geri okuma
+            Scans that are too coarse: Çözünürlüğü çok düşük taramalar
+            Command line: Komut satırı
+            Reference: Başvuru
+            How a page identifies itself: Sayfa kendini nasıl tanıtır
+            What has and has not been shown: Neler gösterildi, neler gösterilmedi
+            Format specification: Biçim belirtimi
+            Project: Proje
+            Development: Geliştirme
+            History: Tarihçe
+        - locale: it
+          name: Italiano
+          build: true
+          site_description: Conservare file su carta con una stampante laser e uno scanner
+          nav_translations:
+            Home: Home
+            Using optar: Uso di optar
+            Install: Installazione
+            Put a file on paper: Scrivere un file su carta
+            Read it back: Rileggere il file
+            Scans that are too coarse: Scansioni a risoluzione troppo bassa
+            Command line: Riga di comando
+            Reference: Riferimento
+            How a page identifies itself: Come si identifica una pagina
+            What has and has not been shown: Che cosa è stato mostrato e che cosa no
+            Format specification: Specifica del formato
+            Project: Progetto
+            Development: Sviluppo
+            History: Storia
+        - locale: es
+          name: Español
+          build: true
+          site_description: Guardar archivos en papel con una impresora láser y un escáner
+          nav_translations:
+            Home: Inicio
+            Using optar: Uso de optar
+            Install: Instalación
+            Put a file on paper: Pasar un archivo al papel
+            Read it back: Recuperar el archivo
+            Scans that are too coarse: Escaneos de resolución demasiado baja
+            Command line: Línea de comandos
+            Reference: Referencia
+            How a page identifies itself: Cómo se identifica una página
+            What has and has not been shown: Qué muestran las pruebas y qué no
+            Format specification: Especificación del formato
+            Project: Proyecto
+            Development: Desarrollo
+            History: Historia
 
 validation:
   anchors: warn
