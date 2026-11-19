@@ -106,3 +106,22 @@ def scan_files(tmp_path):
         return data, paths
 
     return make
+
+
+@pytest.fixture(autouse=True)
+def private_settings(tmp_path, monkeypatch):
+    """The window's settings live under tmp_path, never in the user's own; each test
+    starts in English and leaves it so."""
+    if not _HAVE_QT:
+        yield
+        return
+    from PySide6.QtCore import QLocale, QSettings
+
+    from optar import i18n
+
+    QSettings.setPath(
+        QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path / "settings")
+    )
+    monkeypatch.setattr(QLocale, "system", staticmethod(lambda: QLocale("en_US")))
+    yield
+    i18n.set_language("en")

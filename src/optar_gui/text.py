@@ -821,3 +821,21 @@ def rescan_advice(u: Unwrapped) -> str:
 def repair_failed(reason: str) -> str:
     """The bar when repairing the pages itself failed (an error, not damage)."""
     return _t("gui.message.repair_failed", reason=reason)
+
+
+# The terminal messages of optar-gui (``optar_gui.__main__``).
+
+
+def missing_qt() -> str:
+    """What optar-gui says when PySide6 is not installed."""
+    return _t("gui.cli.missing_qt")
+
+
+def cli_description() -> str:
+    """The description in optar-gui's ``--help``."""
+    return _t("gui.cli.description")
+
+
+def cli_version_help() -> str:
+    """The help line of optar-gui's ``--version``."""
+    return _t("gui.cli.version_help")

@@ -27,6 +27,18 @@ from optar_gui.document import MAX_TOTAL_PAGES
 
 __all__ = ["AssignPageDialog", "StartByHandDialog", "ask"]
 
+# The standard buttons the application uses: Qt's name for each, and the name
+# text.button knows it by.
+_BUTTON_NAMES = {"Ok": "ok", "Cancel": "cancel", "Save": "save", "Yes": "yes", "No": "no"}
+
+
+def _captions(box: QMessageBox | QDialogButtonBox) -> None:
+    """Sets each standard button's text from the catalogue, not from Qt's own translation."""
+    for qt_name, name in _BUTTON_NAMES.items():
+        button = box.button(getattr(type(box).StandardButton, qt_name))
+        if button is not None:
+            button.setText(text.button(name))
+
 
 def ask(
     parent: QWidget,
@@ -47,6 +59,7 @@ def ask(
     box.setTextFormat(Qt.TextFormat.PlainText)
     box.setText(message)
     box.setStandardButtons(buttons)
+    _captions(box)
     if default != QMessageBox.StandardButton.NoButton:
         box.setDefaultButton(default)
     try:
@@ -63,6 +76,7 @@ def _buttons(dialog: QDialog) -> QDialogButtonBox:
     buttons = QDialogButtonBox(
         QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
     )
+    _captions(buttons)
     buttons.accepted.connect(dialog.accept)
     buttons.rejected.connect(dialog.reject)
     return buttons

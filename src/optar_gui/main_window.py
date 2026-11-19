@@ -3,10 +3,11 @@
 
 from __future__ import annotations
 
-from PySide6.QtGui import QCloseEvent
+from PySide6.QtGui import QAction, QActionGroup, QCloseEvent
 from PySide6.QtWidgets import QMainWindow, QMessageBox, QTabWidget, QWidget
 
-from optar_gui import text
+from optar import i18n
+from optar_gui import language, text
 from optar_gui.dialogs import ask
 from optar_gui.read_tab import ReadController, ReadTab
 from optar_gui.write_tab import WriteTab
@@ -28,7 +29,32 @@ class MainWindow(QMainWindow):
         self.add_tab(self.read_tab, text.READ_TAB)
         self.write_tab = WriteTab()
         self.add_tab(self.write_tab, text.WRITE_TAB)
+        self._add_language_menu()
         self.resize(1000, 700)
+
+    def _add_language_menu(self) -> None:
+        """The language menu: the system's language, then each language by its own name.
+
+        Choosing one saves it; the window changes the next time it starts.
+        """
+        self.language_menu = self.menuBar().addMenu(text.LANGUAGE_MENU)
+        group = QActionGroup(self)
+        group.setExclusive(True)
+        chosen = language.saved()
+        entries = [(None, text.SYSTEM_LANGUAGE), *i18n.languages().items()]
+        for code, name in entries:
+            action = QAction(name.replace("&", "&&"), self)  # no mnemonic from a name
+            action.setCheckable(True)
+            action.setChecked(code == chosen)
+            action.setData(code)
+            action.triggered.connect(lambda _checked=False, code=code: self.choose_language(code))
+            group.addAction(action)
+            self.language_menu.addAction(action)
+
+    def choose_language(self, code: str | None) -> None:
+        """Saves the language (None: the system's) and says it applies at the next start."""
+        language.save(code)
+        ask(self, QMessageBox.Icon.Information, text.WINDOW_TITLE, text.LANGUAGE_RESTART)
 
     def add_tab(self, widget: QWidget, title: str) -> None:
         self.tabs.addTab(widget, title)
