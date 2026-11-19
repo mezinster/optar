@@ -645,7 +645,7 @@ Bir başlık `HEADER_SIZE` bayttır:
 | 18 | 16 | `fingerprint` | bayt dizisi | dosyanın SHA-256 değerinin ilk `FINGERPRINT_SIZE` baytı |
 | 34 | 4 | `crc` | tam sayı | 0 ile 33 arasındaki baytların CRC-32 değeri |
 
-Tamsayılar big-endian düzenindedir. `page` (ve onunla birlikte `crc`) dışındaki
+Tam sayılar big-endian düzenindedir. `page` (ve onunla birlikte `crc`) dışındaki
 tüm alanlar bir belgenin her sayfasında aynıdır.
 
 ```example
