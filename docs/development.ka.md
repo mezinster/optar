@@ -7,7 +7,7 @@ source_hash: f5551682033e226e7bf557d24edd97efecf26b2d
 საწყისი კოდი მდებარეობს მისამართზე
 [github.com/mezinster/optar](https://github.com/mezinster/optar).
 
-## გამართვა და ტესტები { #setup-and-tests }
+## გარემოს მომზადება და ტესტები { #setup-and-tests }
 
     python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'
     .venv/bin/pytest -q

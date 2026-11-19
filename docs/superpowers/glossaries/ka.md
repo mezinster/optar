@@ -51,6 +51,23 @@ used the same way in the window, the command line and every page.
   «optar-თან».
 - **«გვერდი»** is a sheet of paper carrying dots. A page of this website is
   «განყოფილება», never «გვერდი» («იხ. განყოფილება „როგორ ამოიცნობა გვერდი“»).
+  «განყოფილება» also serves for a section of the format specification
+  («განყოფილება 4.2»). The two uses do not meet: the format page never refers
+  to site pages, and the user pages name the specification when they refer to
+  its parts («ფორმატის სპეციფიკაციის მე-8 ნაწილში»).
+- **«ზოლი»** (band, strip, bar) is always qualified: «წარწერის ზოლი» (label
+  band), «ქვედა ზოლი» (bottom bar), «პროგრესის ზოლი», «ვიწრო ზოლი», «საიტის
+  ზედა ზოლი». It never stands alone for a new referent.
+- **«სათაური»** means only a title or a heading (a page title, a Markdown
+  heading, a dialog title). The format's *header* is «თავსართი» (see the
+  format terms); the two are never mixed.
+- **Operating system names** on the install page: macOS has no Georgian
+  interface, so its menus and buttons are given in English as the system shows
+  them, followed by a Georgian translation in brackets: «System Settings
+  (სისტემის პარამეტრები)», «Privacy & Security (კონფიდენციალურობა და
+  უსაფრთხოება)», «„Open Anyway“ („მაინც გახსნა“)», «Open (გახსნა)». Windows
+  ships a Georgian interface; if its dialogs are ever quoted, use the names it
+  really shows.
 
 ## Terms
 
@@ -61,8 +78,8 @@ used the same way in the window, the command line and every page.
 | dot | წერტილი | "Data dot" «მონაცემთა წერტილი», "printer dot" «პრინტერის წერტილი». Not «პიქსელი»: pixels are separate. |
 | dot size | წერტილის ზომა | Singular, as Georgian says of a property: «წერტილის ზომა:», «ამ წერტილის ზომით». |
 | block | ბლოკი | One error-correction unit; the window repairs or loses blocks. |
-| protection | დაცვა | Window label «დაცვა:». First mention on a page: «დაზიანებისგან დაცვა». **Avoid the adjective «დაცული»** for a printout: it suggests a password. Say «დაცვით», «დაცვის გარეშე», «დაცვიანი ამონაბეჭდი» only where needed («დაცვით ამონაბეჭდი» is preferred). Rejected: «ზედმეტობა» (redundancy; correct but technical), «რეზერვი» (vague, suggests a backup copy). |
-| fingerprint | ანაბეჭდი | The usual Georgian word for a key or hash fingerprint (from «თითის ანაბეჭდი»). Full form «ფაილის ანაბეჭდი» where the sentence needs it, and always near «ამონაბეჭდი» (printout), which shares the root. Rejected: «ჰეში» (names the method), «საკონტროლო ჯამი» (a checksum, a different and weaker thing). |
+| protection | დაცვა | Window label «დაცვა:». First mention on a page: «დაზიანებისგან დაცვა». **Avoid the adjective «დაცული»** for a printout: it suggests a password. Adverbial «დაცვით» («შექმნილია დაცვით», «სტანდარტული დაცვით»), «დაცვის გარეშე». A printout or document made with protection is «დაცვით შექმნილი ამონაბეჭდი / დოკუმენტი» (never the bare attributive «დაცვით ამონაბეჭდი», which is unidiomatic; «დაცვიანი» is colloquial). Rejected: «ზედმეტობა» (redundancy; correct but technical), «რეზერვი» (vague, suggests a backup copy). |
+| fingerprint | ანაბეჭდი | The usual Georgian word for a key or hash fingerprint (from «თითის ანაბეჭდი»). Full form «ფაილის ანაბეჭდი» where the sentence needs it, and always near «ამონაბეჭდი» (printout), which shares the root, and next to «დაბეჭდილი»: «ქაღალდზე დაბეჭდილი ფაილის ანაბეჭდი» (never «დაბეჭდილი ანაბეჭდი» alone). Rejected: «ჰეში» (names the method), «საკონტროლო ჯამი» (a checksum, a different and weaker thing). |
 | tag | ჭდე | The bracketed `[SIZE:FINGERPRINT:CC]` at the start of a label; «ჭდე» is the word Georgian software (Mozilla) uses for tags. «ჭდით», «ჭდის გარეშე», «ჭდე არ აქვს» (untagged). Rejected: «ტეგი» (colloquial loan, reads as an HTML tag), «ნიშანი» (too general; also used for label characters), «იარლიყი» (a sticker, a shortcut). Marks on the scan preview are «მონიშნულია», never «ჭდე». |
 | label | წარწერა | The line printed at the bottom of every page. "Label band" «წარწერის ზოლი», "label strip" «წარწერის ლენტი» (spec). Rejected: «ხელმოწერა» (signature, clashes with fingerprint/verified), «იარლიყი», «ეტიკეტი» (a stuck-on sticker). |
 | spare | სათადარიგო (სკანი) | Row title and detail tag «სათადარიგო». Invariant adjective. Rejected: «ზედმეტი» (sounds like an error), «სარეზერვო» (sounds like a backup made on purpose). |
@@ -71,7 +88,7 @@ used the same way in the window, the command line and every page.
 | printout | ამონაბეჭდი | The pages as printed, the physical set. Kept apart from «დოკუმენტი» exactly as English keeps "printout" and "document" apart. |
 | document | დოკუმენტი | A set of pages that carries one file. |
 | page | გვერდი | Rejected: «ფურცელი» (a sheet has two sides; an optar page is one printed side). See the convention on «განყოფილება». |
-| slower reader | წაკითხვის ნელი მეთოდი (short: ნელი მეთოდი) | "The ordinary reader" «წაკითხვის ჩვეულებრივი მეთოდი» / «ჩვეულებრივი მეთოდი». First mention on a page: «მეორე, უფრო ნელი წაკითხვის მეთოდი». "Read by the slower reader" «წაკითხულია ნელი მეთოდით»; "the slower reader for coarse scans" «დაბალი გარჩევადობის სკანების ნელი მეთოდი». As an agent: «ნელმა მეთოდმა». Rejected: «წამკითხველი» (a device), «ნელი რეჟიმი» (a mode is chosen by the user; this runs by itself). |
+| slower reader | წაკითხვის ნელი მეთოდი (short: ნელი მეთოდი) | "The ordinary reader" «წაკითხვის ჩვეულებრივი მეთოდი» / «ჩვეულებრივი მეთოდი». First mention on a page: «წაკითხვის მეორე, უფრო ნელი მეთოდი» (the adjectives stand next to «მეთოდი»). "Read by the slower reader" «წაკითხულია ნელი მეთოდით»; "the slower reader for coarse scans" «დაბალი გარჩევადობის სკანების ნელი მეთოდი». As an agent: «ნელმა მეთოდმა». Rejected: «წამკითხველი» (a device), «ნელი რეჟიმი» (a mode is chosen by the user; this runs by itself). |
 | self-identifying page | თვითამოცნობადი გვერდი | Built on «ამოცნობა» (identify), which the window uses for scans («სკანი ამოუცნობია»), so the term and the verb share a root. On first mention in a page add the gloss «(გვერდი, რომელიც თავად მიუთითებს, რომელ დოკუმენტს ეკუთვნის და რომელი გვერდია)». Rejected: «თვითიდენტიფიცირებადი» (correct but heavy), «თვითაღწერადი» (self-describing, a different idea). |
 | verified | შემოწმებული (ფაილი შემოწმებულია) | Always means: the recovered file matched its fingerprint. The root «შემოწმ-» is **reserved** for verified / verification: "not verified" «შემოწმებული არ არის», "did not verify" «შემოწმება ვერ გაიარა», "cannot be verified" «შემოწმება შეუძლებელია», "once verified" «შემოწმების შემდეგ». Checking the fingerprint is «ანაბეჭდთან შედარება» (see "check"). Rejected: «დადასტურებული» (confirmed; vaguer, and needed for "confirmed" in the cautions), «ვერიფიცირებული» (bookish), anything with «გარანტირებული» (stronger). |
 | repaired | გამოსწორებული (repair: გამოსწორება, გამოსწორდა) | The protection or the page's error correction fixed damaged data: «გამოსწორებულია 6 912 ბაიტი», «გამოსწორებულია · 3». A *missing* page is not «გამოსწორებული»: "repaired from the others" is «აღდგენილია დანარჩენი გვერდებით» (the verb of "recover"). |
@@ -121,7 +138,7 @@ used the same way in the window, the command line and every page.
 | grayscale, colour, black and white | ნაცრისფერი ტონები, ფერადი, შავ-თეთრი | |
 | bottom bar | ქვედა ზოლი | |
 | progress bar | პროგრესის ზოლი | |
-| row, list of scans | სტრიქონი, სკანების სია | |
+| row, list of scans | სტრიქონი, სკანების სია | Rows of pixels (label band, font) are also «სტრიქონი», never «მწკრივი». |
 | preview, marked | გადახედვა, მონიშნულია | |
 | another printout | სხვა ამონაბეჭდი | «ამ ფაილს არ ეკუთვნის». |
 | untagged, no tag | ჭდის გარეშე, ჭდე არ აქვს | |
@@ -141,6 +158,8 @@ used the same way in the window, the command line and every page.
 | usage, positional arguments, options | გამოყენება, პოზიციური არგუმენტები, პარამეტრები | argparse headings. |
 | default | ნაგულისხმევი | «(ნაგულისხმევი: a4)». |
 | exit status | დასრულების კოდი | |
+| portrait, landscape | წიგნისებრი, ალბომური (ორიენტაცია) | As Georgian office software names page orientation. |
+| setup (of a development environment) | გარემოს მომზადება | Not «გამართვა», which is *debugging*. |
 | stdout, stderr | stdout, stderr | Kept. |
 | gap (in page numbering) | გამოტოვება | |
 | ignored | გამოტოვებულია | |
@@ -165,14 +184,18 @@ used the same way in the window, the command line and every page.
 | Golay, Hamming, Reed-Solomon code | გოლეის კოდი, ჰემინგის კოდი, რიდ-სოლომონის კოდი | |
 | parity, parity bytes, parity level | ლუწობა, ლუწობის ბაიტები, ლუწობის დონე | Never shown in the window. |
 | check (of a tag) | საკონტროლო მნიშვნელობა | Not «შემოწმება» (reserved). |
-| header, header copy | სათაური, სათაურის ასლი | |
+| header, header copy | თავსართი, თავსართის ასლი | The word Georgian software uses for data headers (also the PGM file header). Not «სათაური», which means a title or heading. |
 | magic | სიგნატურა | Field name `magic` stays in code font. |
 | well-formed, acceptable, valid | სწორად აგებული, მისაღები, მართებული | "Valid" is «მართებული» everywhere in `format.ka.md` ("invalid" «არამართებული»); the other two are the defined terms of 6.2. |
 | untrusted | არასანდო | |
 | container, stream, payload, body | კონტეინერი, ნაკადი, სასარგებლო დატვირთვა, ტანი | |
 | padding | შევსება | |
-| erasure | წაშლილი სიმბოლო (erasure) | |
+| erasure | წაშლილი ბაიტი (erasure) | The erasures of this format are bytes; «სიმბოლო» is reserved for the page-code symbol. |
 | generator polynomial, field polynomial | წარმომქმნელი მრავალწევრი, ველის მრავალწევრი | |
+| blur (the image is blurred) | გაბუნდოვნება (ბუნდოვანდება) | Not «იბინდება» (grows dim). |
+| tolerance (of the decoder) | შემწყნარებლობა | Not «დაშვება», which also reads as "assumption". |
+| try (a paper, a reader) | სინჯავს, ისინჯება; ცდის | Not «იცდება». |
+| can / may (format page) | შეუძლია / შეიძლება | «შეიძლება» is reserved for the requirement word *may*; English *can* is «შეუძლია». |
 | normative, informative | ნორმატიული, ინფორმაციული | |
 | test vectors | სატესტო ვექტორები | |
 | encoder, decoder, reader | კოდერი, დეკოდერი, წამკითხავი პროგრამა | "Reader" in parts 6 and 7 is any program; this project's two readers are «ჩვეულებრივი მეთოდი» and «ნელი მეთოდი». |
@@ -259,7 +282,7 @@ Copy these from `ka.toml` exactly (English → Georgian):
 | Opening the file / Finding the page / Identifying the page / Reading the data | ფაილის გახსნა / გვერდის ძებნა / გვერდის ამოცნობა / მონაცემების წაკითხვა |
 | Slower reader: sampling / pass 4 of 5 | ნელი მეთოდი: ნიმუშების აღება / გავლა 4 5-დან |
 | File recovered and verified · N bytes | ფაილი აღდგენილი და შემოწმებულია · N ბაიტი |
-| Does not match the fingerprint on the paper | არ ემთხვევა ქაღალდზე დაბეჭდილ ანაბეჭდს |
+| Does not match the fingerprint on the paper | არ ემთხვევა ქაღალდზე დაბეჭდილ ფაილის ანაბეჭდს |
 | Recoverable: page 3 missing, can be repaired from the others | აღდგენადია: აკლია გვერდი 3, შეიძლება აღდგეს დანარჩენი გვერდებით |
 | Recoverable: page 3 missing, repaired from the others · matches the fingerprint | აღდგენადია: აკლია გვერდი 3, აღდგენილია დანარჩენი გვერდებით · ემთხვევა ანაბეჭდს |
 | Working… 3 of 6 scans read | მუშავდება… 6 სკანიდან წაკითხულია 3 |
