@@ -28,7 +28,7 @@ compatible_conflict = "--compatible не можна використовуват
 format_conflict = "--format не можна використовувати разом з {options}"
 slow_reader = "optar: {name}: звичайний метод зчитування не зміг зчитати дані цього скану; запускається повільний метод, це займе близько хвилини"
 debug_images_unavailable = "optar: параметр --debug-images недоступний для сторінок із самоідентифікацією"
-force_no_effect = "optar: параметр --force не діє на роздруківки версії 0.2.0 і ранніших"
+force_no_effect = "optar: параметр --force не діє на роздруківки версії 0.2.0 і раніших версій"
 gap = "optar: немає файлу {missing}, хоча файл {existing} є"
 page_stats = "сторінка {number}: {symbols}, {corrected}, {uncorrectable}"
 force_advice = "--force зберігає те, що вдалося відновити, але воно може бути пошкоджене."
@@ -80,7 +80,7 @@ few = "optar: пропущено {count} скани іншого докумен�
 many = "optar: пропущено {count} сканів іншого документа: {names}"
 
 [cli.summary]
-too_many_missing = "забагато відсутніх сторінок, щоб виправити файл"
+too_many_missing = "забагато відсутніх сторінок, щоб відновити файл"
 worst = "у найгіршому кодовому слові використано {used} з {budget}"
 none_missing = "відсутніх сторінок немає"
 separator = "; "
@@ -317,7 +317,7 @@ CREATE_TITLE = "Зберегти PDF"
 PDF_FILTER = "PDF (*.pdf);;Усі файли (*)"
 PREPARING = "Зчитування файлу…"
 CREATING = "Створення PDF…"
-COMPATIBLE = "Сумісність з optar 0.2 і оригінальною програмою optar"
+COMPATIBLE = "Сумісність з optar 0.2 і оригінальним optar"
 # Why a PDF is not created over the file being put on paper.
 DEST_IS_SOURCE = "PDF замінив би файл, який записується на папір; виберіть інше ім’я"
 # After the pages and size of a protected file that may lose no whole page.
@@ -329,7 +329,7 @@ VERIFIED = "Файл відновлено й перевірено"
 # The bottom bar while scans are being read and the document has nothing else to say.
 WORKING = "Обробка…"
 # The bar while a document is repaired and checked in the background.
-REPAIRING = "Виправлення і звіряння з відбитком…"
+REPAIRING = "Виправлення й звіряння з відбитком…"
 # Why a page whose data says it repairs itself gave no data to repair with.
 NO_PAGE_DATA = "Дані цієї сторінки не вдалося зчитати"
 PREVIEW_LOADING = "Завантаження…"
@@ -623,9 +623,9 @@ few = "Збережено {n} байти у файл {name}"
 many = "Збережено {n} байтів у файл {name}"
 
 [gui.message.too_many_pixels]
-one = "У скані {n} піксель, а дозволено щонайбільше {limit}"
-few = "У скані {n} пікселі, а дозволено щонайбільше {limit}"
-many = "У скані {n} пікселів, а дозволено щонайбільше {limit}"
+one = "На скані {n} піксель, а дозволено щонайбільше {limit}"
+few = "На скані {n} пікселі, а дозволено щонайбільше {limit}"
+many = "На скані {n} пікселів, а дозволено щонайбільше {limit}"
 
 # Putting a file on paper.
 [gui.write]
@@ -709,9 +709,9 @@ other = "Обробка"
 
 # {done} of {n} scans are read.
 [gui.scans_read]
-one = "Зчитано сканів: {done} з {n}"
-few = "Зчитано сканів: {done} з {n}"
-many = "Зчитано сканів: {done} з {n}"
+one = "зчитано сканів: {done} з {n}"
+few = "зчитано сканів: {done} з {n}"
+many = "зчитано сканів: {done} з {n}"
 
 # The bar while scans are being read and the document has nothing else to say.
 [gui.scans_read_working]
@@ -753,7 +753,7 @@ close = "у найгіршому місці використано {percent}% р
 [gui.rescan]
 nothing = "Файл не вдалося виправити повністю. Повторне сканування сторінок ще може покращити результат."
 # {what}: "add" and "rescan" below, or both.
-advice = "Файл не вдалося виправити повністю. Результат ще можна покращити, якщо додати сторінки або повторно відсканувати їх: {what}."
+advice = "Файл не вдалося виправити повністю. Результат ще можна покращити, якщо додати або повторно відсканувати сторінки: {what}."
 both = "{add} і {rescan}"
 
 # {pages}: single when it names exactly one page, several when more.

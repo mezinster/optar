@@ -61,7 +61,7 @@ source_hash: f5551682033e226e7bf557d24edd97efecf26b2d
 на мову з однаковими ключами. Щоб додати або змінити рядок, відредагуйте
 `en.toml` і всі інші каталоги в одному pull request; запис із формами множини
 має категорії своєї мови (`optar.i18n.categories(code)`).
-`tests/unit/test_catalogues.py` контролює, щоб каталоги були узгоджені. Щоб
+`tests/unit/test_catalogues.py` стежить за тим, щоб каталоги були узгоджені. Щоб
 побачити програму командного рядка іншою мовою, задайте `OPTAR_LANG`,
 наприклад `OPTAR_LANG=ru optar --help`; у застосунку є меню вибору мови.
 
@@ -72,7 +72,7 @@ source_hash: f5551682033e226e7bf557d24edd97efecf26b2d
 `python tools/translation_status.py`. Щоб оновити застарілий розділ,
 подивіться, що змінилося в англійському розділі (`git diff` відносно коміту з
 його `source_hash`), відповідно змініть переклад, а тоді запишіть у
-`source_hash` результат `git hash-object docs/<page>.md`. Решту контролює
+`source_hash` результат `git hash-object docs/<page>.md`. За рештою стежить
 `tests/unit/test_doc_translations.py`. Правила для перекладачів наведено в
 `docs/superpowers/translation-brief.md`.
 

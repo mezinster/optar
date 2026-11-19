@@ -44,5 +44,5 @@ source_hash: e2c7112db6c41d20df8b36d2d29c2ab43a5ecb4a
 
 `optar --version` і `optar-gui --version` виводять версію.
 
-`optar-gui --self-test` запускає застосунок без екрана й контролює, чи може
+`optar-gui --self-test` запускає застосунок без екрана й з’ясовує, чи може
 він закодувати й зчитати сторінки.

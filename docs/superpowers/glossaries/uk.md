@@ -119,8 +119,8 @@ is chosen and the rejected one is named below.
 | read from paper | зчитати з паперу | Tab «Зчитати з паперу». |
 | prints as | друкується як | Field «Друкується як:». |
 | name (of the document, printed on the label) | назва | Field «Назва:», «(без назви)». The name of a file on disk is «ім’я файлу» («виберіть інше ім’я»); the two are kept apart. |
-| compatible (printout) | сумісна (роздруківка) | Checkbox «Сумісність з optar 0.2 і оригінальною програмою optar»: a noun, because a short adjective on a checkbox has no visible subject. |
-| original optar, the C program | оригінальна програма optar, програма на C | «Первісна» was rejected: it also means primitive. |
+| compatible (printout) | сумісна (роздруківка) | Checkbox «Сумісність з optar 0.2 і оригінальним optar»: a noun, because a short adjective on a checkbox has no visible subject. Shortened after the native read: the checkbox says «оригінальним optar» (the program name stands for the program), prose keeps «оригінальна програма optar». |
+| original optar, the C program | оригінальна програма optar, програма на C | «Первісна» was rejected: it also means primitive. Only the checkbox `gui.COMPATIBLE` uses the short «оригінальний optar». |
 | dot size names: Standard, Medium, Big, Large, Extra large | Стандартні, Середні, Великі, Крупні, Дуже крупні | Plural adjectives agreeing with «точки». Big / Large / Extra large map to Великі / Крупні / Дуже крупні, so the last two keep the English pair "Large" / "Extra large". Capitalised only as a selector entry or at the start; in running text lower-case («стандартні точки», «зі стандартними точками», «для крупних точок»). |
 | protection levels: None, Standard, High | Немає, Стандартний, Високий | Masculine, agreeing with «захист». In prose «стандартний захист», «високий захист», «без захисту». |
 | paper names: A4, US Letter | A4, US Letter | Kept; in prose «папір Letter». |
@@ -179,7 +179,7 @@ is chosen and the rejected one is named below.
 | Golay code, (extended) Hamming code, Reed-Solomon code | код Голея, (розширений) код Геммінга, код Ріда — Соломона | Usual Ukrainian spellings. |
 | parity, parity bytes, parity level | парність, байти парності, рівень парності | Never shown in the window. Rejected: «перевірні байти» (uses the reserved root «перевір-»), «контрольні байти» (clashes with the tag's check). |
 | check (of a tag), check digits | контрольне значення, контрольні цифри | Rejected: «контрольна сума». |
-| check (plain sense, not the fingerprint) | контролювати | Keeps «перевір-» reserved. |
+| check (plain sense, not the fingerprint) | no single word: a natural turn that fits the sentence — «з’ясовує, чи…», «стежить (за тим), щоб…», noun «контроль» / «пройти контроль» | Keeps «перевір-» reserved for verified. Changed after the native read: the verb «контролювати» read like machinery in running prose («контролює, чи може він…»); it stays only in the format page's normative sentences about what a reader may or must check («повинна контролювати», «не повинна … контролювати»), where it is precise. Comparing a file with its fingerprint is verification, never «контроль» («остаточна перевірка»). |
 | header, header copy | заголовок, копія заголовка | |
 | magic | сигнатура | Field name `magic` stays in code font. |
 | well-formed, acceptable, valid | коректний, прийнятний, дійсний | "Valid" is «дійсний» everywhere in `format.uk.md` ("invalid" «недійсний»), never «коректний» or «прийнятний»: those are the defined terms of 6.2. |
@@ -194,7 +194,8 @@ is chosen and the rejected one is named below.
 | test vectors, conformance vectors | тестові вектори, вектори відповідності | |
 | encoder, decoder, reader (any implementation) | кодувальник, декодер, програма зчитування | This project's two readers are «звичайний метод» and «повільний метод». |
 | reference decoder | еталонний декодер | |
-| promise (of the tools) | обіцянка | |
+| promise (of the tools) | обіцянка | "Recover more than it promises" (more lost pages): «може витримати більше втрат, ніж обіцяно». |
+| leading zeros | без нулів на початку | Rejected: «ведучі нулі» (calque of Russian «ведущие нули»). |
 | plain, tagged, self-identifying document | простий документ, документ із міткою, документ із самоідентифікацією | |
 
 ### Other terms for the pages
@@ -211,7 +212,10 @@ is chosen and the rejected one is named below.
 | point (pt), paper margin | пункт (short «пт»), поле | |
 | offset | зміщення | |
 | threshold | поріг | |
-| sample, sampling | відлік, взяття відліків | The slower reader's step is «вибірка» in the window. |
+| sample, sampling | відлік, взяття відліків | The slower reader's step is «вибірка» in the window. "Sharpened" (unsharp mask): «застосовують підвищення різкості». |
+| progress (of a step) | хід виконання | Rejected: «поступ» (social advancement). |
+| version 0.2.0 or earlier | версії 0.2.0 або ранішої / і раніших версій | The comparative «раніший» agrees with «версія», never with «роздруківки». Rejected: «ранніших». |
+| MiB | МіБ | With a no-break space: «256 МіБ». dpi stays «dpi». |
 | confidence | упевненість | |
 | real (scan, document) | справжній | «справжні скани». |
 | scanned upright | відскановано в прямому положенні (не повернуто) | Covers both upside down and turned by 90°. |
@@ -284,8 +288,8 @@ A participle after a bare number agrees with the unstated noun named in the
 5 виправлено»). The `one` form also serves 21, 31…, so it never says
 «одна».
 
-Invariant counters with the genitive plural before a colon («Зчитано сканів:
-{done} з {n}», «Справних сторінок: {good} з {n}») avoid agreement and are
+Invariant counters with the genitive plural before a colon («зчитано сканів:
+{done} з {n}», lower case because it only follows « · »; «Справних сторінок: {good} з {n}») avoid agreement and are
 the first choice in the bottom bar; their three forms are intentionally the
 same text.
 
@@ -335,7 +339,7 @@ form for that number.
 | Recoverable: page 3 missing, can be repaired from the others | Відновлення можливе: немає сторінки 3, її можна відновити з решти | `gui.state.recoverable` |
 | Recoverable: page 3 missing, repaired from the others · matches the fingerprint | Відновлення можливе: немає сторінки 3, її відновлено з решти · збігається з відбитком | `gui.state.recovered` + `gui.state.matches` |
 | Working… 3 of 6 scans read | Обробка… Зчитано сканів: 3 з 6 | `gui.scans_read_working` |
-| 3 of 6 scans read | Зчитано сканів: 3 з 6 | `gui.scans_read` |
+| 3 of 6 scans read | зчитано сканів: 3 з 6 (lower case: only ever shown after « · ») | `gui.scans_read` |
 | Checking the fingerprint… | Звіряння з відбитком… | `gui.state.checking` |
 | All N pages read · cannot be verified (no tag) | Зчитано всі сторінки: N · перевірити не можна (немає мітки) | `gui.state.all_read` + `gui.state.no_tag` |
 | 4 of 6 pages good · 1 damaged · 1 missing | Справних сторінок: 4 з 6 · 1 пошкоджена · 1 відсутня | `gui.state.good`, `.damaged`, `.missing` |
