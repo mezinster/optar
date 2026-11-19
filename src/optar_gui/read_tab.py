@@ -118,6 +118,7 @@ from optar_gui.document import (
     expand_paths,
     paper_for_size,
 )
+from optar_gui.flow import FlowLayout
 from optar_gui.jobs import JobRunner
 from optar_gui.preview import ScanPreview
 from optar_gui.work import (
@@ -719,7 +720,7 @@ def _plain_tooltip(label: str) -> str:
     tooltip as rich text when it looks like it (``<b>x</b>.png``), and file names and
     label text are untrusted, so such a text is escaped and marked as rich text."""
     if GuiQt.mightBeRichText(label):
-        return "<qt>" + html.escape(label, quote=False).replace("\n", "<br>") + "</qt>"
+        return f'<qt><p style="white-space:pre-wrap">{html.escape(label, quote=False)}</p></qt>'
     return label
 
 
@@ -982,7 +983,7 @@ class ReadTab(QWidget):
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.addWidget(self.preview, 1)
         right_layout.addWidget(self.detail)
-        buttons = QHBoxLayout()
+        buttons = FlowLayout()  # wraps, so the buttons never fix the pane's minimum width
         for button in (
             self.replace_button,
             self.use_spare_button,
@@ -991,7 +992,6 @@ class ReadTab(QWidget):
             self.remove_button,
         ):
             buttons.addWidget(button)
-        buttons.addStretch(1)
         right_layout.addLayout(buttons)
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(left)
@@ -1016,10 +1016,18 @@ class ReadTab(QWidget):
         self.retranslate()
 
     def resizeEvent(self, event) -> None:  # noqa: N802
-        """The first time the tab has a size the list gets its share of the width (a
-        splitter otherwise starts from its panes' size hints, which favour the
-        preview, and grows both by their stretch); after that the splitter is the user's."""
         super().resizeEvent(event)
+        self._share_list()
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        super().showEvent(event)
+        # A tab first shown later (another tab was current) is laid out only after this.
+        QTimer.singleShot(0, self._share_list)
+
+    def _share_list(self) -> None:
+        """The first time the tab is seen with a size the list gets its share of the width
+        (a splitter otherwise starts from its panes' size hints, which favour the preview,
+        and grows both by their stretch); after that the splitter is the user's."""
         width = self.splitter.width()
         if not self._shared and self.isVisible() and width > 1:
             self._shared = True

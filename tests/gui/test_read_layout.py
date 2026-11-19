@@ -5,14 +5,15 @@ read, off-screen."""
 
 import pytest
 from PySide6.QtCore import QModelIndex, Qt
-from PySide6.QtGui import QFontMetrics
+from PySide6.QtGui import QFontMetrics, QTextDocument
 from PySide6.QtGui import Qt as GuiQt
-from PySide6.QtWidgets import QStyle, QStyleOptionViewItem
+from PySide6.QtWidgets import QPushButton, QStyle, QStyleOptionViewItem
 
+from optar import i18n
 from optar_gui import text
 from optar_gui.document import Progress
 from optar_gui.main_window import MainWindow
-from optar_gui.read_tab import ReadController
+from optar_gui.read_tab import ReadController, _plain_tooltip
 from optar_gui.work import process_scan
 from tests.gui.conftest import _OFFSCREEN_FONT_WARNINGS as OFFSCREEN_FONT_WARNINGS
 from tests.gui.conftest import MARK
@@ -31,11 +32,16 @@ LONG = "a-rather-long-file-name-for-the-archive-of-2026-and-then-some.png"  # 63
 def make_window(qtbot):
     controllers = []
 
-    def make(process):
+    def make(process, language=None, tab=0):
+        """The window, shown, in ``language`` (chosen before it is shown) with tab ``tab``
+        current at first."""
         controller = ReadController(process=process, max_workers=1)
         controllers.append(controller)
         window = MainWindow(controller)
         qtbot.addWidget(window)
+        if language is not None:
+            choose(window, language)
+        window.tabs.setCurrentIndex(tab)
         window.show()
         qtbot.waitExposed(window)
         return window
@@ -63,6 +69,79 @@ def test_the_list_gets_about_two_fifths_of_the_window_and_neither_pane_can_vanis
     assert min(splitter.sizes()) > 0
     splitter.setSizes([1000, 0])
     assert min(splitter.sizes()) > 0
+
+
+def loadable_languages():
+    """The languages of the program whose catalogue loads (some may be half-written)."""
+    found = []
+    for code in i18n.languages():
+        try:
+            i18n.set_language(code)
+            text.step_text(None)
+            found.append(code)
+        except Exception:  # noqa: BLE001, a catalogue being written
+            pass
+        finally:
+            i18n.set_language("en")
+    return found
+
+
+@quiet
+def test_the_list_has_its_share_at_the_default_size_in_every_language(make_window):
+    languages = loadable_languages()
+    assert "ru" in languages and "en" in languages
+    for code in languages:
+        window = make_window(Stepper(), language=code)
+        first, second = window.read_tab.splitter.sizes()
+        share = first / (first + second)
+        viewport = window.read_tab.page_list.viewport().width()
+        assert (window.width(), window.height()) == (1000, 700)
+        assert share >= 0.34, (code, share)
+        assert viewport >= 340, (code, viewport)
+        buttons = window.read_tab.splitter.widget(1).findChildren(QPushButton)
+        pane = window.read_tab.splitter.widget(1).rect()
+        for button in buttons:  # nothing clipped or hanging out of the pane at default size
+            assert pane.contains(button.geometry()), (code, button.text())
+
+
+@quiet
+def test_the_buttons_wrap_instead_of_fixing_the_panes_width_and_keep_their_order(make_window):
+    window = make_window(Stepper(), language="ru")
+    tab = window.read_tab
+    buttons = [
+        tab.replace_button,
+        tab.use_spare_button,
+        tab.switch_button,
+        tab.assign_button,
+        tab.remove_button,
+    ]
+    placed = sorted(buttons, key=lambda b: (b.geometry().top(), b.geometry().left()))
+    assert placed == buttons  # reading order is the order of controls
+    assert len({b.geometry().top() for b in buttons}) == 2  # wrapped onto two lines in Russian
+    assert tab.splitter.widget(1).minimumSizeHint().width() < 500
+
+
+@quiet
+def test_the_minimum_size_of_the_window_does_not_grow(make_window):
+    # Before the buttons could wrap the minimum was 789x331 (English), 897x331 (Russian).
+    for code, before in (("en", (789, 331)), ("ru", (897, 331))):
+        hint = make_window(Stepper(), language=code).minimumSizeHint()
+        assert hint.width() <= before[0] and hint.height() <= before[1], (code, hint)
+
+
+@quiet
+def test_the_list_has_its_share_when_the_read_tab_is_not_shown_first(qtbot, make_window):
+    window = make_window(Stepper(), language="ru", tab=1)
+    window.tabs.setCurrentIndex(0)
+    qtbot.waitUntil(lambda: window.read_tab._shared, timeout=TIMEOUT)
+    first, second = window.read_tab.splitter.sizes()
+    assert first / (first + second) >= 0.34
+    assert window.read_tab.page_list.viewport().width() >= 340
+    # And once the user has moved the splitter, switching tabs does not undo it.
+    window.read_tab.splitter.setSizes([250, 724])
+    window.tabs.setCurrentIndex(1)
+    window.tabs.setCurrentIndex(0)
+    assert window.read_tab.splitter.sizes()[0] < 300
 
 
 @quiet
@@ -96,6 +175,47 @@ def test_a_long_row_is_elided_and_not_scrolled(qtbot, make_window, tmp_path):
     assert not view.horizontalScrollBar().isVisible()
     assert view.horizontalScrollBar().maximum() == 0
     assert view.textElideMode() == Qt.TextElideMode.ElideMiddle
+    # The 63-character row really is too long for the list, and elision shortens it to fit.
+    row = next(r for r in tab.rows() if LONG in r)
+    metrics = view.fontMetrics()
+    assert metrics.horizontalAdvance(row) > view.viewport().width()
+    shown = metrics.elidedText(row, view.textElideMode(), view.viewport().width() - 8)
+    assert shown != row and "\u2026" in shown
+    assert metrics.horizontalAdvance(shown) <= view.viewport().width()
+
+
+@quiet
+def test_the_name_of_a_scan_being_read_is_elided_in_the_middle_to_fit(make_window):
+    stepper = Stepper()
+    window = make_window(stepper)
+    tab = window.read_tab
+    tab.controller.add_paths([f"/scans/{LONG}"])
+    view = tab.page_list
+    row = tab.rows().index(f"{LONG} · Waiting")
+    index = view.model().index(row)
+    area = view.visualRect(index).adjusted(2, 0, -2, 0)
+    metrics = view.fontMetrics()
+    name_rect, bar_rect, step_rect = view.itemDelegate().layout(area, metrics, LONG, 0)
+    assert name_rect.width() < metrics.horizontalAdvance(LONG)  # so it is elided, in the middle
+    assert metrics.elidedText(LONG, Qt.TextElideMode.ElideMiddle, name_rect.width()) != LONG
+    assert name_rect.right() < bar_rect.left() and bar_rect.right() <= area.right()
+    assert step_rect.top() > name_rect.bottom() and step_rect.width() == area.width()
+    stepper.advance(LONG)
+    tab.controller.remove(next(s.id for s in tab.controller.document.scans()))
+
+
+@quiet
+def test_every_row_gets_the_full_width_of_the_viewport(make_window):
+    stepper = Stepper()
+    window = make_window(stepper)
+    tab = window.read_tab
+    tab.controller.add_paths(["/scans/page.png"])
+    view = tab.page_list
+    for row in range(view.model().rowCount()):
+        rect = view.visualRect(view.model().index(row))
+        assert rect.width() == view.viewport().width(), (row, rect)
+    stepper.advance("page.png")
+    tab.controller.remove(next(s.id for s in tab.controller.document.scans()))
 
 
 @quiet
@@ -124,6 +244,10 @@ def test_the_tooltip_of_a_scan_being_read_is_its_row_and_markup_is_shown_literal
     assert tooltips(tab) != tab.rows()  # escaped for display, so not the raw text
     tip = tooltips(tab)[tab.rows().index(row)]
     assert GuiQt.mightBeRichText(tip)  # declared rich, and the markup in it is escaped
+    for raw in (name, "<b>x</b> & y\nsecond  line"):  # shown literally, newline and spaces kept
+        document = QTextDocument()
+        document.setHtml(_plain_tooltip(raw))
+        assert document.toPlainText() == raw
     assert "<b>" not in tip and "&lt;b&gt;x&lt;i&gt;&amp;amp;.png" in tip
     # Plain rows are the row itself and are shown as plain text.
     heading = tooltips(tab)[tab.rows().index(text.BEING_READ_SECTION)]
