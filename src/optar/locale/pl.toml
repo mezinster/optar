@@ -1,0 +1,765 @@
+# Polski katalog optar: klucze, kolejność i angielskie komentarze jak w en.toml; terminy według docs/superpowers/glossaries/pl.md.
+
+[language]
+name = "Polski"
+
+[format]
+group = " "
+decimal = ","
+
+[cli]
+ACTUAL_SIZE = "Drukuj w rozmiarze rzeczywistym (100%), a nie z opcją „Dopasuj do strony”."
+PAPER_HINT = "Sprawdź, czy --paper odpowiada wydrukowi i czy strona jest zeskanowana we właściwym położeniu (nieobrócona)."
+description = "Przechowywanie plików na papierze."
+after_encoding = "{actual_size} Skanuj w rozdzielczości {dpi} dpi."
+or_two = "{first} lub {second}"
+list_separator = ", "
+sentences = "{first} {second}"
+wrote = "zapisano {path}"
+format_does_not_fit = "format {format} nie mieści się na papierze {paper}"
+cannot_open = "nie można otworzyć {path}"
+line = "optar: {message}"
+line_hint = "optar: {message}. {hint}"
+os_error = "optar: {reason}"
+os_error_file = "optar: {file}: {reason}"
+compatible_conflict = "--compatible nie można używać razem z {options}"
+format_conflict = "--format nie można używać razem z {options}"
+slow_reader = "optar: {name}: zwykła metoda odczytu nie zdołała odczytać danych tego skanu; uruchamiana jest wolniejsza metoda, co zajmie około minuty"
+debug_images_unavailable = "optar: opcja --debug-images jest niedostępna dla stron samoidentyfikujących"
+force_no_effect = "optar: opcja --force nie działa na wydruki z wersji 0.2.0 i wcześniejszych"
+gap = "optar: brak pliku {missing}, choć plik {existing} istnieje"
+page_stats = "strona {number}: {symbols}, {corrected}, {uncorrectable}"
+force_advice = "--force zapisuje to, co udało się odzyskać, ale może to być uszkodzone."
+dot_need = "{name} – {dpi}"
+in_scan = "{name}: {message}"
+
+[cli.wrote_pdf]
+one = "zapisano {path} ({count} strona)"
+few = "zapisano {path} ({count} strony)"
+many = "zapisano {path} ({count} stron)"
+
+[cli.dot_name]
+standard = "standardowe"
+medium = "średnie"
+big = "duże"
+large = "bardzo duże"
+xlarge = "ogromne"
+
+[cli.protection]
+nothing = "Poziom ochrony {level}: nic nie jest naprawiane; utrata lub uszkodzenie strony oznacza utratę części pliku."
+within = "Poziom ochrony {level}: naprawia uszkodzenia wewnątrz stron, ale nie zastąpi utraconej strony."
+
+[cli.protection.lose]
+one = "Poziom ochrony {level}: można utracić {count} stronę z {total} i nadal odzyskać plik."
+few = "Poziom ochrony {level}: można utracić {count} strony z {total} i nadal odzyskać plik."
+many = "Poziom ochrony {level}: można utracić {count} stron z {total} i nadal odzyskać plik."
+
+[cli.scan]
+missing = "optar: {name}: {reason}; uznano za brakującą stronę."
+page = "{name}: strona {page} z {total}{note}"
+page_again_better = "{name}: ponownie strona {page} z {total}{note}; użyto lepszego skanu"
+page_again_earlier = "{name}: ponownie strona {page} z {total}{note}; użyto wcześniejszego skanu"
+note_slow = " (odczytana wolniejszą metodą)"
+
+[cli.probe]
+unread = "nie udało się odczytać ({detail})"
+unidentified = "nie zidentyfikowano ({detail})"
+coarse = "nie zidentyfikowano ({detail}); rozdzielczość skanu to około {dpi} dpi, a rozmiary kropek wymagają: {needs}"
+coarse_tried = "nie zidentyfikowano ({detail}); rozdzielczość skanu to około {dpi} dpi (wypróbowano też wolniejszą metodę), a rozmiary kropek wymagają: {needs}"
+
+[cli.scan.note_unreadable]
+one = ", {count} bajt nieczytelny"
+few = ", {count} bajty nieczytelne"
+many = ", {count} bajtów nieczytelnych"
+
+[cli.scan.ignored]
+one = "optar: pominięto {count} skan z innego dokumentu: {names}"
+few = "optar: pominięto {count} skany z innego dokumentu: {names}"
+many = "optar: pominięto {count} skanów z innego dokumentu: {names}"
+
+[cli.summary]
+too_many_missing = "brakuje zbyt wielu stron, by naprawić plik"
+worst = "najgorsze słowo kodowe wykorzystało {used} z {budget}"
+none_missing = "nie brakuje żadnej strony"
+separator = "; "
+line = "optar: {summary}"
+
+[cli.summary.repaired]
+one = "naprawiono {count} bajt"
+few = "naprawiono {count} bajty"
+many = "naprawiono {count} bajtów"
+
+[cli.summary.blocks_failed]
+one = "{count} blok pozostał nienaprawiony"
+few = "{count} bloki pozostały nienaprawione"
+many = "{count} bloków pozostało nienaprawionych"
+
+# {list} is a list of page numbers ("3", "2, 5, 7"). The two forms are chosen by
+# whether the list names exactly one page (single) or more (several), not by a
+# plural rule: in some languages the "one" form also serves 21, 31 and so on.
+[cli.summary.missing]
+single = "brak strony {list}"
+several = "brak stron {list}"
+
+[cli.too_few.read]
+one = "optar: plik nie dał się naprawić i nie został zapisany: odczytano tylko {read} z {count} strony."
+few = "optar: plik nie dał się naprawić i nie został zapisany: odczytano tylko {read} z {count} stron."
+many = "optar: plik nie dał się naprawić i nie został zapisany: odczytano tylko {read} z {count} stron."
+
+# {list}: the missing pages; single when it names exactly one page, several when more.
+# {fraction}: a number (2: "one page in 2").
+[cli.too_few.rescan]
+single = "Zeskanuj stronę {list} i ponów dekodowanie; --force nie zapisze niczego, jeśli odczytano mniej niż jedną stronę na każde {fraction}."
+several = "Zeskanuj strony {list} i ponów dekodowanie; --force nie zapisze niczego, jeśli odczytano mniej niż jedną stronę na każde {fraction}."
+
+[cli.verified]
+one = "optar: plik zweryfikowany ({count} bajt)"
+few = "optar: plik zweryfikowany ({count} bajty)"
+many = "optar: plik zweryfikowany ({count} bajtów)"
+
+[cli.force_saved]
+unrepaired = "optar: plik nie dał się naprawić: nie przeszedł weryfikacji i może być uszkodzony. Mimo to zapisano go z powodu --force."
+mismatch = "optar: plik nie zgadza się ze swoim odciskiem: nie przeszedł weryfikacji i może być uszkodzony. Mimo to zapisano go z powodu --force."
+
+[cli.not_saved]
+unrepaired = "optar: plik nie dał się naprawić i nie został zapisany. {advice}"
+mismatch = "optar: plik nie zgadza się ze swoim odciskiem i nie został zapisany. {advice}"
+
+# {list}: pages to rescan; single when it names exactly one page, several when more.
+# {force}: the sentence cli.force_advice.
+[cli.rescan_advice]
+single = "Zeskanuj ponownie stronę {list} i ponów dekodowanie; {force}"
+several = "Zeskanuj ponownie strony {list} i ponów dekodowanie; {force}"
+
+[cli.list_more]
+one = "(jeszcze {count})"
+few = "(jeszcze {count})"
+many = "(jeszcze {count})"
+
+[cli.stat_symbols]
+one = "{count} symbol"
+few = "{count} symbole"
+many = "{count} symboli"
+
+[cli.stat_corrected]
+one = "{count} skorygowany"
+few = "{count} skorygowane"
+many = "{count} skorygowanych"
+
+[cli.stat_uncorrectable]
+one = "{count} nie do skorygowania"
+few = "{count} nie do skorygowania"
+many = "{count} nie do skorygowania"
+
+[cli.uncorrectable_codewords]
+one = "optar: {count} słowo kodowe nie do skorygowania. {hint}"
+few = "optar: {count} słowa kodowe nie do skorygowania. {hint}"
+many = "optar: {count} słów kodowych nie do skorygowania. {hint}"
+
+[cli.argparse]
+usage = "użycie: "
+positionals = "argumenty pozycyjne"
+options = "opcje"
+error = "{prog}: błąd: {message}"
+help = "wyświetl tę pomoc i zakończ"
+version = "wyświetl numer wersji programu i zakończ"
+
+[cli.help]
+paper = "rozmiar papieru (domyślnie: a4)"
+format = "użyj innego formatu strony niż domyślny"
+encode = "zakoduj plik jako strony do wydrukowania"
+input = "plik do zakodowania"
+output = "podstawowa nazwa plików wynikowych (domyślnie: optar_out)"
+to = "rodzaj wyniku: jeden plik PDF (domyślnie) albo pliki stron PNG lub PGM"
+label = "tekst drukowany na każdej stronie (domyślnie: nazwa pliku podana w -o)"
+no_tag = "nie dodawaj do napisów na stronach znacznika z rozmiarem, odciskiem i wartością kontrolną"
+dots = "rozmiar kropek (domyślnie: standard). Każdy rozmiar inny niż standard daje strony samoidentyfikujące z ochroną na poziomie standard, chyba że --protect określa inaczej"
+protect = "dane naprawcze rozłożone na cały dokument; daje strony samoidentyfikujące z kropkami rozmiaru standard, chyba że --dots określa inaczej. Wartość „none” daje strony samoidentyfikujące bez ochrony. Bez --dots i --protect strony są zgodne i bez ochrony"
+compatible = "strony czytelne dla optar 0.2 i programu w C (domyślnie, gdy nie podano --dots ani --protect)"
+decode = "zdekoduj zeskanowane strony z powrotem do pliku"
+base = "skany to BASE_0001.png, BASE_0002.png itd."
+decode_output = "plik wynikowy (domyślnie: stdout)"
+debug_images = "zapisz BASE_NNNN_debug.png"
+force = "zapisz to, co udało się odzyskać ze stron samoidentyfikujących, nawet jeśli plik nie przeszedł weryfikacji"
+no_slow_reader = "nie stosuj wolniejszej metody odczytu do skanów, których zwykła metoda nie może zidentyfikować"
+
+# Library errors (optar.errors): each entry is the English text of the error,
+# word for word; a test compares them with the code.
+[err]
+cannot_read = "nie można odczytać {path}: {reason}"
+cannot_write = "nie można zapisać {path}: {reason}"
+unknown_paper = "nieznany papier {name}; znane: {known}"
+unknown_dots = "nieznany rozmiar kropek {name}; znane: {known}"
+format_syntax = "format strony musi składać się z ośmiu liczb całkowitych rozdzielonych łącznikami: {text}"
+label_band = "nieprawidłowa wysokość pasa napisu: {height} zamiast {rows} (w wierszach pikseli)"
+label_font = "nie można odczytać pasa napisu o wysokości {height}: czcionka ma wysokość {rows} (w wierszach pikseli)"
+too_many_pages = "za dużo stron: potrzeba {total}, dopuszczalne najwyżej {limit}"
+too_large_to_protect = "plik jest za duży, by objąć go ochroną: {size} B na papierze, dopuszczalne najwyżej {limit}"
+unknown_parity = "parzystość musi być jedną z wartości {known}, a nie {parity}"
+format_too_small = "format strony {format} jest za mały dla kontenera"
+format_cannot_end = "format strony {format} nie pozwala zakończyć strumienia na stronie"
+impossible_document = "strony opisują dokument, który nie może istnieć: liczba stron {total} przy pliku o rozmiarze {size} B"
+image_too_large = "nie można odczytać obrazu {path}: liczba pikseli ({pixels}) przekracza dopuszczalną dla skanu ({limit})"
+image_size_changed = "nie można odczytać obrazu {path}: rozmiar obrazu zmienił się podczas wczytywania"
+not_an_image = "nie można odczytać obrazu {path}: to nie jest obraz {formats}"
+image_unreadable = "nie można odczytać obrazu {path}: {reason}"
+no_page = "nie znaleziono strony"
+label_unreadable = "napis jest nieczytelny"
+scan_not_grey = "skan musi być dwuwymiarowym obrazem w skali szarości typu uint8, a ma kształt {shape} i typ {dtype}"
+scan_empty = "skan jest pusty"
+scan_too_small = "skan {width} × {height} px jest mniejszy niż strona tego formatu ({page_width} × {page_height} px)"
+corners_coincide = "narożniki strony są zdegenerowane (pokrywają się)"
+page_too_small = "strona znaleziona na skanie jest za mała, by zlokalizować jej krzyżyki"
+too_few_dots = "na stronie jest za mało znanych kropek, by dostroić na ich podstawie odczyt"
+page_size = "strona {width} × {height} px nie odpowiada stronie {page_width} × {page_height} px układu (rozmiar kropek: {dots}, papier: {paper})"
+page_clipped = "strona {width} × {height} px zostawia na papierze {paper} margines mniejszy niż {margin} pt i drukarka by ją przycięła"
+strip_needs_layout = "pasek napisu wymaga układu swojej strony"
+strip_too_large = "pasek napisu {width} × {height} nie mieści się w pasie napisu układu (rozmiar kropek: {dots})"
+no_pages = "brak stron do zapisania"
+
+[err.invalid_format]
+version = "nieprawidłowy format strony: wartość version musi wynosić 0"
+fec_order = "nieprawidłowy format strony: wartość fec_order musi wynosić od 1 do 5"
+xcrosses = "nieprawidłowy format strony: wartość xcrosses musi być >= 2"
+ycrosses = "nieprawidłowy format strony: wartość ycrosses musi być >= 2"
+chalf = "nieprawidłowy format strony: wartość chalf musi być >= 1"
+cpitch = "nieprawidłowy format strony: wartość cpitch musi być większa niż 2*chalf"
+border = "nieprawidłowy format strony: wartość border musi być >= 1"
+text_height = "nieprawidłowy format strony: wartość text_height musi być >= 1"
+
+[err.no_corner]
+upper_left = "nie można znaleźć lewego górnego narożnika"
+upper_right = "nie można znaleźć prawego górnego narożnika"
+lower_left = "nie można znaleźć lewego dolnego narożnika"
+lower_right = "nie można znaleźć prawego dolnego narożnika"
+
+[count.page]
+one = "{n} strona"
+few = "{n} strony"
+many = "{n} stron"
+
+[count.byte]
+one = "{n} bajt"
+few = "{n} bajty"
+many = "{n} bajtów"
+
+[count.block]
+one = "{n} blok"
+few = "{n} bloki"
+many = "{n} bloków"
+
+[count.dot]
+one = "{n} kropka"
+few = "{n} kropki"
+many = "{n} kropek"
+
+[count.scan]
+one = "{n} skan"
+few = "{n} skany"
+many = "{n} skanów"
+
+# --- The desktop window (src/optar_gui/text.py) ------------------------------------
+#
+# The window speaks of "protection", "repair" and the "fingerprint", never of parity,
+# codewords or headers. A "block" is one error-correction unit; blocks are "repaired"
+# or "lost". {pages} is a list of page numbers ("3", "2-4, 7 and 9"). An entry that
+# has it comes in two forms, chosen by whether the list names exactly one page
+# (single) or more (several); this is not a plural rule, so the "one" form of your
+# language (which may also serve 21, 31 and so on) plays no part in it.
+
+[gui]
+# The window, its tabs, buttons and dialogs.
+WINDOW_TITLE = "optar"
+READ_TAB = "Odczytaj z papieru"
+ADD_SCANS = "+ Dodaj skany…"
+REMOVE_SCAN = "Usuń z listy"
+SAVE_FILE = "Zapisz plik…"
+ADD_SCANS_TITLE = "Dodaj skany"
+SAVE_TITLE = "Zapisz odzyskany plik"
+CONFIRM_SAVE_TITLE = "Zapisać mimo to?"
+ERROR_TITLE = "Nie udało się zapisać"
+# Titles of the sections of the list of scans.
+NOT_PART_OF_THIS_FILE = "Spoza tego pliku"
+NOT_READABLE = "Nieczytelne"
+BEING_READ_SECTION = "W trakcie odczytu"
+# The actions on the selected row and their dialogs.
+REPLACE_SCAN = "Zastąp skan…"
+USE_SPARE = "Użyj tego skanu"
+SWITCH_DOCUMENT = "Przełącz na ten dokument"
+ASSIGN_PAGE = "Przypisz do strony…"
+START_BY_HAND = "Złóż dokument ręcznie…"
+REPLACE_REJECTED_TITLE = "Skanu nie użyto"
+ASSIGN_TITLE = "Przypisz do strony"
+PAGE_FIELD = "Strona:"
+START_BY_HAND_TITLE = "Złóż dokument ręcznie"
+START_BY_HAND_PROMPT = "Nie udało się zidentyfikować żadnego skanu. Podaj papier i liczbę stron wydruku, a potem przypisz każdy skan do jego strony."
+TOTAL_FIELD = "Liczba stron:"
+# Asked when the window is closed while a file is being written.
+STILL_WRITING_TITLE = "Plik jest jeszcze zapisywany"
+STILL_WRITING = "Plik jest jeszcze zapisywany. Poczekać, aż zapis się zakończy? Jeśli zamkniesz okno teraz, plik może nie zostać zapisany."
+# Why a save cannot start (programming errors, never shown in a dialog).
+SAVE_RUNNING = "zapisywanie już trwa"
+SAVE_AFTER_CLOSE = "okno zostało zamknięte, więc nie można już nic zapisać"
+# The "Put on paper" tab.
+WRITE_TAB = "Zapisz na papierze"
+FILE_FIELD = "Plik:"
+PAPER_FIELD = "Papier:"
+NAME_FIELD = "Nazwa:"
+PRINTS_AS_FIELD = "Na wydruku:"
+DOTS_FIELD = "Rozmiar kropek:"
+PROTECT_FIELD = "Ochrona:"
+CHOOSE_FILE = "Wybierz…"
+CHOOSE_FILE_TITLE = "Wybierz plik do zapisania na papierze"
+CREATE_PDF = "Utwórz PDF…"
+CREATE_TITLE = "Zapisz PDF"
+PDF_FILTER = "PDF (*.pdf);;Wszystkie pliki (*)"
+PREPARING = "Wczytywanie pliku…"
+CREATING = "Tworzenie pliku PDF…"
+COMPATIBLE = "Zgodność z optar 0.2 i oryginalnym programem optar"
+# Why a PDF is not created over the file being put on paper.
+DEST_IS_SOURCE = "PDF zastąpiłby plik zapisywany na papierze; wybierz inną nazwę"
+# After the pages and size of a protected file that may lose no whole page.
+DAMAGE_REPAIRED = "uszkodzenia wewnątrz stron są naprawiane, ale utrata całej strony oznacza utratę pliku"
+# What a document without a name is called.
+NO_NAME = "(bez nazwy)"
+# A document whose file was recovered and matches its fingerprint.
+VERIFIED = "Plik odzyskany i zweryfikowany"
+# The bottom bar while scans are being read and the document has nothing else to say.
+WORKING = "Przetwarzanie…"
+# The bar while a document is repaired and checked in the background.
+REPAIRING = "Naprawianie i sprawdzanie odcisku…"
+# Why a page whose data says it repairs itself gave no data to repair with.
+NO_PAGE_DATA = "Nie udało się odczytać danych tej strony"
+PREVIEW_LOADING = "Wczytywanie…"
+# A scan the ordinary reader could not read, while the slower reader tries it.
+READING_COARSE = "Odczyt skanu o niskiej rozdzielczości wolniejszą metodą; potrwa to około minuty"
+# After "too coarse to read": the slower reader could not read the scan either.
+SLOW_TRIED = "Wypróbowano też wolniejszą metodę dla skanów o niskiej rozdzielczości, ale i ona nie odczytała skanu."
+# A page read by the slower reader: in its detail (made a sentence by "sentence"
+# below), and in its row.
+READ_SLOWLY = "Odczytana wolniejszą metodą dla skanów o niskiej rozdzielczości"
+READ_SLOWLY_ROW = "Odczytana wolniejszą metodą"
+# The step of a scan not started yet.
+WAITING = "W kolejce"
+# The choice of language.
+LANGUAGE_MENU = "Język"
+SYSTEM_LANGUAGE = "Jak w systemie"
+# A phrase made a sentence, where the window shows it as a line of its own after
+# others (a detail panel, a reason after "was not used"): {words} with the full
+# stop of your language. A phrase that already ends with it is shown as it is.
+sentence = "{words}."
+
+# The terminal messages of optar-gui.
+[gui.cli]
+missing_qt = "optar-gui wymaga PySide6: uruchom pip install '.[gui]' w kopii kodu źródłowego albo pobierz optar-gui ze strony Releases projektu."
+description = "Zapisywanie plików na papierze i odczytywanie ich z powrotem."
+version_help = "wyświetl wersję i zakończ"
+
+[gui.button]
+ok = "OK"
+cancel = "Anuluj"
+save = "Zapisz"
+yes = "Tak"
+no = "Nie"
+
+# Paper names, by the paper's name in optar.format.
+[gui.paper]
+a4 = "A4"
+letter = "US Letter"
+
+# Dot sizes as their selector names them, by their names in optar.format.
+[gui.dots]
+standard = "Standardowe"
+medium = "Średnie"
+big = "Duże"
+large = "Bardzo duże"
+xlarge = "Ogromne"
+
+# A paper printed with a dot size other than the standard one.
+[gui.paper_dots]
+standard = "{paper}, standardowe kropki"
+medium = "{paper}, średnie kropki"
+big = "{paper}, duże kropki"
+large = "{paper}, bardzo duże kropki"
+xlarge = "{paper}, ogromne kropki"
+
+[gui.protection]
+none = "Brak"
+standard = "Standardowa"
+high = "Wysoka"
+
+# The health of a page, in its row.
+[gui.health]
+good = "W porządku"
+unreadable = "Nieczytelna"
+missing = "Brak"
+waiting = "W kolejce"
+working = "Przetwarzanie…"
+
+# {n} blocks repaired.
+[gui.health.repaired]
+one = "Naprawiona · {n}"
+few = "Naprawiona · {n}"
+many = "Naprawiona · {n}"
+
+# {n} blocks lost, which the document's protection repaired.
+[gui.health.restored]
+one = "Naprawiona przez ochronę dokumentu · {n}"
+few = "Naprawiona przez ochronę dokumentu · {n}"
+many = "Naprawiona przez ochronę dokumentu · {n}"
+
+# {n} blocks lost.
+[gui.health.damaged]
+one = "Uszkodzona · {n} utracony"
+few = "Uszkodzona · {n} utracone"
+many = "Uszkodzona · {n} utraconych"
+
+# Of a page read by the slower reader.
+[gui.health.dots_corrected]
+one = "{n} kropka skorygowana"
+few = "{n} kropki skorygowane"
+many = "{n} kropek skorygowanych"
+
+[gui.health.bytes_repaired]
+one = "{n} bajt naprawiony przez ochronę dokumentu"
+few = "{n} bajty naprawione przez ochronę dokumentu"
+many = "{n} bajtów naprawionych przez ochronę dokumentu"
+
+# The document's state in the bottom bar. Phrases are joined with " · ".
+[gui.state]
+checking = "Sprawdzanie odcisku…"
+matches = "zgadza się z odciskiem"
+mismatch = "Nie zgadza się z odciskiem na papierze"
+no_tag = "nie można zweryfikować (brak znacznika)"
+# {advice}: rescan advice (whole sentences); {repair}: what the repair did.
+advice_with_repair = "{advice} ({repair})"
+# {good}: the "good" phrase below; {repaired}: the "repaired" phrase below.
+good_with_repaired = "{good} ({repaired})"
+
+# {pages}: the missing pages; single when it names exactly one page, several when more.
+[gui.state.recoverable]
+single = "Do odzyskania: brak strony {pages}, można ją odtworzyć z pozostałych"
+several = "Do odzyskania: brak stron {pages}, można je odtworzyć z pozostałych"
+
+[gui.state.recovered]
+single = "Do odzyskania: brak strony {pages}, odtworzona z pozostałych"
+several = "Do odzyskania: brak stron {pages}, odtworzone z pozostałych"
+
+# Every page of a document without a tag is read: one page, or none.
+[gui.state.read]
+one = "Odczytano {n} stronę"
+few = "Odczytano {n} strony"
+many = "Odczytano {n} stron"
+
+# Every page of a document without a tag is read: more than one.
+[gui.state.all_read]
+one = "Odczytano wszystkie strony: {n}"
+few = "Odczytano wszystkie strony: {n}"
+many = "Odczytano wszystkie strony: {n}"
+
+# {good} of {n} pages are good.
+[gui.state.good]
+one = "{good} z {n} strony w porządku"
+few = "{good} z {n} stron w porządku"
+many = "{good} z {n} stron w porządku"
+
+# Of the good pages, {n} were repaired.
+[gui.state.repaired]
+one = "{n} naprawiona"
+few = "{n} naprawione"
+many = "{n} naprawionych"
+
+# {n} pages.
+[gui.state.slow]
+one = "{n} odczytana wolniejszą metodą"
+few = "{n} odczytane wolniejszą metodą"
+many = "{n} odczytanych wolniejszą metodą"
+
+[gui.state.damaged]
+one = "{n} uszkodzona"
+few = "{n} uszkodzone"
+many = "{n} uszkodzonych"
+
+[gui.state.unreadable]
+one = "{n} nieczytelna"
+few = "{n} nieczytelne"
+many = "{n} nieczytelnych"
+
+[gui.state.missing]
+one = "{n} brakująca"
+few = "{n} brakujące"
+many = "{n} brakujących"
+
+# A run of pages with the same problem, in a save warning: one page, two pages,
+# or the range {first} to {last} (written with the same range mark as gui.list.range).
+# Runs are joined with "; ".
+[gui.run.missing]
+single = "brak strony {first}"
+pair = "brak stron {first} i {last}"
+range = "brak stron {first}–{last}"
+
+[gui.run.damaged]
+single = "strona {first} jest uszkodzona"
+pair = "strony {first} i {last} są uszkodzone"
+range = "strony {first}–{last} są uszkodzone"
+
+[gui.run.unreadable]
+single = "strona {first} jest nieczytelna"
+pair = "strony {first} i {last} są nieczytelne"
+range = "strony {first}–{last} są nieczytelne"
+
+[gui.run.reading]
+single = "strona {first} jest jeszcze odczytywana"
+pair = "strony {first} i {last} są jeszcze odczytywane"
+range = "strony {first}–{last} są jeszcze odczytywane"
+
+# What saving must confirm first.
+[gui.save]
+# {runs}: the runs above, then perhaps "more" below.
+incomplete = "Zapisany plik będzie niekompletny: {runs}."
+# {advice}: rescan advice (whole sentences).
+unrepaired = "{advice} Jeśli zapiszesz teraz, zapisany plik będzie tylko tym, co udało się odzyskać, i może zawierać błędne fragmenty."
+checking = "Odcisk jest jeszcze sprawdzany, więc nie wiadomo jeszcze, czy odzyskany plik jest oryginałem."
+empty = "Nie ma nic do zapisania."
+mismatch = "Odzyskany plik nie zgadza się z odciskiem wydrukowanym na papierze: część danych zdekodowano błędnie, więc nie jest to oryginalny plik."
+by_hand = "Ten dokument złożono ręcznie, więc pliku nie można zweryfikować i zostanie on dopełniony zerami do pełnej strony."
+untagged = "Te strony nie mają znacznika, więc pliku nie można zweryfikować i zostanie on dopełniony zerami do pełnej strony."
+
+# After the runs a save warning names: the pages it does not name.
+[gui.save.more]
+one = "i jeszcze {n} strona brakująca lub uszkodzona"
+few = "i jeszcze {n} strony brakujące lub uszkodzone"
+many = "i jeszcze {n} stron brakujących lub uszkodzonych"
+
+# The standing caution over a document without a tag.
+[gui.caution]
+untagged = "Te strony nie mają znacznika, więc nie można potwierdzić, że pochodzą z tego samego wydruku ani że plik jest kompletny. Zapisany plik zostanie dopełniony zerami."
+by_hand = "Ten dokument złożono ręcznie, więc nie można potwierdzić, że strony pochodzą z tego samego wydruku ani że plik jest kompletny. Zapisany plik zostanie dopełniony zerami."
+
+# Why a scan is unreadable, by the reason the program gives.
+[gui.reason]
+no_page = "Na tym obrazie nie znaleziono strony optar"
+label_unreadable = "Nie udało się odczytać napisu u dołu strony"
+page_number = "Numer strony w napisie nie pasuje do tego dokumentu"
+page_count = "Liczba stron podana w napisie jest niemożliwa"
+size_mismatch = "Ten skan pochodzi z papieru o innym rozmiarze niż dokument"
+format_mismatch = "Ten skan zdekodowano dla innego rozmiaru papieru niż dokument"
+# A scan assigned to a page by hand that decodes badly whichever way up it is read.
+not_decodable = "Nie udało się zdekodować skanu w żadnej orientacji"
+
+# The detail panel of a page.
+[gui.detail]
+title = "Strona {page} z {total}"
+repairs = "Naprawy: jednobitowe – {one}, dwubitowe – {two}, trzybitowe – {three}"
+missing = "Nie dodano skanu tej strony"
+waiting = "Czeka na odczyt"
+unreadable = "Nie udało się odczytać tego skanu"
+reading = "Odczytywanie…"
+
+# After "{n} blocks": {n} of them repaired.
+[gui.detail.repaired]
+one = "{n} naprawiony"
+few = "{n} naprawione"
+many = "{n} naprawionych"
+
+[gui.detail.lost]
+one = "{n} utracony"
+few = "{n} utracone"
+many = "{n} utraconych"
+
+[gui.detail.restored]
+one = "{n} naprawiony przez ochronę dokumentu"
+few = "{n} naprawione przez ochronę dokumentu"
+many = "{n} naprawionych przez ochronę dokumentu"
+
+# Rows of the list of scans.
+[gui.row]
+page = "Strona {page}"
+spare = "Zapasowy"
+# After the title of a spare's detail.
+spare_tag = "zapasowy"
+spare_not_in_use = "Nieużywany: strona korzysta z innego skanu"
+
+# A group of scans of another printout.
+[gui.row.other_printout]
+one = "{n} skan innego wydruku, nie należy do tego pliku"
+few = "{n} skany innego wydruku, nie należą do tego pliku"
+many = "{n} skanów innego wydruku, nie należy do tego pliku"
+
+# Why a scan chosen to replace page {page} was not used. {name} is its file name.
+[gui.rejected]
+unusable = "Skanu {name} nie użyto dla strony {page}: nie udało się go odczytać, więc strona {page} zachowuje dotychczasowy skan."
+unusable_reason = "Skanu {name} nie użyto dla strony {page}: nie udało się go odczytać ({reason}), więc strona {page} zachowuje dotychczasowy skan."
+other_page = "Skanu {name} nie użyto dla strony {page}: jest to strona {other} tego dokumentu i na liście figuruje przy niej."
+# {printout}: name · paper · pages.
+other_document = "Skanu {name} nie użyto dla strony {page}: jest to strona {other} innego wydruku ({printout})."
+# {why}: a sentence.
+not_used = "Skanu {name} nie użyto dla strony {page}. {why}"
+unread = "Nie udało się go odczytać."
+
+[gui.dialog]
+replace_title = "Wybierz skan strony {page}"
+assign_prompt = "Którą stroną tego dokumentu jest skan {name}?"
+# After the page number in the page field.
+of_pages = " z {total}"
+scan_filter = "Skany ({patterns});;Wszystkie pliki (*)"
+
+[gui.message]
+check_failed = "Nie udało się sprawdzić odcisku: {message}"
+save_failed = "Nie udało się zapisać pliku: {message}"
+not_regular_file = "nie można odczytać {path}: to nie jest zwykły plik (folder, potok lub urządzenie)"
+file_unreadable = "Nie udało się odczytać pliku: {message}"
+created = "Utworzono {name}"
+create_failed = "Nie udało się utworzyć pliku PDF: {message}"
+size_changed = "rozmiar obrazu zmienił się podczas wczytywania"
+preview_failed = "Nie można wyświetlić tego skanu: {message}"
+repair_failed = "Nie udało się naprawić stron: {reason}"
+
+[gui.message.saved]
+one = "Zapisano {n} bajt w pliku {name}"
+few = "Zapisano {n} bajty w pliku {name}"
+many = "Zapisano {n} bajtów w pliku {name}"
+
+[gui.message.too_many_pixels]
+one = "Skan ma {n} piksel, a dopuszczalne jest najwyżej {limit}"
+few = "Skan ma {n} piksele, a dopuszczalne jest najwyżej {limit}"
+many = "Skan ma {n} pikseli, a dopuszczalne jest najwyżej {limit}"
+
+# Putting a file on paper.
+[gui.write]
+dot_size = "{dots} (skanuj w {dpi} dpi)"
+
+# Of a protected printout of {total} pages.
+[gui.write.promise]
+one = "można utracić {n} stronę z {total}"
+few = "można utracić {n} strony z {total}"
+many = "można utracić {n} stron z {total}"
+
+# Why a file cannot be put on paper with the chosen dot size and protection.
+[gui.too_large]
+fits_unprotected = "Bez ochrony plik się zmieści."
+
+[gui.too_large.protect]
+one = "Ten plik jest za duży, by objąć go ochroną przy tym rozmiarze kropek: wydruk z ochroną może mieć najwyżej {n} stronę."
+few = "Ten plik jest za duży, by objąć go ochroną przy tym rozmiarze kropek: wydruk z ochroną może mieć najwyżej {n} strony."
+many = "Ten plik jest za duży, by objąć go ochroną przy tym rozmiarze kropek: wydruk z ochroną może mieć najwyżej {n} stron."
+
+[gui.too_large.pages]
+one = "Ten plik jest za duży, by zapisać go na papierze przy tych ustawieniach: wydruk może mieć najwyżej {n} stronę."
+few = "Ten plik jest za duży, by zapisać go na papierze przy tych ustawieniach: wydruk może mieć najwyżej {n} strony."
+many = "Ten plik jest za duży, by zapisać go na papierze przy tych ustawieniach: wydruk może mieć najwyżej {n} stron."
+
+[gui.too_large.fits_dots]
+standard = "Plik zmieści się ze standardowymi kropkami."
+medium = "Plik zmieści się ze średnimi kropkami."
+big = "Plik zmieści się z dużymi kropkami."
+large = "Plik zmieści się z bardzo dużymi kropkami."
+xlarge = "Plik zmieści się z ogromnymi kropkami."
+
+[gui.too_large.fits_either]
+standard = "Plik zmieści się bez ochrony albo ze standardowymi kropkami."
+medium = "Plik zmieści się bez ochrony albo ze średnimi kropkami."
+big = "Plik zmieści się bez ochrony albo z dużymi kropkami."
+large = "Plik zmieści się bez ochrony albo z bardzo dużymi kropkami."
+xlarge = "Plik zmieści się bez ochrony albo z ogromnymi kropkami."
+
+# Why the printed name differs from the name typed. Sentences.
+[gui.name]
+dropped = "Tych znaków nie ma w czcionce napisu i nie zostaną wydrukowane: {chars}."
+no_room = "Napis przy tym rozmiarze kropek nie ma miejsca na nazwę, więc nie zostanie ona wydrukowana."
+cut = "Nazwa jest za długa dla strony i zostanie skrócona."
+stored = "Strony jej nie potrzebują: pełna nazwa jest przechowywana razem z plikiem."
+printed = "To po wydrukowanej nazwie strony będą później identyfikowane."
+
+# A scan made at too low a resolution; {measured} is rounded to the nearest 10.
+[gui.coarse]
+page = "Rozdzielczość skanu jest za niska dla tej strony: około {measured} dpi. Zeskanuj ją w rozdzielczości {needed} dpi."
+# The resolution each dot size needs, by its name in optar.format.
+unreadable = "Zeskanowano w rozdzielczości około {measured} dpi, zbyt niskiej do odczytu. Skanuj w {standard} dpi dla standardowych kropek, {medium} – dla średnich, {big} – dla dużych, {large} – dla bardzo dużych, {xlarge} – dla ogromnych."
+
+# The detail of a page read by the slower reader.
+[gui.slow]
+corrected = "Kropki skorygowane w obrębie strony: {dots}."
+# {share}: the share below.
+corrected_of = "Kropki skorygowane w obrębie strony: {dots} z {total} ({share})."
+# {share}: a percentage with one decimal, such as 8.3.
+share = "{share}%"
+share_small = "poniżej 0,1%"
+pending = "Błędy tej metody naprawia ochrona dokumentu; liczba bajtów tej strony, które naprawiła, pojawi się po weryfikacji dokumentu."
+none_wrong = "Po weryfikacji: żaden bajt tej strony nie był błędny."
+
+[gui.slow.repaired]
+one = "Po weryfikacji: {n} bajt tej strony był błędny i został naprawiony przez ochronę dokumentu."
+few = "Po weryfikacji: {n} bajty tej strony były błędne i zostały naprawione przez ochronę dokumentu."
+many = "Po weryfikacji: {n} bajtów tej strony było błędnych i zostało naprawionych przez ochronę dokumentu."
+
+# Each step of a scan's reading.
+[gui.step]
+open = "Otwieranie pliku"
+find = "Szukanie strony"
+identify = "Identyfikacja strony"
+read = "Odczyt danych"
+slow-sample = "Wolniejsza metoda: próbkowanie"
+# The {current}th of {total} fits of the slower reader.
+slow-fit = "Wolniejsza metoda: przebieg {current} z {total}"
+# A step with no words of its own.
+other = "Przetwarzanie"
+
+# {done} of {n} scans are read.
+[gui.scans_read]
+one = "Odczytano {done} z {n} skanu"
+few = "Odczytano {done} z {n} skanów"
+many = "Odczytano {done} z {n} skanów"
+
+# The bar while scans are being read and the document has nothing else to say.
+[gui.scans_read_working]
+one = "Przetwarzanie… Odczytano {done} z {n} skanu"
+few = "Przetwarzanie… Odczytano {done} z {n} skanów"
+many = "Przetwarzanie… Odczytano {done} z {n} skanów"
+
+# Lists of page numbers: "1, 3 and 5", "2-4 and 9".
+[gui.list]
+comma = ", "
+and = "{items} i {last}"
+# Three or more pages in a row, from {first} to {last}: your language's range mark.
+range = "{first}–{last}"
+
+# The pages a list does not name.
+[gui.list.more]
+one = "jeszcze {n}"
+few = "jeszcze {n}"
+many = "jeszcze {n}"
+
+# What repairing a document did.
+[gui.repair]
+unprotected = "Wydrukowano bez ochrony, więc nic nie dało się naprawić"
+too_much = "najgorsze miejsce wymagało {used} z {budget}: za dużo, by naprawić"
+
+[gui.repair.bytes]
+one = "naprawiono {n} bajt"
+few = "naprawiono {n} bajty"
+many = "naprawiono {n} bajtów"
+
+# How close a repair came to failing: {percent}% of the repair capacity ({used}
+# of {budget}) used at the worst spot.
+[gui.margin]
+wide = "najgorsze miejsce wykorzystało {percent}% zdolności naprawczej ({used} z {budget}): duży zapas"
+moderate = "najgorsze miejsce wykorzystało {percent}% zdolności naprawczej ({used} z {budget}): umiarkowany zapas"
+close = "najgorsze miejsce wykorzystało {percent}% zdolności naprawczej ({used} z {budget}): blisko granicy"
+
+# After a repair that could not give the file.
+[gui.rescan]
+nothing = "Nie udało się w pełni naprawić pliku. Ponowne zeskanowanie stron może jeszcze poprawić wynik."
+# {what}: "add" and "rescan" below, or both.
+advice = "Nie udało się w pełni naprawić pliku. Dodanie stron lub ich ponowne zeskanowanie może jeszcze poprawić wynik: {what}."
+both = "{add} i {rescan}"
+
+# {pages}: single when it names exactly one page, several when more.
+[gui.rescan.add]
+single = "dodaj stronę {pages}"
+several = "dodaj strony {pages}"
+
+# {pages}: at most three pages, the most damaged first; single or several as above.
+[gui.rescan.worst]
+single = "zeskanuj ponownie stronę {pages}, która jest najbardziej uszkodzona"
+several = "zeskanuj ponownie strony {pages}, które są najbardziej uszkodzone"
