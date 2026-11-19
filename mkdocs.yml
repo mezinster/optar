@@ -42,12 +42,12 @@ plugins:
           default: true
           name: English
           build: true
-        # Each further language is one entry like the Russian one, in this
-        # order: ru, uk, be, pl, ka, tr, it, es. Its nav titles go in
-        # nav_translations, keyed by the English title exactly as written under
-        # `nav:` below (the eleven page titles and the three section titles),
-        # and its site_description translates the description at the top of
-        # this file.
+        # One entry per language of optar.i18n.ORDER, in that order (a test
+        # checks): a tenth language is one more entry like these, at its place
+        # in ORDER. Its nav titles go in nav_translations, keyed by the English
+        # title exactly as written under `nav:` below (the eleven page titles
+        # and the three section titles), and its site_description translates
+        # the description at the top of this file.
         - locale: ru
           name: Русский
           build: true

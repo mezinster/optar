@@ -27,6 +27,12 @@ def blob_hash(content: bytes) -> str:
     return hashlib.sha1(b"blob %d\0" % len(content) + content).hexdigest()
 
 
+def page_hash(path: Path) -> str:
+    """The git blob hash of a page as git stores it: a checkout that turned its line
+    ends into CRLF (``core.autocrlf`` on Windows) gives the hash of the LF file."""
+    return blob_hash(path.read_bytes().replace(b"\r\n", b"\n"))
+
+
 def english_pages(docs: Path) -> list[Path]:
     """The English pages: the Markdown files of ``docs`` whose stem has no dot."""
     return sorted(p for p in docs.glob("*.md") if "." not in p.stem)
@@ -66,7 +72,7 @@ def problems(root: Path, codes: list[str] | None = None) -> list[tuple[str, str]
             if not page.exists():
                 found.append((relative, "missing"))
                 continue
-            current = blob_hash(english.read_bytes())
+            current = page_hash(english)
             written = source_hash(page.read_text(encoding="utf-8"))
             if written != current:
                 found.append((relative, "stale"))

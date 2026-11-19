@@ -748,6 +748,23 @@ def test_blob_hash_is_the_git_hash():
     assert status.blob_hash(b"hello\n") == "ce013625030ba8dba906f756967f9e9ca394464a"
 
 
+def test_a_crlf_checkout_has_the_hash_of_the_lf_file(tmp_path):
+    """A Windows checkout with core.autocrlf holds CRLF line ends; git stores LF."""
+    root = _tree(tmp_path)
+    english = root / "docs" / "index.md"
+    english.write_bytes(b"# index\n\nA line.\n")
+    good = "8f1ec07b045a580a8632ac49c2ea53c870d874f7"  # git hash-object of that file
+    assert status.page_hash(english) == good
+    english.write_bytes(b"# index\r\n\r\nA line.\r\n")
+    assert status.page_hash(english) == good
+    (root / "src" / "optar" / "locale" / "ru.toml").write_text("")
+    for name in ("index", "install"):
+        page_hash = status.page_hash(root / "docs" / f"{name}.md")
+        (root / "docs" / f"{name}.ru.md").write_bytes(
+            f"---\r\nsource_hash: {page_hash}\r\n---\r\n# i\r\n".encode())
+    assert status.problems(root) == []
+
+
 def test_status_reports_stale_and_missing_pages(tmp_path):
     root = _tree(tmp_path)
     assert status.problems(root) == []  # no language has started

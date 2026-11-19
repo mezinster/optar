@@ -23,7 +23,9 @@ LOCALE = ROOT / "src" / "optar" / "locale"
 DOCS = ROOT / "docs"
 CODES = [c for c in i18n.ORDER if c != "en"]
 SCRIPTS = ("LATIN", "CYRILLIC", "GEORGIAN")
-OWN_SCRIPT = {"ru": "CYRILLIC", "uk": "CYRILLIC", "be": "CYRILLIC", "ka": "GEORGIAN"}
+# Every translated language, so a new one must say its script (a test checks).
+OWN_SCRIPT = {"ru": "CYRILLIC", "uk": "CYRILLIC", "be": "CYRILLIC", "pl": "LATIN",
+              "ka": "GEORGIAN", "tr": "LATIN", "it": "LATIN", "es": "LATIN"}
 
 URL = re.compile(r"(?:https?://|www\.)[^\s)>\]]+|<[^<>\s]+@[^<>\s]+>")
 LINK_TARGET = re.compile(r"(?<=\])\([^)\s]*(?:\s+\"[^\"]*\")?\)")
@@ -180,7 +182,7 @@ def test_no_page_word_mixes_scripts(code):
 @pytest.mark.parametrize("code", CODES)
 def test_language_name_is_written_in_its_own_script(code):
     name = tomllib.loads((LOCALE / f"{code}.toml").read_text(encoding="utf-8"))["language"]["name"]
-    wanted = OWN_SCRIPT.get(code, "LATIN")
+    wanted = OWN_SCRIPT[code]
     scripts = {script_of(ch) for ch in name if ch.isalpha()}
     assert scripts == {wanted}, f"{code}: {name!r} uses {sorted(map(str, scripts))}, not {wanted}"
 

@@ -3,9 +3,8 @@
 
 The checks are plain functions that return a list of problems (empty when the
 catalogue is fine); the parametrised tests run them on the real catalogues, and
-the fault tests below run them on small made-up ones to show they bite. There is
-no language but English until translations arrive, so the per-language tests are
-an empty set today.
+the fault tests below run them on small made-up ones to show they bite. The
+per-language tests run on each of the eight translated languages.
 """
 
 import importlib.util
@@ -405,7 +404,7 @@ def text_function_problems(code: str, limit: int = COMBINATION_LIMIT) -> list[st
     return problems
 
 
-# --- The per-language tests (an empty set until translations arrive) -----------------
+# --- The per-language tests (each translated language) -------------------------------
 
 
 @pytest.fixture
