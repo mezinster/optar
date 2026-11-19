@@ -113,7 +113,7 @@ used the same way in the window, the command line and every page.
 | check the fingerprint, checking | ანაბეჭდთან შედარება | «მიმდინარეობს ანაბეჭდთან შედარება…». Keeps «შემოწმ-» free for "verified". |
 | matches / does not match the fingerprint | ემთხვევა / არ ემთხვევა ანაბეჭდს | |
 | mismatch | შეუსაბამობა | |
-| identify (a scan), identified | ამოცნობა, ამოცნობილი; not identified: ამოუცნობია | Step «გვერდის ამოცნობა». Rejected: «იდენტიფიკაცია» (bookish), «განსაზღვრა» (vague). |
+| identify (a scan), identified | ამოცნობა, ამოცნობილი; not identified: ამოუცნობია | Step «გვერდის ამოცნობა». Reserved for the program identifying a scan; a person telling pages apart (by the printed name) is «გაარჩევთ» (`gui.name.printed`). Rejected: «იდენტიფიკაცია» (bookish), «განსაზღვრა» (vague). |
 | assign (a scan) to a page | გვერდის მითითება | Button «გვერდის მითითება…»; prose «სკანისთვის გვერდის ხელით მითითება». |
 | start a document by hand, put together by hand | დოკუმენტის ხელით აწყობა, ხელით აწყობილი | One verb for both. |
 | replace (scan) | შეცვლა | |
