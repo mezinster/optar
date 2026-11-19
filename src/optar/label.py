@@ -17,7 +17,7 @@ import numpy as np
 
 from optar.decoder import PageGrid, page_to_scan
 from optar.decoder.crosses import interp
-from optar.errors import FormatError
+from optar.errors import FormatError, error
 from optar.font import FIRST_CHAR, GLYPH_CELLS, glyph_strip
 from optar.format import FORMAT_PATTERN, TEXT_WIDTH, PageFormat
 
@@ -195,8 +195,10 @@ def read_label(grid: PageGrid) -> LabelReading:
     fmt = grid.fmt
     strip_height = glyph_strip().shape[0]
     if fmt.text_height != strip_height:
-        raise FormatError(
-            f"cannot read a label band of {fmt.text_height} rows; the font is {strip_height}"
+        raise error(
+            FormatError, "err.label_font",
+            "cannot read a label band of {height} rows; the font is {rows}",
+            height=fmt.text_height, rows=strip_height,
         )
     logo = _logo_width()
     ncells = label_capacity(fmt)

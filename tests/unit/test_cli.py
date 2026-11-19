@@ -1,6 +1,9 @@
 # (c) GPL 2007 Karel 'Clock' Kulhavy, Twibright Labs; Python port 2026
+import ast
 import os
 import struct
+import sys
+from pathlib import Path
 from unittest import mock
 
 import numpy as np
@@ -942,3 +945,446 @@ def test_an_ordinary_reading_of_a_page_is_preferred_to_a_slow_one(capsys):
     with mock.patch.object(cli, "_document_key", lambda i: "doc"):
         assert cli._gather(["a", "b"], {"a": worse, "b": ordinary}, worse) == {1: ordinary.payload}
     capsys.readouterr()
+
+
+# --- Languages ---------------------------------------------------------------
+
+
+ENGLISH_HELP = {
+    "": """\
+usage: optar [-h] [--version] {encode,decode} ...
+
+Store files on paper.
+
+positional arguments:
+  {encode,decode}
+    encode         encode a file into printable pages
+    decode         decode scanned pages back into a file
+
+options:
+  -h, --help       show this help message and exit
+  --version        show program's version number and exit
+""",
+    "encode": """\
+usage: optar encode [-h] [-o BASE] [--to {pdf,png,pgm}] [--label LABEL] [--no-tag]
+                    [--dots {standard,medium,big,large,xlarge}] [--protect {none,standard,high}]
+                    [--compatible] [--paper {a4,letter}] [--format STRING]
+                    INPUT
+
+positional arguments:
+  INPUT                 file to encode
+
+options:
+  -h, --help            show this help message and exit
+  -o BASE               output base name (default: optar_out)
+  --to {pdf,png,pgm}    output type: one PDF (default), or PNG or PGM page files
+  --label LABEL         text printed on each page (default: the file name given with -o)
+  --no-tag              do not add the size, fingerprint and check tag to the page labels
+  --dots {standard,medium,big,large,xlarge}
+                        dot size (default: standard). Any size but standard makes self-identifying
+                        pages, protected at the standard level unless --protect says otherwise
+  --protect {none,standard,high}
+                        repair data spread over the whole document; makes self-identifying pages,
+                        with standard dots unless --dots says otherwise. Use 'none' for self-
+                        identifying pages without protection. Without --dots and --protect the
+                        pages are compatible and unprotected
+  --compatible          pages that optar 0.2 and the C tool read (the default without --dots and
+                        --protect)
+  --paper {a4,letter}   paper size (default: a4)
+  --format STRING       override the page format
+""",
+    "decode": """\
+usage: optar decode [-h] [-o OUTPUT] [--debug-images] [--force] [--no-slow-reader]
+                    [--paper {a4,letter}] [--format STRING]
+                    BASE
+
+positional arguments:
+  BASE                 scans are BASE_0001.png, BASE_0002.png, ...
+
+options:
+  -h, --help           show this help message and exit
+  -o OUTPUT            output file (default: stdout)
+  --debug-images       write BASE_NNNN_debug.png
+  --force              save what was recovered of self-identifying pages even if it did not verify
+  --no-slow-reader     do not try the slower reader on scans the ordinary reader cannot identify
+  --paper {a4,letter}  paper size (default: a4)
+  --format STRING      override the page format
+""",
+}
+
+
+@pytest.mark.parametrize("command", ["", "encode", "decode"])
+def test_english_help_is_unchanged(command, capsys, monkeypatch):
+    monkeypatch.setenv("COLUMNS", "100")
+    with pytest.raises(SystemExit) as e:
+        main([command, "--help"] if command else ["--help"])
+    assert e.value.code == 0
+    assert capsys.readouterr().out == ENGLISH_HELP[command]
+
+
+@pytest.mark.parametrize(
+    "env, enc, want",
+    [
+        ({"OPTAR_LANG": "ru"}, "utf-8", "ru"),
+        ({"OPTAR_LANG": "xx", "LANG": "pl_PL.UTF-8"}, "utf-8", "pl"),
+        ({"LC_ALL": "C", "LANG": "it_IT"}, "utf-8", "it"),  # C is skipped, not final
+        ({"LANG": "ka_GE.UTF-8"}, "cp1252", "en"),
+        ({"LANG": "ka_GE.UTF-8"}, None, "ka"),
+        ({"LANG": "ka_GE.UTF-8"}, "no-such-codec", "en"),
+        ({"LC_MESSAGES": "tr", "LANG": "it"}, "utf-8", "tr"),
+        ({}, "utf-8", "en"),
+    ],
+)
+def test_choose_language(env, enc, want, catalogues):
+    from optar.cli import choose_language
+
+    for code in ("ru", "pl", "it", "ka", "tr"):
+        catalogues.add(
+            code,
+            {"language": {"name": code}, "cli": {"x": "\u10d0\u0431" if code == "ka" else "x"}},
+        )
+    assert choose_language(env, enc) == want
+
+
+def test_every_output_stream_must_hold_the_language(catalogues):
+    """--help goes to stdout, the rest to stderr: both encodings count; a stream
+    without one (None) limits nothing."""
+    from optar.cli import choose_language
+
+    catalogues.add("ka", {"language": {"name": "\u10e5\u10d0"}, "cli": {"x": "\u10d0"}})
+    env = {"LANG": "ka_GE.UTF-8"}
+    assert choose_language(env, "utf-8", "utf-8") == "ka"
+    assert choose_language(env, "cp1252", "utf-8") == "en"
+    assert choose_language(env, "utf-8", "cp1252") == "en"
+    assert choose_language(env, None, "utf-8") == "ka"
+    assert choose_language(env, None, None) == "ka"
+    assert choose_language(env) == "ka"
+
+
+def test_only_the_terminal_tables_must_fit_the_output(catalogues):
+    from optar.cli import choose_language
+
+    catalogues.add("it", {"language": {"name": "Italiano"}, "cli": {"x": "uno"},
+                          "gui": {"y": "due\u2026"}})  # fmt: skip
+    assert choose_language({"LANG": "it_IT"}, "cp850") == "it"
+    catalogues.add("it", {"language": {"name": "Italiano"}, "err": {"x": "uno\u2026"}})
+    assert choose_language({"LANG": "it_IT"}, "cp850") == "en"
+
+
+def test_help_to_a_narrower_stdout_than_stderr_is_english(monkeypatch):
+    """A redirected stdout in the ANSI code page while stderr is UTF-8 (Windows):
+    the language must fit both, or --help would end in UnicodeEncodeError."""
+    import io
+
+    # newline="": the bytes are what the program wrote, on every platform (a wrapper
+    # without it writes "\r\n" on Windows).
+    out = io.TextIOWrapper(io.BytesIO(), encoding="cp1252", errors="strict", newline="")
+    err = io.TextIOWrapper(io.BytesIO(), encoding="utf-8", errors="backslashreplace", newline="")
+    monkeypatch.setenv("OPTAR_LANG", "ka")
+    monkeypatch.setenv("COLUMNS", "100")
+    monkeypatch.setattr(sys, "stdout", out)
+    monkeypatch.setattr(sys, "stderr", err)
+    with pytest.raises(SystemExit) as e:
+        main(["--help"])
+    assert e.value.code == 0
+    out.flush()
+    assert out.buffer.getvalue().decode("cp1252") == ENGLISH_HELP[""]
+
+
+def test_a_malformed_catalogue_of_the_chosen_language_gives_english(monkeypatch, capsys):
+    """The command line must still start; an English run does not even read it."""
+    import tomllib
+
+    from optar import i18n
+
+    real = i18n._read
+    read = []
+
+    def broken_ru(code):
+        read.append(code)
+        return tomllib.loads("= broken") if code == "ru" else real(code)
+
+    monkeypatch.setattr(i18n, "_cache", {})
+    monkeypatch.setattr(i18n, "_read", broken_ru)
+    monkeypatch.setenv("COLUMNS", "100")
+    with pytest.raises(SystemExit):
+        main(["--help"])  # OPTAR_LANG=en
+    assert capsys.readouterr().out == ENGLISH_HELP[""]
+    assert "ru" not in read
+    monkeypatch.setenv("OPTAR_LANG", "ru")
+    with pytest.raises(SystemExit) as e:
+        main(["--help"])
+    assert e.value.code == 0
+    assert capsys.readouterr().out == ENGLISH_HELP[""]
+    assert "ru" in read
+    from optar.cli import choose_language
+
+    assert choose_language({"LANG": "ru_RU"}) == "en"  # no stream to check it against
+
+
+# Windows language ids (LANGID) of the nine languages and the code each gives.
+WINDOWS_IDS = {0x0409: "en", 0x0419: "ru", 0x0422: "uk", 0x0423: "be", 0x0415: "pl",
+               0x0437: "ka", 0x041F: "tr", 0x0410: "it", 0x0C0A: "es"}  # fmt: skip
+
+
+@pytest.mark.parametrize("ident, code", WINDOWS_IDS.items())
+def test_the_windows_interface_language_gives_the_language(ident, code):
+    """On Windows the C runtime's locale is "Russian_Russia", which names no
+    language: the user's interface language id does (0x0419 is ru_RU)."""
+    import locale
+
+    from optar.cli import choose_language, windows_language
+
+    name = windows_language(lambda: ident, locale.windows_locale)
+    assert choose_language({}, "utf-8", system=name) == code
+
+
+def test_a_failing_windows_call_means_no_system_language():
+    import locale
+
+    from optar.cli import windows_language
+
+    def raises():
+        raise OSError("no such function")
+
+    assert windows_language(raises, locale.windows_locale) is None
+    assert windows_language(lambda: 0x7FFF, locale.windows_locale) is None  # unknown id
+    assert windows_language(lambda: [], locale.windows_locale) is None  # unhashable
+    assert windows_language(lambda: 1, {1: None}) is None
+
+
+def test_system_language_asks_windows_only_on_windows(monkeypatch):
+    from optar import cli
+
+    monkeypatch.setattr(cli, "_user_ui_language", lambda: 0x0437)
+    if sys.platform != "win32":
+        assert cli.system_language() is None
+    monkeypatch.setattr(sys, "platform", "win32")
+    assert cli.system_language() == "ka_GE"
+
+
+def test_only_the_low_16_bits_of_the_windows_answer_are_the_language(monkeypatch):
+    """GetUserDefaultUILanguage returns a 16-bit LANGID through a C int whose upper
+    bits are not promised to be zero."""
+    import types
+
+    from optar import cli
+
+    kernel32 = types.SimpleNamespace(GetUserDefaultUILanguage=lambda: 0x7ABC0419)
+    fake = types.SimpleNamespace(windll=types.SimpleNamespace(kernel32=kernel32))
+    monkeypatch.setitem(sys.modules, "ctypes", fake)
+    monkeypatch.setattr(sys, "platform", "win32")
+    assert cli._user_ui_language() == 0x0419
+    assert cli.system_language() == "ru_RU"
+
+
+def test_an_unreadable_catalogue_of_the_chosen_language_gives_english(monkeypatch, capsys):
+    from optar import i18n
+    from optar.cli import choose_language
+
+    real = i18n._read
+
+    def unreadable_ru(code):
+        if code == "ru":
+            raise PermissionError(13, "Permission denied", "ru.toml")
+        return real(code)
+
+    monkeypatch.setattr(i18n, "_cache", {})
+    monkeypatch.setattr(i18n, "_read", unreadable_ru)
+    assert choose_language({"LANG": "ru_RU"}) == "en"
+    monkeypatch.setenv("OPTAR_LANG", "ru")
+    monkeypatch.setenv("COLUMNS", "100")
+    with pytest.raises(SystemExit) as e:
+        main(["--help"])
+    assert e.value.code == 0
+    assert capsys.readouterr().out == ENGLISH_HELP[""]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="ctypes.windll exists on Windows")
+def test_system_language_survives_a_missing_windll(monkeypatch):
+    from optar import cli
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    assert cli.system_language() is None
+
+
+def test_main_follows_the_system_language_when_the_environment_names_none(
+    monkeypatch, capsys
+):
+    from optar import cli, i18n
+
+    monkeypatch.delenv("OPTAR_LANG")
+    monkeypatch.setattr(cli, "system_language", lambda: "ru_RU")
+    with pytest.raises(SystemExit):
+        main(["--help"])
+    out = capsys.readouterr().out
+    assert out.startswith(i18n.catalogue("ru")["cli.argparse.usage"])
+    assert out != ENGLISH_HELP[""]
+
+
+def test_choose_language_uses_the_system_language_last(catalogues):
+    from optar.cli import choose_language
+
+    catalogues.add("tr", {"language": {"name": "tr"}})
+    catalogues.add("it", {"language": {"name": "it"}})
+    assert choose_language({}, "utf-8", system="tr_TR") == "tr"
+    assert choose_language({"LANG": "it"}, "utf-8", system="tr_TR") == "it"
+
+
+def test_messages_follow_the_language(tmp_path, infile, capsys, monkeypatch, catalogues):
+    catalogues.add(
+        "ru",
+        {
+            "language": {"name": "Русский"},
+            "cli": {"wrote": "записан {path}", "help": {"protect": "защита"}},
+        },
+    )
+    monkeypatch.setenv("OPTAR_LANG", "ru")
+    out = str(tmp_path / "o")
+    assert main(["encode", str(infile), "-o", out, "--to", "png"]) == 0
+    err = capsys.readouterr().err
+    assert f"записан {out}_0001.png" in err
+    with pytest.raises(SystemExit):
+        main(["encode", "--help"])
+    help_text = capsys.readouterr().out
+    assert "--protect" in help_text and "защита" in help_text
+    from optar import i18n
+
+    assert i18n.language() == "en"  # main leaves the language as it found it
+
+
+def test_argparse_words_follow_the_language(capsys, monkeypatch, catalogues):
+    catalogues.add(
+        "ru",
+        {
+            "language": {"name": "Русский"},
+            "cli": {
+                "argparse": {
+                    "usage": "использование: ",
+                    "options": "параметры",
+                    "positionals": "позиционные",
+                    "error": "{prog}: ошибка: {message}",
+                }
+            },
+        },
+    )
+    monkeypatch.setenv("OPTAR_LANG", "ru")
+    with pytest.raises(SystemExit):
+        main(["encode", "--help"])
+    out = capsys.readouterr().out
+    assert out.startswith("использование: optar encode [-h]")
+    assert "\nпараметры:\n" in out and "\nпозиционные:\n" in out
+    with pytest.raises(SystemExit) as e:
+        main(["encode", "x", "--compatible", "--dots", "big"])
+    assert e.value.code == 2
+    err = capsys.readouterr().err
+    assert err.startswith("использование: optar [-h]")
+    assert "optar: ошибка: --compatible cannot be used with --dots" in err
+
+
+def test_a_message_with_braces_in_a_name_is_shown_as_it_is(tmp_path, capsys):
+    base = str(tmp_path / "{x}")  # the program prints the base it was given, as given
+    assert main(["decode", base]) == 2
+    assert f"cannot open {base}_0001.png" in capsys.readouterr().err
+
+
+def test_cli_source_holds_no_wording():
+    import ast
+    from pathlib import Path
+
+    import optar.cli
+
+    tree = ast.parse(Path(optar.cli.__file__).read_text(encoding="utf-8"))
+
+    def wording(node):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return " " in node.value
+        if isinstance(node, ast.JoinedStr):
+            return any(isinstance(v, ast.Constant) and " " in v.value for v in node.values)
+        return False
+
+    found = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        name = getattr(node.func, "attr", getattr(node.func, "id", ""))
+        args = [k.value for k in node.keywords if k.arg in ("help", "description")]
+        if name in ("_eprint", "error"):
+            args += node.args
+        found += [ast.unparse(a) for a in args if wording(a)]
+    assert not found, found
+
+
+def test_a_bare_percent_in_a_translated_help_does_not_break_help(capsys, monkeypatch, catalogues):
+    catalogues.add(
+        "ru",
+        {"language": {"name": "Русский"},
+         "cli": {"help": {"to": "печать 100%"}, "argparse": {"help": "справка (100%)"}}},
+    )
+    monkeypatch.setenv("OPTAR_LANG", "ru")
+    with pytest.raises(SystemExit) as e:
+        main(["encode", "--help"])
+    assert e.value.code == 0
+    out = capsys.readouterr().out
+    assert "печать 100%" in out and "справка (100%)" in out
+
+
+def test_a_page_list_chooses_single_or_several_by_how_many_it_names(catalogues):
+    """Not by the plural rule: in Russian the form for 1 also serves 21."""
+    from optar import cli, i18n
+
+    catalogues.add(
+        "ru",
+        {"language": {"name": "Русский"},
+         "cli": {"summary": {"missing": {"single": "одна {list}", "several": "неск {list}"}}}},
+    )  # fmt: skip
+    i18n.set_language("ru")
+    assert cli._listing("cli.summary.missing", 1, list="21") == "одна 21"
+    assert cli._listing("cli.summary.missing", 21, list="1, 2") == "неск 1, 2"
+    i18n.set_language("en")
+    assert cli._listing("cli.summary.missing", 1, list="3") == "missing page 3"
+    assert cli._listing("cli.summary.missing", 2, list="3, 4") == "missing pages 3, 4"
+
+
+def _catalogue_keys_named(tree, english):
+    """The catalogue keys (or key prefixes, as ``cli.summary.missing``) a source names."""
+    found = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and "." in node.value:
+            name = node.value
+            if name in english or any(key.startswith(name + ".") for key in english):
+                found.add(name)
+    return found
+
+
+def test_the_terminal_words_only_keys_of_the_terminal_tables():
+    """A language is used on the command line when its words in TERMINAL_TABLES
+    fit the output: every key the library (whose errors reach the terminal),
+    cli.py and optar-gui's terminal messages name must be under one of them."""
+    from optar import i18n
+    from optar.cli import TERMINAL_TABLES
+
+    english = i18n.catalogue("en")
+    root = Path(optar.cli.__file__).parent
+    keys = {}
+    for path in sorted(root.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for key in _catalogue_keys_named(tree, english):
+            keys.setdefault(key, path.relative_to(root.parent).as_posix())
+    # optar-gui's terminal lines: the text.py functions its entry point calls.
+    gui = root.parent / "optar_gui"
+    entry = ast.parse((gui / "__main__.py").read_text(encoding="utf-8"))
+    called = {node.attr for node in ast.walk(entry)
+              if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
+              and node.value.id == "text"}  # fmt: skip
+    text_tree = ast.parse((gui / "text.py").read_text(encoding="utf-8"))
+    functions = {node.name: node for node in text_tree.body if isinstance(node, ast.FunctionDef)}
+    assert called and called <= set(functions), called - set(functions)
+    for name in called:
+        for key in _catalogue_keys_named(functions[name], english):
+            keys.setdefault(key, f"optar_gui/text.py:{name}")
+    assert len(keys) > 100  # the scan finds the keys
+    assert {key.split(".")[0] for key in keys} >= {"cli", "err", "gui", "language"}
+    tables = tuple(f"{table}." for table in TERMINAL_TABLES)
+    outside = {key: where for key, where in keys.items() if not f"{key}.".startswith(tables)}
+    assert not outside, outside

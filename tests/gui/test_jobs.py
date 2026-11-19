@@ -346,3 +346,18 @@ def test_a_cancelled_job_reports_nothing(qtbot, make_runner):
     qtbot.waitUntil(lambda: bool(rec.of("idle")), timeout=TIMEOUT)
     assert reported.is_set()
     assert rec.of("progress") == [] and rec.of("finished") == []
+
+
+def test_a_failure_message_is_in_the_language(catalogues):
+    from optar import i18n
+    from optar.errors import error
+    from optar_gui.jobs import _one_line
+
+    e = error(OptarError, "err.no_pages", "no pages to write")
+    assert _one_line(e) == "no pages to write"
+    assert _one_line(ValueError("bad\nmore")) == "ValueError: bad"
+    catalogues.add("ru", {"err": {"no_pages": "нет страниц"}})
+    i18n.set_language("ru")
+    assert _one_line(e) == "нет страниц"
+    catalogues.add("ru", {"err": {"no_pages": "нет {oops}"}})
+    assert _one_line(e) == "no pages to write"  # a broken translation: the English

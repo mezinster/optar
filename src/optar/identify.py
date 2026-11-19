@@ -25,7 +25,7 @@ from optar.decoder.geometry import find_corners
 from optar.decoder.levels import analyze_levels
 from optar.decoder.options import DecodeOptions
 from optar.encoder import MAX_PAGES
-from optar.errors import DecodeError, IdentifyError
+from optar.errors import DecodeError, IdentifyError, error, keyed
 from optar.format import (
     LAYOUTS,
     PAPERS,
@@ -373,7 +373,7 @@ def identify_scan(
         on_progress(STEP_FIND, 0, 1)
     outline = next((c for r in rotations if (c := view(r)[1]) is not None), None)
     if outline is None:
-        raise IdentifyError(NO_PAGE)
+        raise error(IdentifyError, "err.no_page", "no page found")  # NO_PAGE
     tried = candidates = 0
     if on_progress is not None:  # every candidate the loops below may try
         candidates = sum(
@@ -417,7 +417,9 @@ def identify_scan(
                 if ident is not None:
                     return done(ident)
         grids.clear()
-    raise IdentifyError(LABEL_UNREADABLE, scan_dpi=_outline_dpi(outline))
+    unreadable = error(IdentifyError, "err.label_unreadable", "label unreadable")
+    unreadable.scan_dpi = _outline_dpi(outline)
+    raise unreadable  # LABEL_UNREADABLE
 
 
 # A page accepted from an untagged label alone is read again by the slow reader
@@ -524,20 +526,22 @@ def decode_unlabelled(
     """
     image = _check(image)
     best: tuple[tuple[int, int, int], PageResult] | None = None
-    # Only the message: the exception itself holds the traceback, and with it
-    # the rotated image and locate_page's locals, across the next decode.
+    # Only the message and its key: the exception itself holds the traceback,
+    # and with it the rotated image and locate_page's locals, across the next
+    # decode.
     error_args: tuple = ()
+    error_key: tuple[str | None, dict] = (None, {})
     for rotation in candidate_rotations(image):
         try:
             result = decode_located(
                 locate_page(_turn(image, rotation), fmt, options), detail=detail
             )
         except DecodeError as e:
-            error_args = e.args
+            error_args, error_key = e.args, (e.key, e.values)
             continue
         key = (result.stats.uncorrectable, _corrected_bits(result), rotation)
         if best is None or key < best[0]:
             best = (key, result)
     if best is None:
-        raise DecodeError(*error_args)
+        raise keyed(DecodeError(*error_args), *error_key)
     return best[0][2], best[1]

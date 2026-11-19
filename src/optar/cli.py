@@ -5,16 +5,17 @@ from __future__ import annotations
 
 import argparse
 import functools
+import locale
 import os
 import re
 import sys
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 
 import numpy as np
 from PIL import Image
 
-from optar import __version__
+from optar import __version__, i18n
 from optar.container import (
     BEST_EFFORT_PAGES,
     PagePayload,
@@ -25,7 +26,7 @@ from optar.container import (
 )
 from optar.decoder import BitPacker, decode_pages
 from optar.encoder import check_encodable, encode
-from optar.errors import DecodeError, FormatError, IdentifyError, OptarError
+from optar.errors import DecodeError, FormatError, IdentifyError, OptarError, keyed
 from optar.fileio import io_error, replacing
 from optar.font import fine_label
 from optar.format import DOT_SIZES, PAPERS, PARITY, Layout, PageFormat, Paper, get_layout
@@ -34,22 +35,142 @@ from optar.imageio import read_scan, write_pgm, write_png
 from optar.pdf import write_pdf
 from optar.tag import make_tag, tagged_label
 
-PAPER_HINT = "Check that --paper matches the printout and that the page is scanned upright."
-ACTUAL_SIZE = 'Print at actual size (100%), not "fit to page".'
-DOT_NAMES = {
-    "standard": "Standard",
-    "medium": "Medium",
-    "big": "Big",
-    "large": "Large",
-    "xlarge": "Extra large",
+# The catalogue keys of the dot sizes' names (written out so a key is always a literal).
+DOT_NAME_KEYS = {
+    "standard": "cli.dot_name.standard",
+    "medium": "cli.dot_name.medium",
+    "big": "cli.dot_name.big",
+    "large": "cli.dot_name.large",
+    "xlarge": "cli.dot_name.xlarge",
 }
 # An unidentified scan estimated below this resolution gets the dot sizes' advice.
 COARSE_DPI = 400
 
 
+_t = i18n.t
+_n = i18n.n
+_listing = i18n.listing
+
+
+def _help(key: str) -> str:
+    """A help text for argparse, which expands ``%`` in it: a translation may
+    hold a bare ``%`` ("100%"), so it is escaped."""
+    return _t(key).replace("%", "%%")
+
+
+def __getattr__(name: str) -> str:
+    """The wording the window shares with the command line, in the chosen language."""
+    if name == "ACTUAL_SIZE":
+        return _t("cli.ACTUAL_SIZE")
+    if name == "PAPER_HINT":
+        return _t("cli.PAPER_HINT")
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+# The catalogue tables whose words the command line (and optar-gui's terminal
+# messages) can print; a language is used only if its words there fit the output.
+TERMINAL_TABLES = ("cli", "err", "count", "alternatives", "format", "gui.cli", "language")
+
+
+def choose_language(
+    environ: Mapping[str, str], *encodings: str | None, system: str | None = None
+) -> str:
+    """The language code for the given environment: OPTAR_LANG, LC_ALL, LC_MESSAGES,
+    LANG, then the system's, else English. A language whose terminal words one of
+    the output ``encodings`` cannot hold gives English (None limits nothing), as
+    does one whose catalogue cannot be read."""
+    names = [environ.get(key) for key in ("OPTAR_LANG", "LC_ALL", "LC_MESSAGES", "LANG")]
+    code = i18n.pick_language([*names, system]) or "en"
+    try:
+        i18n.catalogue(code)  # read here, so that a malformed one gives English
+        fits = all(
+            i18n.encodable(code, encoding, TERMINAL_TABLES)
+            for encoding in encodings
+            if encoding is not None
+        )
+    except LookupError:  # an encoding Python does not know
+        return "en"
+    except ValueError:  # a malformed catalogue (TOMLDecodeError, UnicodeDecodeError)
+        return "en"
+    except OSError:  # an unreadable one (PermissionError, say)
+        return "en"
+    return code if fits else "en"
+
+
+def stream_encoding(stream: object) -> str | None:
+    """The encoding of an output stream; None for a missing stream (a windowed
+    build) or one that names none."""
+    return getattr(stream, "encoding", None) or None
+
+
+def system_language() -> str | None:
+    """The user's interface language where the environment does not carry it
+    (Windows), as a locale name such as ``ru_RU``; None elsewhere or on failure."""
+    if sys.platform != "win32":
+        return None
+    return windows_language(_user_ui_language, locale.windows_locale)
+
+
+def _user_ui_language() -> int:
+    import ctypes  # windll exists on Windows only
+
+    # A LANGID is 16 bits, returned as ctypes' default C int: the upper bits of the
+    # register are not promised to be zero, so only the low 16 are the language.
+    return ctypes.windll.kernel32.GetUserDefaultUILanguage() & 0xFFFF
+
+
+def windows_language(
+    ui_language: Callable[[], int], names: Mapping[int, str]
+) -> str | None:
+    """The locale name of the user's interface language: ``ui_language()`` gives
+    its Windows language id (0x0419), ``names`` maps ids to names (``ru_RU``).
+    Any failure means no system language."""
+    try:
+        name = names.get(ui_language())
+    except Exception:  # noqa: BLE001 - a missing or failing system call
+        return None
+    return name if isinstance(name, str) else None
+
+
+class _Formatter(argparse.HelpFormatter):
+    def add_usage(self, usage, actions, groups, prefix=None):
+        super().add_usage(
+            usage, actions, groups, _t("cli.argparse.usage") if prefix is None else prefix
+        )
+
+
+class Parser(argparse.ArgumentParser):
+    """An ArgumentParser that says its own words (usage, headings, errors) in the
+    chosen language. The words argparse builds inside its messages stay English.
+    ``optar-gui`` uses it for its own ``--help`` too."""
+
+    def __init__(self, *args, **kwargs):
+        kwargs.pop("add_help", None)
+        kwargs.setdefault("formatter_class", _Formatter)
+        super().__init__(*args, add_help=False, **kwargs)
+        self._positionals.title = _t("cli.argparse.positionals")
+        self._optionals.title = _t("cli.argparse.options")
+        self.add_argument(
+            "-h",
+            "--help",
+            action="help",
+            default=argparse.SUPPRESS,
+            help=_help("cli.argparse.help"),
+        )
+
+    def error(self, message: str):
+        self.print_usage(sys.stderr)
+        self.exit(2, _t("cli.argparse.error", prog=self.prog, message=message) + "\n")
+
+
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="optar", description="Store files on paper.")
-    parser.add_argument("--version", action="version", version=f"optar {__version__}")
+    parser = Parser(prog="optar", description=_t("cli.description"))
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"optar {__version__}",
+        help=_help("cli.argparse.version"),
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     def common(p: argparse.ArgumentParser) -> None:
@@ -58,66 +179,31 @@ def _build_parser() -> argparse.ArgumentParser:
             type=str.lower,
             choices=list(PAPERS),
             default="a4",
-            help="paper size (default: a4)",
+            help=_help("cli.help.paper"),
         )
-        p.add_argument("--format", metavar="STRING", help="override the page format")
+        p.add_argument("--format", metavar="STRING", help=_help("cli.help.format"))
 
-    enc = sub.add_parser("encode", help="encode a file into printable pages")
-    enc.add_argument("input", metavar="INPUT", help="file to encode")
+    enc = sub.add_parser("encode", help=_help("cli.help.encode"))
+    enc.add_argument("input", metavar="INPUT", help=_help("cli.help.input"))
+    enc.add_argument("-o", dest="output", metavar="BASE", help=_help("cli.help.output"))
     enc.add_argument(
-        "-o", dest="output", metavar="BASE", help="output base name (default: optar_out)"
+        "--to", choices=["pdf", "png", "pgm"], default="pdf", help=_help("cli.help.to")
     )
+    enc.add_argument("--label", help=_help("cli.help.label"))
+    enc.add_argument("--no-tag", action="store_true", help=_help("cli.help.no_tag"))
+    enc.add_argument("--dots", type=str.lower, choices=list(DOT_SIZES), help=_help("cli.help.dots"))
     enc.add_argument(
-        "--to",
-        choices=["pdf", "png", "pgm"],
-        default="pdf",
-        help="output type: one PDF (default), or PNG or PGM page files",
+        "--protect", type=str.lower, choices=list(PARITY), help=_help("cli.help.protect")
     )
-    enc.add_argument(
-        "--label", help="text printed on each page (default: the file name given with -o)"
-    )
-    enc.add_argument(
-        "--no-tag",
-        action="store_true",
-        help="do not add the size, fingerprint and check tag to the page labels",
-    )
-    enc.add_argument(
-        "--dots",
-        type=str.lower,
-        choices=list(DOT_SIZES),
-        help="dot size (default: standard). Any size but standard makes self-identifying "
-        "pages, protected at the standard level unless --protect says otherwise",
-    )
-    enc.add_argument(
-        "--protect",
-        type=str.lower,
-        choices=list(PARITY),
-        help="repair data spread over the whole document; makes self-identifying pages, "
-        "with standard dots unless --dots says otherwise. Use 'none' for self-identifying "
-        "pages without protection. Without --dots and --protect the pages are compatible "
-        "and unprotected",
-    )
-    enc.add_argument(
-        "--compatible",
-        action="store_true",
-        help="pages that optar 0.2 and the C tool read (the default without --dots and --protect)",
-    )
+    enc.add_argument("--compatible", action="store_true", help=_help("cli.help.compatible"))
     common(enc)
 
-    dec = sub.add_parser("decode", help="decode scanned pages back into a file")
-    dec.add_argument("base", metavar="BASE", help="scans are BASE_0001.png, BASE_0002.png, ...")
-    dec.add_argument("-o", dest="output", metavar="OUTPUT", help="output file (default: stdout)")
-    dec.add_argument("--debug-images", action="store_true", help="write BASE_NNNN_debug.png")
-    dec.add_argument(
-        "--force",
-        action="store_true",
-        help="save what was recovered of self-identifying pages even if it did not verify",
-    )
-    dec.add_argument(
-        "--no-slow-reader",
-        action="store_true",
-        help="do not try the slower reader on scans the ordinary reader cannot identify",
-    )
+    dec = sub.add_parser("decode", help=_help("cli.help.decode"))
+    dec.add_argument("base", metavar="BASE", help=_help("cli.help.base"))
+    dec.add_argument("-o", dest="output", metavar="OUTPUT", help=_help("cli.help.decode_output"))
+    dec.add_argument("--debug-images", action="store_true", help=_help("cli.help.debug_images"))
+    dec.add_argument("--force", action="store_true", help=_help("cli.help.force"))
+    dec.add_argument("--no-slow-reader", action="store_true", help=_help("cli.help.no_slow_reader"))
     common(dec)
     return parser
 
@@ -136,10 +222,13 @@ def _check_options(parser: argparse.ArgumentParser, args: argparse.Namespace) ->
     if args.command != "encode":
         return
     chosen = [f"--{o}" for o in ("dots", "protect") if getattr(args, o) is not None]
+    options = chosen[0] if len(chosen) == 1 else ""
+    if len(chosen) == 2:
+        options = _t("cli.or_two", first=chosen[0], second=chosen[1])
     if chosen and args.compatible:
-        parser.error(f"--compatible cannot be used with {' or '.join(chosen)}")
+        parser.error(_t("cli.compatible_conflict", options=options))
     if chosen and args.format:
-        parser.error(f"--format cannot be used with {' or '.join(chosen)}")
+        parser.error(_t("cli.format_conflict", options=options))
 
 
 def _container(args: argparse.Namespace) -> bool:
@@ -147,12 +236,8 @@ def _container(args: argparse.Namespace) -> bool:
     return args.protect is not None or args.dots not in (None, "standard")
 
 
-def _plural(n: int, word: str) -> str:
-    return f"{n} {word}{'s' if n != 1 else ''}"
-
-
 def _after_encoding(layout: Layout) -> None:
-    _eprint(f"{ACTUAL_SIZE} Scan at {layout.scan_dpi} dpi.")
+    _eprint(_t("cli.after_encoding", actual_size=_t("cli.ACTUAL_SIZE"), dpi=layout.scan_dpi))
 
 
 def _encode(args: argparse.Namespace) -> int:
@@ -160,7 +245,7 @@ def _encode(args: argparse.Namespace) -> int:
         return _encode_protected(args)
     paper, fmt = _resolve_format(args)
     if not fmt.fits(paper):
-        raise FormatError(f"format {fmt.to_string()} does not fit on {paper.name} paper")
+        raise FormatError(_t("cli.format_does_not_fit", format=fmt.to_string(), paper=paper.name))
     try:
         with open(args.input, "rb") as f:
             data = f.read()
@@ -179,16 +264,16 @@ def _encode(args: argparse.Namespace) -> int:
         path = f"{base}.pdf"
         with replacing(path) as temp:
             count = write_pdf(temp, (page.pixels for page in encode(data, fmt, label)), paper)
-        written.append(f"{path} ({count} page{'s' if count != 1 else ''})")
+        written.append(_n("cli.wrote_pdf", count, path=path))
     else:
         writer = write_png if args.to == "png" else write_pgm
         for page in encode(data, fmt, label):
             path = f"{base}_{page.number:04d}.{args.to}"
             with replacing(path) as temp:
                 writer(temp, page.pixels)
-            written.append(path)
-    for item in written:
-        _eprint(f"wrote {item}")
+            written.append(_t("cli.wrote", path=path))
+    for line in written:
+        _eprint(line)
     _after_encoding(get_layout(paper.name))
     return 0
 
@@ -226,7 +311,7 @@ def _encode_protected(args: argparse.Namespace) -> int:
                 ),
                 layout,
             )
-        written.append(f"{path} ({_plural(count, 'page')})")
+        written.append(_n("cli.wrote_pdf", count, path=path))
     else:
         for page in encode(stream, fmt, label):
             path = f"{base}_{page.number:04d}.{args.to}"
@@ -235,18 +320,17 @@ def _encode_protected(args: argparse.Namespace) -> int:
                     write_png(temp, page.pixels, layout.pixels_per_inch)
                 else:
                     write_pgm(temp, page.pixels)
-            written.append(path)
-    for item in written:
-        _eprint(f"wrote {item}")
+            written.append(_t("cli.wrote", path=path))
+    for line in written:
+        _eprint(line)
     _after_encoding(layout)
     lose = pages_promised(document)
     if not parity:
-        effect = "nothing is repaired; a lost or damaged page loses part of the file."
+        _eprint(_t("cli.protection.nothing", level=protection))
     elif lose:
-        effect = f"can lose {_plural(lose, 'page')} of {document.total} and still recover the file."
+        _eprint(_n("cli.protection.lose", lose, level=protection, total=document.total))
     else:
-        effect = "repairs damage within pages; it cannot make up for a lost page."
-    _eprint(f"Protection {protection}: {effect}")
+        _eprint(_t("cli.protection.within", level=protection))
     return 0
 
 
@@ -278,20 +362,17 @@ def _probe(path: str, slow: bool = True) -> ScanIdentity | str:
     try:
         image = read_scan(path)
     except OptarError as e:
-        return f"could not be read ({e})"
+        return _t("cli.probe.unread", detail=i18n.error_text(e))
     try:
         return identify_any(
             image,
             slow=slow,
-            on_slow=lambda: _eprint(
-                f"optar: {os.path.basename(path)}: the ordinary reader could not read this "
-                "scan's data; trying the slower reader, which takes about a minute"
-            ),
+            on_slow=lambda: _eprint(_t("cli.slow_reader", name=os.path.basename(path))),
         )
     except IdentifyError as e:
-        return f"not identified ({e.reason})" + _coarse_advice(e.scan_dpi, e.slow_tried)
+        return _unidentified(i18n.error_text(e), e.scan_dpi, e.slow_tried)
     except DecodeError as e:
-        return f"not identified ({e})"
+        return _t("cli.probe.unidentified", detail=i18n.error_text(e))
 
 
 def _document_key(ident: ScanIdentity) -> tuple:
@@ -300,24 +381,25 @@ def _document_key(ident: ScanIdentity) -> tuple:
     return (h.fingerprint, h.size, h.total, h.parity, layout.fmt.to_string())
 
 
-def _coarse_advice(dpi: float | None, slow_tried: bool = False) -> str:
+def _unidentified(reason: str, dpi: float | None, slow_tried: bool) -> str:
     if dpi is None or dpi >= COARSE_DPI:
-        return ""
-    needs = ", ".join(f"{DOT_NAMES[d]} {dots.scan_dpi}" for d, dots in DOT_SIZES.items())
-    tried = " (the slower reader was tried too)" if slow_tried else ""
-    return f"; it was scanned at about {round(dpi, -1):.0f} dpi{tried}, the dot sizes need: {needs}"
+        return _t("cli.probe.unidentified", detail=reason)
+    needs = _t("cli.list_separator").join(
+        _t("cli.dot_need", name=_t(DOT_NAME_KEYS[d]), dpi=dots.scan_dpi)
+        for d, dots in DOT_SIZES.items()
+    )
+    key = "cli.probe.coarse_tried" if slow_tried else "cli.probe.coarse"
+    return _t(key, detail=reason, dpi=f"{round(dpi, -1):.0f}", needs=needs)
 
 
-def _pages(numbers) -> str:
-    numbers = list(numbers)
-    return f"page{'s' if len(numbers) != 1 else ''} {', '.join(map(str, numbers))}"
-
-
-def _some(numbers, most: int = 20) -> list:
-    """The first `most` of the numbers, then how many more there are."""
+def _listed(numbers, most: int = 20) -> str:
+    """The first `most` numbers, then how many more there are."""
     numbers = list(numbers)
     more = len(numbers) - most
-    return numbers if more <= 0 else [*numbers[:most], f"({more} more)"]
+    shown = [str(x) for x in numbers[:most]]
+    if more > 0:
+        shown.append(_n("cli.list_more", more))
+    return _t("cli.list_separator").join(shown)
 
 
 def _gather(
@@ -337,7 +419,7 @@ def _gather(
         shown = os.path.basename(path)
         ident = probes[path] if path in probes else _probe(path, slow)
         if isinstance(ident, str):
-            _eprint(f"optar: {shown}: {ident}; counted as a missing page.")
+            _eprint(_t("cli.scan.missing", name=shown, reason=ident))
             continue
         if ident.header is None or _document_key(ident) != key:
             ignored.append(shown)
@@ -345,9 +427,9 @@ def _gather(
         assert ident.payload is not None
         page = ident.header.page
         unreadable = int(np.count_nonzero(ident.payload.erased))
-        note = f", {_plural(unreadable, 'byte')} unreadable" if unreadable else ""
+        note = _n("cli.scan.note_unreadable", unreadable) if unreadable else ""
         if ident.reader == "slow":
-            note += " (read by the slower reader)"
+            note += _t("cli.scan.note_slow")
         slow_read = ident.reader == "slow"
         if page in chosen:
             # The slower reader marks no byte unreadable, so its count says
@@ -356,22 +438,17 @@ def _gather(
                 better = by_slow_reader[page]
             else:
                 better = unreadable < int(np.count_nonzero(chosen[page].erased))
-            _eprint(
-                f"{shown}: page {page} of {total} again{note}; "
-                f"using the {'better' if better else 'earlier'} scan"
-            )
+            again = "cli.scan.page_again_better" if better else "cli.scan.page_again_earlier"
+            _eprint(_t(again, name=shown, page=page, total=total, note=note))
             if not better:
                 continue
         else:
-            _eprint(f"{shown}: page {page} of {total}{note}")
+            _eprint(_t("cli.scan.page", name=shown, page=page, total=total, note=note))
         chosen[page] = ident.payload
         by_slow_reader[page] = slow_read
     if ignored:
-        n = len(ignored)
-        _eprint(
-            f"optar: {_plural(n, 'scan')} from another document "
-            f"{'was' if n == 1 else 'were'} ignored: {', '.join(ignored)}"
-        )
+        names = _t("cli.list_separator").join(ignored)
+        _eprint(_n("cli.scan.ignored", len(ignored), names=names))
     return chosen
 
 
@@ -383,34 +460,42 @@ def _decode_version1(
 ) -> int:
     """Decode version-1 pages: identify every scan, group by header, repair, verify."""
     if args.debug_images:
-        _eprint("optar: --debug-images is not available for self-identifying pages")
+        _eprint(_t("cli.debug_images_unavailable"))
     header, layout = first.header, first.layout
     assert header is not None and layout is not None
     result = unwrap(header, layout.fmt, _gather(files, probes, first, not args.no_slow_reader))
 
     summary = []
     if result.data is None and result.best_effort is None:
-        summary.append("too many pages are missing to repair the file")
+        summary.append(_t("cli.summary.too_many_missing"))
     elif result.budget:
-        summary.append(f"repaired {_plural(result.repaired_bytes, 'byte')}")
+        summary.append(_n("cli.summary.repaired", result.repaired_bytes))
         if result.failed:
-            summary.append(f"{_plural(result.failed, 'block')} could not be repaired")
+            summary.append(_n("cli.summary.blocks_failed", result.failed))
         else:
-            summary.append(f"worst codeword used {result.worst_used} of {result.budget}")
+            summary.append(_t("cli.summary.worst", used=result.worst_used, budget=result.budget))
     summary.append(
-        f"missing {_pages(_some(result.missing))}" if result.missing else "no pages missing"
+        _listing("cli.summary.missing", len(result.missing), list=_listed(result.missing))
+        if result.missing
+        else _t("cli.summary.none_missing")
     )
-    _eprint(f"optar: {'; '.join(summary)}")
+    _eprint(_t("cli.summary.line", summary=_t("cli.summary.separator").join(summary)))
 
     out = result.data if result.data is not None else result.best_effort
     if out is None:
         # Too few pages to build even a best-effort file (container.unwrap).
         read = header.total - len(result.missing)
         _eprint(
-            f"optar: the file could not be repaired and was not saved: only {read} of "
-            f"{_plural(header.total, 'page')} read. Scan {_pages(_some(result.missing))} "
-            f"and decode again; --force saves nothing from fewer than one page in "
-            f"{BEST_EFFORT_PAGES}."
+            _t(
+                "cli.sentences",
+                first=_n("cli.too_few.read", header.total, read=read),
+                second=_listing(
+                    "cli.too_few.rescan",
+                    len(result.missing),
+                    list=_listed(result.missing),
+                    fraction=BEST_EFFORT_PAGES,
+                ),
+            )
         )
         return 1
     if result.verified or args.force:
@@ -421,23 +506,31 @@ def _decode_version1(
             sys.stdout.buffer.write(out)
             sys.stdout.buffer.flush()
     if result.verified:
-        _eprint(f"optar: file verified ({_plural(header.size, 'byte')})")
+        _eprint(_n("cli.verified", header.size))
         return 0
-    why = "could not be repaired" if result.data is None else "does not match its fingerprint"
     if args.force:
         _eprint(
-            f"optar: the file {why}: it did not verify and may be damaged. "
-            "Saved anyway because of --force."
+            _t("cli.force_saved.unrepaired")
+            if result.data is None
+            else _t("cli.force_saved.mismatch")
         )
         return 1
     damaged = sorted(
         (p for p in result.page_damage if p not in result.missing),
         key=lambda p: (-result.page_damage[p], p),
     )[:3]
-    rescan = _some(sorted(set(result.missing) | set(damaged)))
-    force = "--force saves what was recovered, which may be damaged."
-    advice = f"Rescan {_pages(rescan)} and decode again; {force}" if rescan else force
-    _eprint(f"optar: the file {why} and was not saved. {advice}")
+    rescan = sorted(set(result.missing) | set(damaged))
+    force = _t("cli.force_advice")
+    advice = (
+        _listing("cli.rescan_advice", len(rescan), list=_listed(rescan), force=force)
+        if rescan
+        else force
+    )
+    _eprint(
+        _t("cli.not_saved.unrepaired", advice=advice)
+        if result.data is None
+        else _t("cli.not_saved.mismatch", advice=advice)
+    )
     return 1
 
 
@@ -455,7 +548,7 @@ def _decode(args: argparse.Namespace) -> int:
                 return _decode_version1(args, files, probes, ident)
             break
     if args.force:
-        _eprint("optar: --force has no effect on printouts from 0.2.0 or earlier")
+        _eprint(_t("cli.force_no_effect"))
     _, fmt = _resolve_format(args)
     name = os.path.basename(args.base)
     gap = False
@@ -471,7 +564,7 @@ def _decode(args: argparse.Namespace) -> int:
             if not os.path.exists(path):
                 if number > 1 and os.path.exists(f"{args.base}_{number + 1:04d}.png"):
                     _eprint(
-                        f"optar: {scan_name(number)} is missing but {scan_name(number + 1)} exists"
+                        _t("cli.gap", missing=scan_name(number), existing=scan_name(number + 1))
                     )
                     gap = True
                 return
@@ -487,8 +580,13 @@ def _decode(args: argparse.Namespace) -> int:
             stats = result.stats
             corrected = sum(stats.error_histogram[1:])
             _eprint(
-                f"page {number}: {stats.symbols} symbols, {corrected} corrected, "
-                f"{stats.uncorrectable} uncorrectable"
+                _t(
+                    "cli.page_stats",
+                    number=number,
+                    symbols=_n("cli.stat_symbols", stats.symbols),
+                    corrected=_n("cli.stat_corrected", corrected),
+                    uncorrectable=_n("cli.stat_uncorrectable", stats.uncorrectable),
+                )
             )
             uncorrectable += stats.uncorrectable
             chunks.append(packer.feed(result.bits))
@@ -496,10 +594,12 @@ def _decode(args: argparse.Namespace) -> int:
                 _save_debug_image(f"{args.base}_{number:04d}_debug.png", result.debug_image)
     except DecodeError as e:
         page = e.page or len(chunks) + 1
-        raise DecodeError(f"{scan_name(page)}: {e}", page=page) from e
+        named = DecodeError(f"{scan_name(page)}: {e}", page=page)
+        values = {"name": scan_name(page), "message": i18n.error_text(e)}
+        raise keyed(named, "cli.in_scan", values) from e
 
     if not chunks:
-        raise OptarError(f"cannot open {args.base}_0001.png")
+        raise OptarError(_t("cli.cannot_open", path=f"{args.base}_0001.png"))
 
     data = b"".join(chunks)
     if args.output:
@@ -510,23 +610,43 @@ def _decode(args: argparse.Namespace) -> int:
         sys.stdout.buffer.flush()
 
     if uncorrectable:
-        _eprint(f"optar: {uncorrectable} uncorrectable codewords. {PAPER_HINT}")
+        _eprint(_n("cli.uncorrectable_codewords", uncorrectable, hint=_t("cli.PAPER_HINT")))
     return 1 if (uncorrectable or gap) else 0
 
 
 def main(argv: list[str] | None = None) -> int:
+    previous = i18n.language()
+    # --help and --version go to stdout, everything else to stderr: both must hold it.
+    code = choose_language(
+        os.environ,
+        stream_encoding(sys.stdout),
+        stream_encoding(sys.stderr),
+        system=system_language(),
+    )
+    i18n.set_language(code)
+    try:
+        return _run(argv)
+    finally:
+        i18n.set_language(previous)
+
+
+def _run(argv: list[str] | None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
     _check_options(parser, args)
     try:
         return _encode(args) if args.command == "encode" else _decode(args)
     except OptarError as e:
-        message = str(e)
+        message = i18n.error_text(e)
         if isinstance(e, DecodeError):
-            message = f"{message.rstrip('.')}. {PAPER_HINT}"
-        _eprint(f"optar: {message}")
+            _eprint(_t("cli.line_hint", message=message.rstrip("."), hint=_t("cli.PAPER_HINT")))
+        else:
+            _eprint(_t("cli.line", message=message))
         return 2
     except OSError as e:
-        where = f"{e.filename}: " if e.filename else ""
-        _eprint(f"optar: {where}{e.strerror or e}")
+        reason = e.strerror or e
+        if e.filename:
+            _eprint(_t("cli.os_error_file", file=e.filename, reason=reason))
+        else:
+            _eprint(_t("cli.os_error", reason=reason))
         return 2

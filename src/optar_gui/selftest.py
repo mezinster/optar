@@ -20,12 +20,14 @@ import time
 
 import numpy as np
 
+from optar import i18n
 from optar.container import page_payload, read_header, unwrap, wrap
 from optar.decoder import decode_page
 from optar.encoder import encode
 from optar.format import PARITY, PageFormat, get_layout, get_paper
 from optar.imageio import write_png
 from optar.tag import make_tag, tagged_label
+from optar_gui import text
 from optar_gui.document import DocState, Health
 from optar_gui.work import encode_to_pdf
 
@@ -120,6 +122,24 @@ def _protected_check() -> bool:
     )
 
 
+def _catalogues_check() -> bool:
+    """Every catalogue loads and answers; the language is put back afterwards."""
+    previous = i18n.language()
+    try:
+        codes = list(i18n.languages())
+        ok = "en" in codes
+        for code in codes:
+            ok = ok and i18n.set_language(code) == code and bool(text.READ_TAB)
+    finally:
+        i18n.set_language(previous)
+    # The report is English, whatever the number of languages.
+    if len(codes) == 1:
+        loaded = "loaded the catalogue of 1 language"
+    else:
+        loaded = f"loaded the catalogues of {len(codes)} languages"
+    return _report(loaded, ok)
+
+
 def _checks(folder: str) -> bool:
     from optar_gui.read_tab import ReadController
 
@@ -169,6 +189,7 @@ def _checks(folder: str) -> bool:
         _report("created a compatible PDF", head == b"%PDF" and count == len(paths))
     )
     results.append(_protected_check())
+    results.append(_catalogues_check())
     return all(results)
 
 
@@ -176,6 +197,8 @@ def run_self_test() -> int:
     """Run the self-test off-screen; print one line per check (to SELF_TEST_LOG
     when there is no console); 0 if all pass, else 1."""
     global _log
+    previous = i18n.language()
+    i18n.set_language("en")  # the report lines stay English
     if sys.stdout is None:
         _log = open(os.path.join(tempfile.gettempdir(), SELF_TEST_LOG), "w", encoding="utf-8")
     try:
@@ -188,6 +211,7 @@ def run_self_test() -> int:
             return 1
         return 0 if passed else 1
     finally:
+        i18n.set_language(previous)
         if _log is not None:
             _log.close()
             _log = None

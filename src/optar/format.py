@@ -12,7 +12,7 @@ import re
 from dataclasses import dataclass
 from fractions import Fraction
 
-from optar.errors import FormatError
+from optar.errors import FormatError, error
 
 PIXELS_PER_INCH = 200
 POINTS_PER_INCH = 72
@@ -73,7 +73,10 @@ def get_paper(name: str) -> Paper:
     try:
         return PAPERS[name.lower()]
     except KeyError:
-        raise FormatError(f"unknown paper {name!r}; known: {', '.join(PAPERS)}") from None
+        raise error(
+            FormatError, "err.unknown_paper", "unknown paper {name}; known: {known}",
+            name=repr(name), known=", ".join(PAPERS),
+        ) from None
 
 
 @dataclass(frozen=True)
@@ -88,19 +91,31 @@ class PageFormat:
     version: int = 0
 
     def __post_init__(self) -> None:
-        checks = [
-            (self.version == 0, "version must be 0"),
-            (1 <= self.fec_order <= 5, "fec_order must be 1..5"),
-            (self.xcrosses >= 2, "xcrosses must be >= 2"),
-            (self.ycrosses >= 2, "ycrosses must be >= 2"),
-            (self.chalf >= 1, "chalf must be >= 1"),
-            (self.cpitch > 2 * self.chalf, "cpitch must exceed 2*chalf"),
-            (self.border >= 1, "border must be >= 1"),
-            (self.text_height >= 1, "text_height must be >= 1"),
-        ]
-        for ok, message in checks:
-            if not ok:
-                raise FormatError(f"invalid page format: {message}")
+        # One message each, so that each can be translated whole.
+        if self.version != 0:
+            raise error(FormatError, "err.invalid_format.version",
+                        "invalid page format: version must be 0")
+        if not 1 <= self.fec_order <= 5:
+            raise error(FormatError, "err.invalid_format.fec_order",
+                        "invalid page format: fec_order must be 1..5")
+        if self.xcrosses < 2:
+            raise error(FormatError, "err.invalid_format.xcrosses",
+                        "invalid page format: xcrosses must be >= 2")
+        if self.ycrosses < 2:
+            raise error(FormatError, "err.invalid_format.ycrosses",
+                        "invalid page format: ycrosses must be >= 2")
+        if self.chalf < 1:
+            raise error(FormatError, "err.invalid_format.chalf",
+                        "invalid page format: chalf must be >= 1")
+        if self.cpitch <= 2 * self.chalf:
+            raise error(FormatError, "err.invalid_format.cpitch",
+                        "invalid page format: cpitch must exceed 2*chalf")
+        if self.border < 1:
+            raise error(FormatError, "err.invalid_format.border",
+                        "invalid page format: border must be >= 1")
+        if self.text_height < 1:
+            raise error(FormatError, "err.invalid_format.text_height",
+                        "invalid page format: text_height must be >= 1")
 
     @property
     def data_width(self) -> int:
@@ -183,7 +198,10 @@ class PageFormat:
     @classmethod
     def parse(cls, text: str) -> PageFormat:
         if not _FORMAT_RE.fullmatch(text):
-            raise FormatError(f"page format must be eight dash-separated integers: {text!r}")
+            raise error(
+                FormatError, "err.format_syntax",
+                "page format must be eight dash-separated integers: {text}", text=repr(text),
+            )
         version, xcrosses, ycrosses, cpitch, chalf, fec_order, border, text_height = (
             int(part) for part in text.split("-")
         )
@@ -372,7 +390,10 @@ def get_layout(paper: str, dots: str = "standard") -> Layout:
     try:
         return LAYOUTS[key]
     except KeyError:
-        raise FormatError(f"unknown dot size {dots!r}; known: {', '.join(DOT_SIZES)}") from None
+        raise error(
+            FormatError, "err.unknown_dots", "unknown dot size {name}; known: {known}",
+            name=repr(dots), known=", ".join(DOT_SIZES),
+        ) from None
 
 
 def layout_for_format(format: str) -> Layout | None:

@@ -9,7 +9,7 @@ from importlib import resources
 import numpy as np
 from PIL import Image
 
-from optar.errors import FormatError
+from optar.errors import FormatError, error
 from optar.format import TEXT_WIDTH, Layout, PageFormat
 
 FIRST_CHAR = 32  # first glyph in the strip (space)
@@ -69,7 +69,10 @@ def render_line(text: str, width: int) -> np.ndarray:
 def render_label(fmt: PageFormat, text: str) -> np.ndarray:
     """The data-width part of the label band: (text_height, data_width), black background."""
     if fmt.text_height != LABEL_HEIGHT:
-        raise FormatError(f"label band must be {LABEL_HEIGHT} rows, not {fmt.text_height}")
+        raise error(
+            FormatError, "err.label_band", "label band must be {rows} rows, not {height}",
+            rows=LABEL_HEIGHT, height=fmt.text_height,
+        )
     return render_line(text, fmt.data_width)
 
 

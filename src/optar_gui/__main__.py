@@ -7,26 +7,49 @@ import argparse
 import os
 import sys
 
-from optar import __version__
+from optar import __version__, i18n
+from optar_gui import text
 
 __all__ = ["main"]
 
-MISSING_QT = (
-    "optar-gui needs PySide6: run pip install '.[gui]' in a checkout of the source, "
-    "or download optar-gui from the project's Releases page."
-)
-
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="optar-gui", description="Store files on paper and read them back."
-    )
-    parser.add_argument("--version", action="store_true", help="print the version and exit")
+    # The parser of optar's own --help, which words usage, headings and errors
+    # from the catalogue. Imported here, as choose_language is (in _main).
+    from optar.cli import Parser
+
+    parser = Parser(prog="optar-gui", description=text.cli_description())
+    parser.add_argument("--version", action="store_true", help=text.cli_version_help())
     parser.add_argument("--self-test", action="store_true", help=argparse.SUPPRESS)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
+    previous = i18n.language()
+    try:
+        return _main(argv)
+    finally:
+        i18n.set_language(previous)
+
+
+def _main(argv: list[str] | None) -> int:
+    # The terminal messages follow the environment; the window, once there is
+    # one, follows the saved choice.
+    from optar.cli import (  # not before --version needs it
+        choose_language,
+        stream_encoding,
+        system_language,
+    )
+
+    # A windowed build has no stdout or stderr (None): it then limits nothing.
+    i18n.set_language(
+        choose_language(
+            os.environ,
+            stream_encoding(sys.stdout),
+            stream_encoding(sys.stderr),
+            system=system_language(),
+        )
+    )
     try:
         args = _parser().parse_args(sys.argv[1:] if argv is None else argv)
     except SystemExit as e:  # argparse has printed the usage or the error
@@ -37,19 +60,23 @@ def main(argv: list[str] | None = None) -> int:
     try:
         import PySide6.QtWidgets  # noqa: F401
     except ImportError:
-        print(MISSING_QT, file=sys.stderr)
+        print(text.missing_qt(), file=sys.stderr)
         return 2
     if args.self_test:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        i18n.set_language("en")
         from optar_gui.selftest import run_self_test
 
         return run_self_test()
 
     from PySide6.QtWidgets import QApplication
 
+    app = QApplication.instance() or QApplication(sys.argv[:1] or ["optar-gui"])
+    from optar_gui import language
+
+    i18n.set_language(language.at_start())
     from optar_gui.main_window import MainWindow
 
-    app = QApplication.instance() or QApplication(sys.argv[:1] or ["optar-gui"])
     window = MainWindow()
     window.show()
     return app.exec()

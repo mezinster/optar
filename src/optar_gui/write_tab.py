@@ -64,6 +64,10 @@ _COMPATIBLE_PROTECT = "none"
 _DEFAULT_DOTS = "standard"
 _DEFAULT_PROTECT = "standard"
 
+# The form's row labels, by the name of their wording in ``text``.
+_FIELDS = ("FILE_FIELD", "PAPER_FIELD", "DOTS_FIELD", "PROTECT_FIELD", "NAME_FIELD",
+           "PRINTS_AS_FIELD")  # fmt: skip
+
 # Job ids on the tab's runner.
 _PREPARE_JOB = 1
 _CREATE_JOB = 2
@@ -101,33 +105,34 @@ class WriteTab(QWidget):
         self._runner.failed.connect(self._on_failed)
         self._path: str | None = None
         self._facts: FileFacts | None = None
-        self._read_error: str | None = None
+        self._read_error: text.Words | None = None  # why the file cannot be read
+        self._status: text.Words | str = ""  # the status line, worded when shown
         self._preparing = False
         self._dest: str | None = None  # while a PDF is being created
         self._closed = False
 
         self.file_edit = QLineEdit(objectName="fileEdit")
         self.file_edit.setReadOnly(True)
-        self.choose_button = QPushButton(text.CHOOSE_FILE, objectName="chooseButton")
+        self.choose_button = QPushButton(objectName="chooseButton")
         self.choose_button.clicked.connect(self._on_choose)
-        self.paper_a4 = QRadioButton(text.paper_label("a4"), objectName="paperA4")
-        self.paper_letter = QRadioButton(text.paper_label("letter"), objectName="paperLetter")
+        self.paper_a4 = QRadioButton(objectName="paperA4")
+        self.paper_letter = QRadioButton(objectName="paperLetter")
         self.paper_a4.setChecked(True)
         self._papers = QButtonGroup(self)
         self._papers.addButton(self.paper_a4)
         self._papers.addButton(self.paper_letter)
         self.paper_a4.toggled.connect(self.refresh)
         self.dots_box = QComboBox(objectName="dotsBox")
-        for dots, scan_dpi in dot_choices():
-            self.dots_box.addItem(text.dot_size_label(dots, scan_dpi), dots)
+        for dots, _scan_dpi in dot_choices():
+            self.dots_box.addItem("", dots)
         _select(self.dots_box, _DEFAULT_DOTS)
         self.dots_box.currentIndexChanged.connect(self.refresh)
         self.protect_box = QComboBox(objectName="protectBox")
         for protect in PARITY:
-            self.protect_box.addItem(text.protection_label(protect), protect)
+            self.protect_box.addItem("", protect)
         _select(self.protect_box, _DEFAULT_PROTECT)
         self.protect_box.currentIndexChanged.connect(self.refresh)
-        self.compatible_box = QCheckBox(text.COMPATIBLE, objectName="compatibleBox")
+        self.compatible_box = QCheckBox(objectName="compatibleBox")
         self.compatible_box.toggled.connect(self._on_compatible)
         self._chosen = (_DEFAULT_DOTS, _DEFAULT_PROTECT)  # restored when Compatible is cleared
         self.name_edit = QLineEdit(objectName="nameEdit")
@@ -137,11 +142,10 @@ class WriteTab(QWidget):
         self.warning = _plain_label("warningLabel")
         self.warning.hide()
         self.info = _plain_label("infoLabel")
-        self.create_button = QPushButton(text.CREATE_PDF, objectName="createButton")
+        self.create_button = QPushButton(objectName="createButton")
         self.create_button.clicked.connect(self._on_create)
         self.status = _plain_label("statusLabel")
         self.reminder = _plain_label("reminderLabel")
-        self.reminder.setText(text.ACTUAL_SIZE)
 
         file_row = QHBoxLayout()
         file_row.addWidget(self.file_edit, 1)
@@ -150,14 +154,19 @@ class WriteTab(QWidget):
         paper_row.addWidget(self.paper_a4)
         paper_row.addWidget(self.paper_letter)
         paper_row.addStretch(1)
+        # The form's row labels, by the name of their wording in ``text``.
+        labels = self._field_labels = {name: QLabel() for name in _FIELDS}
         form = QFormLayout()
-        form.addRow(text.FILE_FIELD, file_row)
-        form.addRow(text.PAPER_FIELD, paper_row)
-        form.addRow(text.DOTS_FIELD, self.dots_box)
-        form.addRow(text.PROTECT_FIELD, self.protect_box)
+        # A field too wide to sit beside its label (a wide font, a long translation)
+        # goes under it, so the form never makes the window wider than it starts.
+        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        form.addRow(labels["FILE_FIELD"], file_row)
+        form.addRow(labels["PAPER_FIELD"], paper_row)
+        form.addRow(labels["DOTS_FIELD"], self.dots_box)
+        form.addRow(labels["PROTECT_FIELD"], self.protect_box)
         form.addRow("", self.compatible_box)
-        form.addRow(text.NAME_FIELD, self.name_edit)
-        form.addRow(text.PRINTS_AS_FIELD, self.prints_as)
+        form.addRow(labels["NAME_FIELD"], self.name_edit)
+        form.addRow(labels["PRINTS_AS_FIELD"], self.prints_as)
         create_row = QHBoxLayout()
         create_row.addWidget(self.create_button)
         create_row.addStretch(1)
@@ -171,7 +180,33 @@ class WriteTab(QWidget):
         layout.addStretch(1)
 
         self.setAcceptDrops(True)
+        self.retranslate()
+
+    def retranslate(self) -> None:
+        """Sets all of the tab's wording in the current language: buttons, choices
+        (the chosen ones stay chosen), the form's labels, the reminder, then, through
+        ``refresh``, the information and warning lines, and the status line. Called
+        when the tab is made and when the language changes; entered text and running
+        work are left as they are."""
+        self.choose_button.setText(text.CHOOSE_FILE)
+        self.paper_a4.setText(text.paper_label("a4"))
+        self.paper_letter.setText(text.paper_label("letter"))
+        for i, (dots, scan_dpi) in enumerate(dot_choices()):
+            self.dots_box.setItemText(i, text.dot_size_label(dots, scan_dpi))
+        for i in range(self.protect_box.count()):
+            self.protect_box.setItemText(i, text.protection_label(self.protect_box.itemData(i)))
+        self.compatible_box.setText(text.COMPATIBLE)
+        self.create_button.setText(text.CREATE_PDF)
+        self.reminder.setText(text.ACTUAL_SIZE)
+        for name, label in self._field_labels.items():
+            label.setText(getattr(text, name))
+        self._show_status(self._status)
         self.refresh()
+
+    def _show_status(self, status: text.Words | str) -> None:
+        """Shows ``status`` on the status line and keeps it, to word it again later."""
+        self._status = status
+        self.status.setText(str(status))
 
     # --- Interaction points tests replace -------------------------------------------
 
@@ -223,7 +258,7 @@ class WriteTab(QWidget):
         self._facts = None
         self._read_error = None
         self._preparing = True
-        self.status.setText("")
+        self._show_status("")
         self.file_edit.setText(path)
         self.name_edit.setText(os.path.basename(path))
         self._runner.submit(_PREPARE_JOB, partial(self._prepare, path))
@@ -255,9 +290,9 @@ class WriteTab(QWidget):
         )
 
     @staticmethod
-    def _too_large(plan: PrintPlan) -> str:
-        return text.too_large(
-            plan.too_large, plan.limit, plan.unprotected_fits, plan.smaller_dots
+    def _too_large_words(plan: PrintPlan) -> text.Words:
+        return text.Words(
+            text.too_large, plan.too_large, plan.limit, plan.unprotected_fits, plan.smaller_dots
         )
 
     def refresh(self, *_args) -> None:
@@ -268,7 +303,7 @@ class WriteTab(QWidget):
         if self._preparing:
             info = text.PREPARING
         elif plan is not None and plan.too_large is not None:
-            info = self._too_large(plan)
+            info = str(self._too_large_words(plan))
         elif plan is not None:
             info = text.print_summary(plan.total, facts.size, plan.promised, plan.protected)
             name = self.name_edit.text()
@@ -315,12 +350,12 @@ class WriteTab(QWidget):
         if not self.prepared or self.creating or self._closed:
             return
         if self._read_error is not None:
-            self.status.setText(text.file_unreadable(self._read_error))
+            self._show_status(text.Words(text.file_unreadable, self._read_error))
             return
         plan = self._plan()
         if plan is None or plan.too_large is not None:
             if plan is not None:
-                self.status.setText(self._too_large(plan))
+                self._show_status(self._too_large_words(plan))
             return
         paper = self.paper
         name = self.name_edit.text()
@@ -335,10 +370,12 @@ class WriteTab(QWidget):
         if not dest or self.creating or self._closed:
             return
         if same_file(src, dest):
-            self.status.setText(text.create_failed(text.DEST_IS_SOURCE))
+            self._show_status(
+                text.Words(text.create_failed, text.Words.constant("DEST_IS_SOURCE"))
+            )
             return
         self._dest = dest
-        self.status.setText(text.CREATING)
+        self._show_status(text.Words.constant("CREATING"))
         self._runner.submit(_CREATE_JOB, partial(self._encode, src, dest, paper, name, **choices))
         self.refresh()
 
@@ -350,17 +387,17 @@ class WriteTab(QWidget):
             self._facts = result
         else:
             dest, self._dest = self._dest, None
-            self.status.setText(text.created_message(dest, result))
+            self._show_status(text.Words(text.created_message, dest, result))
         self.refresh()
 
-    def _on_failed(self, job: int, message: str) -> None:
+    def _on_failed(self, job: int, message: text.Words) -> None:
         if job == _PREPARE_JOB:
             self._preparing = False
             self._read_error = message
-            self.status.setText(text.file_unreadable(message))
+            self._show_status(text.Words(text.file_unreadable, message))
         else:
             self._dest = None
-            self.status.setText(text.create_failed(message))
+            self._show_status(text.Words(text.create_failed, message))
         self.refresh()
 
     def dragEnterEvent(self, event) -> None:  # noqa: N802

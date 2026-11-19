@@ -1,0 +1,678 @@
+[language]
+name = "ქართული"
+
+[format]
+group = " "
+decimal = ","
+
+[cli]
+ACTUAL_SIZE = "დაბეჭდეთ რეალური ზომით (100%) და არა „გვერდზე მორგებით“."
+PAPER_HINT = "დარწმუნდით, რომ --paper ამონაბეჭდს შეესაბამება და გვერდი დასკანერებულია სწორი ორიენტაციით (მობრუნების გარეშე)."
+description = "ფაილების ქაღალდზე შენახვა."
+after_encoding = "{actual_size} დაასკანერეთ {dpi} dpi გარჩევადობით."
+or_two = "{first} ან {second}"
+list_separator = ", "
+sentences = "{first} {second}"
+wrote = "ჩაწერილია ფაილი {path}"
+format_does_not_fit = "ფორმატი {format} არ ეტევა {paper} ქაღალდზე"
+cannot_open = "ფაილი {path} ვერ იხსნება"
+line = "optar: {message}"
+line_hint = "optar: {message}. {hint}"
+os_error = "optar: {reason}"
+os_error_file = "optar: {file}: {reason}"
+compatible_conflict = "--compatible ვერ გამოიყენება შემდეგთან ერთად: {options}"
+format_conflict = "--format ვერ გამოიყენება შემდეგთან ერთად: {options}"
+slow_reader = "optar: {name}: წაკითხვის ჩვეულებრივმა მეთოდმა ამ სკანის მონაცემები ვერ წაიკითხა; ეშვება ნელი მეთოდი, რასაც დაახლოებით ერთი წუთი სჭირდება"
+debug_images_unavailable = "optar: --debug-images თვითამოცნობადი გვერდებისთვის მიუწვდომელია"
+force_no_effect = "optar: --force გავლენას არ ახდენს 0.2.0 ან უფრო ძველი ვერსიის ამონაბეჭდებზე"
+gap = "optar: ფაილი {missing} არ არის, თუმცა ფაილი {existing} არსებობს"
+page_stats = "გვერდი {number}: {symbols}, {corrected}, {uncorrectable}"
+force_advice = "--force ინახავს იმას, რაც აღდგა, მაგრამ ის შეიძლება დაზიანებული იყოს."
+dot_need = "{name} — {dpi}"
+in_scan = "{name}: {message}"
+
+[cli.wrote_pdf]
+other = "ჩაწერილია ფაილი {path} ({count} გვერდი)"
+
+[cli.dot_name]
+standard = "სტანდარტული"
+medium = "საშუალო"
+big = "დიდი"
+large = "მსხვილი"
+xlarge = "ძალიან მსხვილი"
+
+[cli.protection]
+nothing = "დაცვის დონე {level}: არაფერი სწორდება; დაკარგული ან დაზიანებული გვერდის გამო ფაილის ნაწილი იკარგება."
+within = "დაცვის დონე {level}: გვერდების შიგნით დაზიანებას ასწორებს, მაგრამ დაკარგულ გვერდს ვერ ანაზღაურებს."
+
+[cli.protection.lose]
+other = "დაცვის დონე {level}: {total} გვერდიდან შეიძლება დაიკარგოს {count} და ფაილი მაინც აღდგება."
+
+[cli.scan]
+missing = "optar: {name}: {reason}; ითვლება, რომ გვერდი აკლია."
+page = "{name}: გვერდი {page} {total}-დან{note}"
+page_again_better = "{name}: კვლავ გვერდი {page} {total}-დან{note}; გამოიყენება უკეთესი სკანი"
+page_again_earlier = "{name}: კვლავ გვერდი {page} {total}-დან{note}; გამოიყენება ადრინდელი სკანი"
+note_slow = " (წაკითხულია ნელი მეთოდით)"
+
+[cli.probe]
+unread = "წაკითხვა ვერ მოხერხდა ({detail})"
+unidentified = "ამოუცნობია ({detail})"
+coarse = "ამოუცნობია ({detail}); დასკანერებულია დაახლოებით {dpi} dpi გარჩევადობით, საჭირო გარჩევადობა წერტილის ზომების მიხედვით: {needs}"
+coarse_tried = "ამოუცნობია ({detail}); დასკანერებულია დაახლოებით {dpi} dpi გარჩევადობით (ნელი მეთოდითაც ვერ მოხერხდა), საჭირო გარჩევადობა წერტილის ზომების მიხედვით: {needs}"
+
+[cli.scan.note_unreadable]
+other = ", {count} ბაიტი ვერ იკითხება"
+
+[cli.scan.ignored]
+other = "optar: სხვა დოკუმენტის {count} სკანი გამოტოვებულია: {names}"
+
+[cli.summary]
+too_many_missing = "იმდენი გვერდი აკლია, რომ ფაილის გამოსწორება შეუძლებელია"
+worst = "ყველაზე უარესმა კოდურმა სიტყვამ გამოიყენა {budget}-დან {used}"
+none_missing = "არცერთი გვერდი არ აკლია"
+separator = "; "
+line = "optar: {summary}"
+
+[cli.summary.repaired]
+other = "გამოსწორებულია {count} ბაიტი"
+
+[cli.summary.blocks_failed]
+other = "{count} ბლოკი ვერ გამოსწორდა"
+
+# {list} is a list of page numbers ("3", "2, 5, 7"). The two forms are chosen by
+# whether the list names exactly one page (single) or more (several), not by a
+# plural rule: in some languages the "one" form also serves 21, 31 and so on.
+[cli.summary.missing]
+single = "აკლია გვერდი {list}"
+several = "აკლია გვერდები {list}"
+
+[cli.too_few.read]
+other = "optar: ფაილი ვერ გამოსწორდა და არ იქნა შენახული: {count} გვერდიდან წაკითხულია მხოლოდ {read}."
+
+# {list}: the missing pages; single when it names exactly one page, several when more.
+# {fraction}: a number (2: "one page in 2").
+[cli.too_few.rescan]
+single = "დაასკანერეთ გვერდი {list} და გაიმეორეთ დეკოდირება; თუ წაკითხულია ყოველი {fraction} გვერდიდან ერთზე ნაკლები, --force არაფერს ინახავს."
+several = "დაასკანერეთ გვერდები {list} და გაიმეორეთ დეკოდირება; თუ წაკითხულია ყოველი {fraction} გვერდიდან ერთზე ნაკლები, --force არაფერს ინახავს."
+
+[cli.verified]
+other = "optar: ფაილი შემოწმებულია ({count} ბაიტი)"
+
+[cli.force_saved]
+unrepaired = "optar: ფაილი ვერ გამოსწორდა: შემოწმება ვერ გაიარა და შეიძლება დაზიანებული იყოს. მაინც შენახულია --force პარამეტრის გამო."
+mismatch = "optar: ფაილი არ ემთხვევა თავის ანაბეჭდს: შემოწმება ვერ გაიარა და შეიძლება დაზიანებული იყოს. მაინც შენახულია --force პარამეტრის გამო."
+
+[cli.not_saved]
+unrepaired = "optar: ფაილი ვერ გამოსწორდა და არ იქნა შენახული. {advice}"
+mismatch = "optar: ფაილი არ ემთხვევა თავის ანაბეჭდს და არ იქნა შენახული. {advice}"
+
+# {list}: pages to rescan; single when it names exactly one page, several when more.
+# {force}: the sentence cli.force_advice.
+[cli.rescan_advice]
+single = "ხელახლა დაასკანერეთ გვერდი {list} და გაიმეორეთ დეკოდირება; {force}"
+several = "ხელახლა დაასკანერეთ გვერდები {list} და გაიმეორეთ დეკოდირება; {force}"
+
+[cli.list_more]
+other = "(და კიდევ {count})"
+
+[cli.stat_symbols]
+other = "{count} სიმბოლო"
+
+[cli.stat_corrected]
+other = "{count} შესწორებული"
+
+[cli.stat_uncorrectable]
+other = "{count} შეუსწორებელი"
+
+[cli.uncorrectable_codewords]
+other = "optar: {count} შეუსწორებელი კოდური სიტყვა. {hint}"
+
+[cli.argparse]
+usage = "გამოყენება: "
+positionals = "პოზიციური არგუმენტები"
+options = "პარამეტრები"
+error = "{prog}: შეცდომა: {message}"
+help = "ამ დახმარების ჩვენება და გასვლა"
+version = "პროგრამის ვერსიის ჩვენება და გასვლა"
+
+[cli.help]
+paper = "ქაღალდის ზომა (ნაგულისხმევი: a4)"
+format = "გვერდის ფორმატის ხელით მითითება"
+encode = "ფაილის კოდირება დასაბეჭდ გვერდებად"
+input = "დასაკოდირებელი ფაილი"
+output = "შედეგის ფაილების საბაზო სახელი (ნაგულისხმევი: optar_out)"
+to = "შედეგის ტიპი: ერთი PDF (ნაგულისხმევი) ან გვერდების ცალკე ფაილები PNG ან PGM ფორმატში"
+label = "ყოველ გვერდზე დასაბეჭდი ტექსტი (ნაგულისხმევი: -o პარამეტრით მითითებული ფაილის სახელი)"
+no_tag = "გვერდების წარწერებს არ დაემატოს ჭდე (ზომა, ანაბეჭდი და საკონტროლო მნიშვნელობა)"
+dots = "წერტილის ზომა (ნაგულისხმევი: standard). ნებისმიერი ზომა, standard-ის გარდა, ქმნის თვითამოცნობად გვერდებს სტანდარტული დაცვით, თუ --protect სხვას არ მიუთითებს"
+protect = "მთელ დოკუმენტზე განაწილებული გამოსწორების მონაცემები; ქმნის თვითამოცნობად გვერდებს სტანდარტული წერტილებით, თუ --dots სხვას არ მიუთითებს. დაცვის გარეშე თვითამოცნობადი გვერდებისთვის მიუთითეთ 'none'. --dots და --protect პარამეტრების გარეშე გვერდები თავსებადია და დაცვის გარეშეა"
+compatible = "გვერდები, რომლებსაც კითხულობს optar 0.2 და C-ზე დაწერილი პროგრამა (ნაგულისხმევია, თუ --dots და --protect მითითებული არ არის)"
+decode = "დასკანერებული გვერდების დეკოდირება ისევ ფაილად"
+base = "სკანების სახელებია BASE_0001.png, BASE_0002.png, ..."
+decode_output = "შედეგის ფაილი (ნაგულისხმევი: stdout)"
+debug_images = "BASE_NNNN_debug.png ფაილების ჩაწერა"
+force = "თვითამოცნობადი გვერდებიდან აღდგენილის შენახვა მაშინაც, როცა ფაილმა შემოწმება ვერ გაიარა"
+no_slow_reader = "ნელი მეთოდი არ გამოიყენოს სკანებზე, რომლებსაც ჩვეულებრივი მეთოდი ვერ ამოიცნობს"
+
+# Library errors (optar.errors): each entry is the English text of the error,
+# word for word; a test compares them with the code.
+[err]
+cannot_read = "{path} ვერ იკითხება: {reason}"
+cannot_write = "{path} ვერ ჩაიწერება: {reason}"
+unknown_paper = "უცნობი ქაღალდი {name}; ცნობილია: {known}"
+unknown_dots = "წერტილის უცნობი ზომა {name}; ცნობილია: {known}"
+format_syntax = "გვერდის ფორმატი უნდა იყოს ტირეებით გაყოფილი რვა მთელი რიცხვი: {text}"
+label_band = "წარწერის ზოლის სიმაღლე უნდა იყოს {rows} პიქსელის სტრიქონი და არა {height}"
+label_font = "{height} სტრიქონის სიმაღლის წარწერის ზოლი ვერ წაიკითხება; შრიფტის სიმაღლე {rows} სტრიქონია"
+too_many_pages = "ზედმეტად ბევრი გვერდი: საჭიროა {total}, დასაშვებია მაქსიმუმ {limit}"
+too_large_to_protect = "დასაცავად ზედმეტად დიდია: ქაღალდზე {size} ბაიტი, დასაშვებია მაქსიმუმ {limit}"
+unknown_parity = "ლუწობა უნდა იყოს ერთ-ერთი შემდეგიდან: {known}, და არა {parity}"
+format_too_small = "გვერდის ფორმატი {format} კონტეინერისთვის ზედმეტად პატარაა"
+format_cannot_end = "გვერდის ფორმატით {format} შეუძლებელია ნაკადის გვერდზე დასრულება"
+impossible_document = "გვერდები აღწერს დოკუმენტს, რომელიც ვერ იარსებებს: {total} გვერდი {size} ბაიტის ფაილისთვის"
+image_too_large = "გამოსახულება {path} ვერ იკითხება: მასში {pixels} პიქსელია, სკანისთვის კი დასაშვებია მაქსიმუმ {limit}"
+image_size_changed = "გამოსახულება {path} ვერ იკითხება: ჩატვირთვისას გამოსახულების ზომა შეიცვალა"
+not_an_image = "გამოსახულება {path} ვერ იკითხება: ეს არ არის {formats} გამოსახულება"
+image_unreadable = "გამოსახულება {path} ვერ იკითხება: {reason}"
+no_page = "გვერდი ვერ მოიძებნა"
+label_unreadable = "წარწერა ვერ იკითხება"
+scan_not_grey = "სკანი უნდა იყოს ორგანზომილებიანი uint8 ნაცრისფერი გამოსახულება, მიღებულია shape {shape}, dtype {dtype}"
+scan_empty = "სკანი ცარიელია"
+scan_too_small = "{width} x {height} პიქსელის სკანი უფრო პატარაა, ვიდრე გვერდის ფორმატი ({page_width} x {page_height})"
+corners_coincide = "გვერდის კუთხეები გადაგვარებულია (ერთმანეთს ემთხვევა)"
+page_too_small = "სკანში ნაპოვნი გვერდი ზედმეტად პატარაა, რომ მისი ჯვრები მოიძებნოს"
+too_few_dots = "გვერდზე ზედმეტად ცოტა ცნობილი წერტილია მათზე დასაყრდნობად"
+page_size = "{width} x {height} პიქსელის გვერდი არ შეესაბამება განლაგების გვერდს ({page_width} x {page_height} პიქსელი; წერტილები: {dots}, ქაღალდი: {paper})"
+page_clipped = "{width} x {height} პიქსელის გვერდი {paper} ქაღალდზე {margin} pt-ზე ვიწრო ველს ტოვებს, ამიტომ პრინტერი გვერდს მოჭრიდა"
+strip_needs_layout = "წარწერის ლენტს სჭირდება თავისი გვერდის განლაგება"
+strip_too_large = "{width} x {height} ზომის წარწერის ლენტი არ ეტევა განლაგების წარწერის ზოლში (წერტილები: {dots})"
+no_pages = "ჩასაწერი გვერდები არ არის"
+
+[err.invalid_format]
+version = "გვერდის არამართებული ფორმატი: version უნდა იყოს 0"
+fec_order = "გვერდის არამართებული ფორმატი: fec_order უნდა იყოს 1..5"
+xcrosses = "გვერდის არამართებული ფორმატი: xcrosses უნდა იყოს >= 2"
+ycrosses = "გვერდის არამართებული ფორმატი: ycrosses უნდა იყოს >= 2"
+chalf = "გვერდის არამართებული ფორმატი: chalf უნდა იყოს >= 1"
+cpitch = "გვერდის არამართებული ფორმატი: cpitch უნდა აღემატებოდეს 2*chalf-ს"
+border = "გვერდის არამართებული ფორმატი: border უნდა იყოს >= 1"
+text_height = "გვერდის არამართებული ფორმატი: text_height უნდა იყოს >= 1"
+
+[err.no_corner]
+upper_left = "ზედა მარცხენა კუთხე ვერ მოიძებნა"
+upper_right = "ზედა მარჯვენა კუთხე ვერ მოიძებნა"
+lower_left = "ქვედა მარცხენა კუთხე ვერ მოიძებნა"
+lower_right = "ქვედა მარჯვენა კუთხე ვერ მოიძებნა"
+
+# A list of names of which one is meant, inside an error message (the image
+# formats of err.not_an_image): the earlier names joined by separator, the last
+# one added by last ("PNG, TIFF, BMP, PGM/PPM or JPEG").
+[alternatives]
+separator = ", "
+last = "{items} ან {last}"
+
+[count.page]
+other = "{n} გვერდი"
+
+[count.byte]
+other = "{n} ბაიტი"
+
+[count.block]
+other = "{n} ბლოკი"
+
+[count.dot]
+other = "{n} წერტილი"
+
+[count.scan]
+other = "{n} სკანი"
+
+# --- The desktop window (src/optar_gui/text.py) ------------------------------------
+#
+# The window speaks of "protection", "repair" and the "fingerprint", never of parity,
+# codewords or headers. A "block" is one error-correction unit; blocks are "repaired"
+# or "lost". {pages} is a list of page numbers ("3", "2-4, 7 and 9"). An entry that
+# has it comes in two forms, chosen by whether the list names exactly one page
+# (single) or more (several); this is not a plural rule, so the "one" form of your
+# language (which may also serve 21, 31 and so on) plays no part in it.
+
+[gui]
+# The window, its tabs, buttons and dialogs.
+WINDOW_TITLE = "optar"
+READ_TAB = "ქაღალდიდან წაკითხვა"
+ADD_SCANS = "+ სკანების დამატება…"
+REMOVE_SCAN = "ამოღება"
+SAVE_FILE = "ფაილის შენახვა…"
+ADD_SCANS_TITLE = "სკანების დამატება"
+SAVE_TITLE = "აღდგენილი ფაილის შენახვა"
+CONFIRM_SAVE_TITLE = "მაინც შევინახო?"
+ERROR_TITLE = "შენახვა ვერ მოხერხდა"
+# Titles of the sections of the list of scans.
+NOT_PART_OF_THIS_FILE = "ამ ფაილს არ ეკუთვნის"
+NOT_READABLE = "ვერ იკითხება"
+BEING_READ_SECTION = "იკითხება"
+# The actions on the selected row and their dialogs.
+REPLACE_SCAN = "სკანის შეცვლა…"
+USE_SPARE = "ამ სკანის გამოყენება"
+SWITCH_DOCUMENT = "ამ დოკუმენტზე გადასვლა"
+ASSIGN_PAGE = "გვერდის მითითება…"
+START_BY_HAND = "დოკუმენტის ხელით აწყობა…"
+REPLACE_REJECTED_TITLE = "სკანი არ გამოყენებულა"
+ASSIGN_TITLE = "გვერდის მითითება"
+PAGE_FIELD = "გვერდი:"
+START_BY_HAND_TITLE = "დოკუმენტის ხელით აწყობა"
+START_BY_HAND_PROMPT = "ვერცერთი სკანის ამოცნობა ვერ მოხერხდა. მიუთითეთ ამონაბეჭდის ქაღალდი და გვერდების რაოდენობა, შემდეგ კი თითოეულ სკანს მიუთითეთ თავისი გვერდი."
+TOTAL_FIELD = "გვერდები:"
+# Asked when the window is closed while a file is being written.
+STILL_WRITING_TITLE = "ფაილი ჯერ კიდევ იწერება"
+STILL_WRITING = "ფაილი ჯერ კიდევ იწერება. დაველოდო, სანამ დასრულდება? თუ ახლა დახურავთ, ფაილი შეიძლება ვერ ჩაიწეროს."
+# Why a save cannot start (programming errors, never shown in a dialog).
+SAVE_RUNNING = "შენახვა უკვე მიმდინარეობს"
+SAVE_AFTER_CLOSE = "ფანჯარა დახურულია, ამიტომ მეტის შენახვა შეუძლებელია"
+# The "Put on paper" tab.
+WRITE_TAB = "ქაღალდზე ჩაწერა"
+FILE_FIELD = "ფაილი:"
+PAPER_FIELD = "ქაღალდი:"
+NAME_FIELD = "სახელი:"
+PRINTS_AS_FIELD = "დაიბეჭდება:"
+DOTS_FIELD = "წერტილის ზომა:"
+PROTECT_FIELD = "დაცვა:"
+CHOOSE_FILE = "არჩევა…"
+CHOOSE_FILE_TITLE = "ქაღალდზე ჩასაწერი ფაილის არჩევა"
+CREATE_PDF = "PDF-ის შექმნა…"
+CREATE_TITLE = "PDF-ის შენახვა"
+PDF_FILTER = "PDF (*.pdf);;ყველა ფაილი (*)"
+PREPARING = "ფაილი იკითხება…"
+CREATING = "PDF იქმნება…"
+COMPATIBLE = "თავსებადობა optar 0.2-თან და თავდაპირველ optar-თან"
+# Why a PDF is not created over the file being put on paper.
+DEST_IS_SOURCE = "PDF ჩაანაცვლებდა ქაღალდზე ჩასაწერ ფაილს; აირჩიეთ სხვა სახელი"
+# After the pages and size of a protected file that may lose no whole page.
+DAMAGE_REPAIRED = "გვერდების შიგნით დაზიანება სწორდება, მაგრამ მთელი გვერდის დაკარგვისას ფაილი იკარგება"
+# What a document without a name is called.
+NO_NAME = "(უსახელო)"
+# A document whose file was recovered and matches its fingerprint.
+VERIFIED = "ფაილი აღდგენილი და შემოწმებულია"
+# The bottom bar while scans are being read and the document has nothing else to say.
+WORKING = "მუშავდება…"
+# The bar while a document is repaired and checked in the background.
+REPAIRING = "მიმდინარეობს გამოსწორება და ანაბეჭდთან შედარება…"
+# Why a page whose data says it repairs itself gave no data to repair with.
+NO_PAGE_DATA = "ამ გვერდის მონაცემების წაკითხვა ვერ მოხერხდა"
+PREVIEW_LOADING = "იტვირთება…"
+# A scan the ordinary reader could not read, while the slower reader tries it.
+READING_COARSE = "დაბალი გარჩევადობის სკანი იკითხება ნელი მეთოდით; ამას დაახლოებით ერთი წუთი სჭირდება"
+# After "too coarse to read": the slower reader could not read the scan either.
+SLOW_TRIED = "დაბალი გარჩევადობის სკანების ნელი მეთოდითაც წაკითხვა ვერ მოხერხდა."
+# A page read by the slower reader: in its detail (made a sentence by "sentence"
+# below), and in its row.
+READ_SLOWLY = "წაკითხულია დაბალი გარჩევადობის სკანების ნელი მეთოდით"
+READ_SLOWLY_ROW = "წაკითხულია ნელი მეთოდით"
+# The step of a scan not started yet.
+WAITING = "რიგში"
+# The choice of language.
+LANGUAGE_MENU = "ენა"
+SYSTEM_LANGUAGE = "როგორც სისტემაში"
+# A phrase made a sentence, where the window shows it as a line of its own after
+# others (a detail panel, a reason after "was not used"): {words} with the full
+# stop of your language. A phrase that already ends with it is shown as it is.
+sentence = "{words}."
+
+# The terminal messages of optar-gui.
+[gui.cli]
+missing_qt = "optar-gui-ს სჭირდება PySide6: საწყისი კოდის ასლში გაუშვით pip install '.[gui]', ან ჩამოტვირთეთ optar-gui პროექტის Releases განყოფილებიდან."
+description = "ფაილების ქაღალდზე შენახვა და მათი უკან წაკითხვა."
+version_help = "ვერსიის ჩვენება და გასვლა"
+
+[gui.button]
+ok = "OK"
+cancel = "გაუქმება"
+save = "შენახვა"
+yes = "დიახ"
+no = "არა"
+
+# Paper names, by the paper's name in optar.format.
+[gui.paper]
+a4 = "A4"
+letter = "US Letter"
+
+# Dot sizes as their selector names them, by their names in optar.format.
+[gui.dots]
+standard = "სტანდარტული"
+medium = "საშუალო"
+big = "დიდი"
+large = "მსხვილი"
+xlarge = "ძალიან მსხვილი"
+
+# A paper printed with a dot size other than the standard one.
+[gui.paper_dots]
+standard = "{paper}, სტანდარტული წერტილები"
+medium = "{paper}, საშუალო წერტილები"
+big = "{paper}, დიდი წერტილები"
+large = "{paper}, მსხვილი წერტილები"
+xlarge = "{paper}, ძალიან მსხვილი წერტილები"
+
+[gui.protection]
+none = "არა"
+standard = "სტანდარტული"
+high = "მაღალი"
+
+# The health of a page, in its row.
+[gui.health]
+good = "წესრიგშია"
+unreadable = "ვერ იკითხება"
+missing = "აკლია"
+waiting = "რიგში"
+working = "მუშავდება…"
+
+# {n} blocks repaired.
+[gui.health.repaired]
+other = "გამოსწორებულია · {n}"
+
+# {n} blocks lost, which the document's protection repaired.
+[gui.health.restored]
+other = "გამოსწორებულია დოკუმენტის დაცვით · {n}"
+
+# {n} blocks lost.
+[gui.health.damaged]
+other = "დაზიანებულია · დაიკარგა {n}"
+
+# Of a page read by the slower reader.
+[gui.health.dots_corrected]
+other = "შესწორდა {n} წერტილი"
+
+[gui.health.bytes_repaired]
+other = "დოკუმენტის დაცვით გამოსწორდა {n} ბაიტი"
+
+# The document's state in the bottom bar. Phrases are joined with " · ".
+[gui.state]
+checking = "მიმდინარეობს ანაბეჭდთან შედარება…"
+matches = "ემთხვევა ანაბეჭდს"
+mismatch = "არ ემთხვევა ქაღალდზე დაბეჭდილ ფაილის ანაბეჭდს"
+no_tag = "შემოწმება შეუძლებელია (ჭდის გარეშე)"
+# {advice}: rescan advice (whole sentences); {repair}: what the repair did.
+advice_with_repair = "{advice} ({repair})"
+# {good}: the "good" phrase below; {repaired}: the "repaired" phrase below.
+good_with_repaired = "{good} ({repaired})"
+
+# {pages}: the missing pages; single when it names exactly one page, several when more.
+[gui.state.recoverable]
+single = "აღდგენადია: აკლია გვერდი {pages}, შეიძლება აღდგეს დანარჩენი გვერდებით"
+several = "აღდგენადია: აკლია გვერდები {pages}, შეიძლება აღდგეს დანარჩენი გვერდებით"
+
+[gui.state.recovered]
+single = "აღდგენადია: აკლია გვერდი {pages}, აღდგენილია დანარჩენი გვერდებით"
+several = "აღდგენადია: აკლია გვერდები {pages}, აღდგენილია დანარჩენი გვერდებით"
+
+# Every page of a document without a tag is read: one page, or none.
+[gui.state.read]
+other = "წაკითხულია {n} გვერდი"
+
+# Every page of a document without a tag is read: more than one.
+[gui.state.all_read]
+other = "წაკითხულია ყველა {n} გვერდი"
+
+# {good} of {n} pages are good.
+[gui.state.good]
+other = "{n} გვერდიდან {good} წესრიგშია"
+
+# Of the good pages, {n} were repaired.
+[gui.state.repaired]
+other = "{n} გამოსწორებულია"
+
+# {n} pages.
+[gui.state.slow]
+other = "{n} წაკითხულია ნელი მეთოდით"
+
+[gui.state.damaged]
+other = "{n} დაზიანებულია"
+
+[gui.state.unreadable]
+other = "{n} ვერ იკითხება"
+
+[gui.state.missing]
+other = "{n} აკლია"
+
+# A run of pages with the same problem, in a save warning: one page, two pages,
+# or the range {first} to {last} (written with the same range mark as gui.list.range).
+# Runs are joined with "; ".
+[gui.run.missing]
+single = "აკლია გვერდი {first}"
+pair = "აკლია გვერდები {first} და {last}"
+range = "აკლია გვერდები {first}–{last}"
+
+[gui.run.damaged]
+single = "დაზიანებულია გვერდი {first}"
+pair = "დაზიანებულია გვერდები {first} და {last}"
+range = "დაზიანებულია გვერდები {first}–{last}"
+
+[gui.run.unreadable]
+single = "ვერ იკითხება გვერდი {first}"
+pair = "ვერ იკითხება გვერდები {first} და {last}"
+range = "ვერ იკითხება გვერდები {first}–{last}"
+
+[gui.run.reading]
+single = "ჯერ კიდევ იკითხება გვერდი {first}"
+pair = "ჯერ კიდევ იკითხება გვერდები {first} და {last}"
+range = "ჯერ კიდევ იკითხება გვერდები {first}–{last}"
+
+# What saving must confirm first.
+[gui.save]
+# {runs}: the runs above, then perhaps "more" below.
+incomplete = "შენახული ფაილი არასრული იქნება: {runs}."
+# {advice}: rescan advice (whole sentences).
+unrepaired = "{advice} თუ ახლა შეინახავთ, შენახული ფაილი იქნება მხოლოდ ის, რაც აღდგა, და შეიძლება არასწორ ნაწილებს შეიცავდეს."
+checking = "ანაბეჭდთან შედარება ჯერ კიდევ მიმდინარეობს, ამიტომ ჯერ უცნობია, არის თუ არა აღდგენილი ფაილი თავდაპირველი."
+empty = "შესანახი არაფერია."
+mismatch = "აღდგენილი ფაილი არ ემთხვევა ქაღალდზე დაბეჭდილ ფაილის ანაბეჭდს: ზოგიერთი მონაცემი არასწორად დეკოდირდა, ამიტომ ეს თავდაპირველი ფაილი არ არის."
+by_hand = "ეს დოკუმენტი ხელით არის აწყობილი, ამიტომ ფაილის შემოწმება შეუძლებელია და ის ნულებით შეივსება მთელ გვერდამდე."
+untagged = "ამ გვერდებს ჭდე არ აქვს, ამიტომ ფაილის შემოწმება შეუძლებელია და ის ნულებით შეივსება მთელ გვერდამდე."
+
+# After the runs a save warning names: the pages it does not name.
+[gui.save.more]
+other = "და კიდევ {n} გვერდი, რომელიც აკლია ან დაზიანებულია"
+
+# The standing caution over a document without a tag.
+[gui.caution]
+untagged = "ამ გვერდებს ჭდე არ აქვს, ამიტომ ვერ დადასტურდება, რომ ისინი ერთსა და იმავე ამონაბეჭდს ეკუთვნის ან რომ ფაილი სრულია. შენახული ფაილი ნულებით შეივსება."
+by_hand = "ეს დოკუმენტი ხელით არის აწყობილი, ამიტომ ვერ დადასტურდება, რომ გვერდები ერთსა და იმავე ამონაბეჭდს ეკუთვნის ან რომ ფაილი სრულია. შენახული ფაილი ნულებით შეივსება."
+
+# Why a scan is unreadable, by the reason the program gives.
+[gui.reason]
+no_page = "ამ გამოსახულებაში optar-ის გვერდი ვერ მოიძებნა"
+label_unreadable = "გვერდის ბოლოში დაბეჭდილი წარწერის წაკითხვა ვერ მოხერხდა"
+page_number = "წარწერაში მითითებული გვერდის ნომერი ამ დოკუმენტს არ შეესაბამება"
+page_count = "წარწერაში მითითებული გვერდების რაოდენობა შეუძლებელია"
+size_mismatch = "ეს სკანი დოკუმენტისგან განსხვავებული ზომის ქაღალდისაა"
+format_mismatch = "ეს სკანი დეკოდირებულია დოკუმენტისგან განსხვავებული ზომის ქაღალდისთვის"
+# A scan assigned to a page by hand that decodes badly whichever way up it is read.
+not_decodable = "სკანის დეკოდირება ვერ მოხერხდა ვერცერთი ორიენტაციით"
+
+# The detail panel of a page.
+[gui.detail]
+title = "გვერდი {page} {total}-დან"
+repairs = "გამოსწორებები: ერთბიტიანი — {one}, ორბიტიანი — {two}, სამბიტიანი — {three}"
+missing = "ამ გვერდის სკანი არ დამატებულა"
+waiting = "წაკითხვის რიგში"
+unreadable = "ამ სკანის წაკითხვა ვერ მოხერხდა"
+reading = "იკითხება…"
+
+# After "{n} blocks": {n} of them repaired.
+[gui.detail.repaired]
+other = "{n} გამოსწორებულია"
+
+[gui.detail.lost]
+other = "{n} დაკარგულია"
+
+[gui.detail.restored]
+other = "{n} გამოსწორებულია დოკუმენტის დაცვით"
+
+# Rows of the list of scans.
+[gui.row]
+page = "გვერდი {page}"
+spare = "სათადარიგო"
+# After the title of a spare's detail.
+spare_tag = "სათადარიგო"
+spare_not_in_use = "არ გამოიყენება: გვერდი სხვა სკანს იყენებს"
+
+# A group of scans of another printout.
+[gui.row.other_printout]
+other = "სხვა ამონაბეჭდის {n} სკანი, ამ ფაილს არ ეკუთვნის"
+
+# Why a scan chosen to replace page {page} was not used. {name} is its file name.
+[gui.rejected]
+unusable = "სკანი {name} არ იქნა გამოყენებული გვერდ {page}-ისთვის: მისი წაკითხვა ვერ მოხერხდა, ამიტომ გვერდ {page}-ს არსებული სკანი რჩება."
+unusable_reason = "სკანი {name} არ იქნა გამოყენებული გვერდ {page}-ისთვის: მისი წაკითხვა ვერ მოხერხდა ({reason}), ამიტომ გვერდ {page}-ს არსებული სკანი რჩება."
+other_page = "სკანი {name} არ იქნა გამოყენებული გვერდ {page}-ისთვის: ის ამ დოკუმენტის გვერდ {other}-ს ეკუთვნის და იქ არის ჩამოთვლილი."
+# {printout}: name · paper · pages.
+other_document = "სკანი {name} არ იქნა გამოყენებული გვერდ {page}-ისთვის: ის სხვა ამონაბეჭდის გვერდ {other}-ს ეკუთვნის ({printout})."
+# {why}: a sentence.
+not_used = "სკანი {name} არ იქნა გამოყენებული გვერდ {page}-ისთვის. {why}"
+unread = "მისი წაკითხვა ვერ მოხერხდა."
+
+[gui.dialog]
+replace_title = "გვერდ {page}-ის სკანის არჩევა"
+assign_prompt = "ამ დოკუმენტის რომელი გვერდია {name}?"
+# After the page number in the page field.
+of_pages = " {total}-დან"
+scan_filter = "სკანები ({patterns});;ყველა ფაილი (*)"
+
+[gui.message]
+check_failed = "ანაბეჭდთან შედარება ვერ მოხერხდა: {message}"
+save_failed = "ფაილის შენახვა ვერ მოხერხდა: {message}"
+not_regular_file = "{path} ვერ იკითხება: ეს არ არის ჩვეულებრივი ფაილი (საქაღალდე, არხი ან მოწყობილობა)"
+file_unreadable = "ფაილის წაკითხვა ვერ მოხერხდა: {message}"
+created = "შეიქმნა ფაილი {name}"
+create_failed = "PDF-ის შექმნა ვერ მოხერხდა: {message}"
+size_changed = "ჩატვირთვისას გამოსახულების ზომა შეიცვალა"
+preview_failed = "ამ სკანის ჩვენება შეუძლებელია: {message}"
+repair_failed = "გვერდების გამოსწორება ვერ მოხერხდა: {reason}"
+
+[gui.message.saved]
+other = "{n} ბაიტი შენახულია ფაილში {name}"
+
+[gui.message.too_many_pixels]
+other = "{n} პიქსელი აღემატება სკანისთვის დასაშვებ მაქსიმუმს ({limit})"
+
+# Putting a file on paper.
+[gui.write]
+dot_size = "{dots} (დაასკანერეთ {dpi} dpi გარჩევადობით)"
+
+# Of a protected printout of {total} pages.
+[gui.write.promise]
+other = "{total} გვერდიდან შეიძლება დაიკარგოს {n}"
+
+# Why a file cannot be put on paper with the chosen dot size and protection.
+[gui.too_large]
+fits_unprotected = "დაცვის გარეშე ეტევა."
+
+[gui.too_large.protect]
+other = "ეს ფაილი ზედმეტად დიდია, რომ ამ წერტილის ზომით დაცვით ჩაიწეროს: დაცვით შექმნილ ამონაბეჭდს შეიძლება ჰქონდეს მაქსიმუმ {n} გვერდი."
+
+[gui.too_large.pages]
+other = "ეს ფაილი ზედმეტად დიდია, რომ ამ პარამეტრებით ქაღალდზე ჩაიწეროს: ამონაბეჭდს შეიძლება ჰქონდეს მაქსიმუმ {n} გვერდი."
+
+[gui.too_large.fits_dots]
+standard = "ეტევა სტანდარტული წერტილებით."
+medium = "ეტევა საშუალო წერტილებით."
+big = "ეტევა დიდი წერტილებით."
+large = "ეტევა მსხვილი წერტილებით."
+xlarge = "ეტევა ძალიან მსხვილი წერტილებით."
+
+[gui.too_large.fits_either]
+standard = "ეტევა დაცვის გარეშე ან სტანდარტული წერტილებით."
+medium = "ეტევა დაცვის გარეშე ან საშუალო წერტილებით."
+big = "ეტევა დაცვის გარეშე ან დიდი წერტილებით."
+large = "ეტევა დაცვის გარეშე ან მსხვილი წერტილებით."
+xlarge = "ეტევა დაცვის გარეშე ან ძალიან მსხვილი წერტილებით."
+
+# Why the printed name differs from the name typed. Sentences.
+[gui.name]
+dropped = "ეს ნიშნები წარწერის შრიფტში არ არის და არ დაიბეჭდება: {chars}."
+no_room = "ამ წერტილის ზომის წარწერაში სახელისთვის ადგილი არ არის, ამიტომ ის არ დაიბეჭდება."
+cut = "სახელი გვერდისთვის ზედმეტად გრძელია და შემოკლდება."
+stored = "გვერდებს ის არ სჭირდება: სრული სახელი ფაილთან ერთად ინახება."
+printed = "მოგვიანებით გვერდებს სწორედ დაბეჭდილი სახელით გაარჩევთ."
+
+# A scan made at too low a resolution; {measured} is rounded to the nearest 10.
+[gui.coarse]
+page = "ეს გვერდი ზედმეტად დაბალი გარჩევადობით არის დასკანერებული: დაახლოებით {measured} dpi. დაასკანერეთ {needed} dpi გარჩევადობით."
+# The resolution each dot size needs, by its name in optar.format.
+unreadable = "დასკანერებულია დაახლოებით {measured} dpi გარჩევადობით, რაც წასაკითხად ზედმეტად დაბალია. საჭირო გარჩევადობა: სტანდარტული წერტილებისთვის — {standard} dpi, საშუალოსთვის — {medium}, დიდისთვის — {big}, მსხვილისთვის — {large}, ძალიან მსხვილისთვის — {xlarge}."
+
+# The detail of a page read by the slower reader.
+[gui.slow]
+corrected = "გვერდის შიგნით შესწორებული წერტილები: {dots}."
+# {share}: the share below.
+corrected_of = "გვერდის შიგნით შესწორებული წერტილები: {total}-დან {dots} ({share})."
+# {share}: a percentage with one decimal, such as 8.3.
+share = "{share}%"
+share_small = "0,1%-ზე ნაკლები"
+pending = "რასაც ეს მეთოდი არასწორად წაიკითხავს, დოკუმენტის დაცვა ასწორებს; რამდენი ბაიტი გამოასწორა ამ გვერდზე, ნაჩვენები იქნება დოკუმენტის შემოწმების შემდეგ."
+none_wrong = "შემოწმების შემდეგ: ამ გვერდის არცერთი ბაიტი არ იყო არასწორი."
+
+[gui.slow.repaired]
+other = "შემოწმების შემდეგ: ამ გვერდის {n} ბაიტი იყო არასწორი და დოკუმენტის დაცვამ გამოასწორა."
+
+# Each step of a scan's reading.
+[gui.step]
+open = "ფაილის გახსნა"
+find = "გვერდის ძებნა"
+identify = "გვერდის ამოცნობა"
+read = "მონაცემების წაკითხვა"
+slow-sample = "ნელი მეთოდი: ნიმუშების აღება"
+# The {current}th of {total} fits of the slower reader.
+slow-fit = "ნელი მეთოდი: გავლა {current} {total}-დან"
+# A step with no words of its own.
+other = "მუშავდება"
+
+# {done} of {n} scans are read.
+[gui.scans_read]
+other = "{n} სკანიდან წაკითხულია {done}"
+
+# The bar while scans are being read and the document has nothing else to say.
+[gui.scans_read_working]
+other = "მუშავდება… {n} სკანიდან წაკითხულია {done}"
+
+# Lists of page numbers: "1, 3 and 5", "2-4 and 9".
+[gui.list]
+comma = ", "
+and = "{items} და {last}"
+# Three or more pages in a row, from {first} to {last}: your language's range mark.
+range = "{first}–{last}"
+
+# The pages a list does not name.
+[gui.list.more]
+other = "კიდევ {n}"
+
+# What repairing a document did.
+[gui.repair]
+unprotected = "დაბეჭდილია დაცვის გარეშე, ამიტომ ვერაფერი გამოსწორდებოდა"
+too_much = "ყველაზე უარეს ადგილს დასჭირდა {budget}-დან {used}: გამოსასწორებლად ზედმეტად ბევრია"
+
+[gui.repair.bytes]
+other = "გამოსწორებულია {n} ბაიტი"
+
+# How close a repair came to failing: {percent}% of the repair capacity ({used}
+# of {budget}) used at the worst spot.
+[gui.margin]
+wide = "ყველაზე უარესმა ადგილმა გამოსწორების რესურსის {percent}% გამოიყენა ({budget}-დან {used}): დიდი მარაგი"
+moderate = "ყველაზე უარესმა ადგილმა გამოსწორების რესურსის {percent}% გამოიყენა ({budget}-დან {used}): ზომიერი მარაგი"
+close = "ყველაზე უარესმა ადგილმა გამოსწორების რესურსის {percent}% გამოიყენა ({budget}-დან {used}): ზღვართან ახლოს"
+
+# After a repair that could not give the file.
+[gui.rescan]
+nothing = "ფაილის სრულად გამოსწორება ვერ მოხერხდა. გვერდების ხელახლა დასკანერებამ შეიძლება მაინც გააუმჯობესოს შედეგი."
+# {what}: "add" and "rescan" below, or both.
+advice = "ფაილის სრულად გამოსწორება ვერ მოხერხდა. გვერდების დამატებამ ან ხელახლა დასკანერებამ შეიძლება მაინც გააუმჯობესოს შედეგი: {what}."
+both = "{add} და {rescan}"
+
+# {pages}: single when it names exactly one page, several when more.
+[gui.rescan.add]
+single = "დაამატეთ გვერდი {pages}"
+several = "დაამატეთ გვერდები {pages}"
+
+# {pages}: at most three pages, the most damaged first; single or several as above.
+[gui.rescan.worst]
+single = "ხელახლა დაასკანერეთ გვერდი {pages}, რომელიც ყველაზე მეტად არის დაზიანებული"
+several = "ხელახლა დაასკანერეთ გვერდები {pages}, რომლებიც ყველაზე მეტად არის დაზიანებული"

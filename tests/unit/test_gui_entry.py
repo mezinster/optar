@@ -15,6 +15,35 @@ def test_version_and_bad_arguments(capsys):
     assert "--no-such-option" in capsys.readouterr().err
 
 
+def test_help_is_worded_by_the_catalogue(catalogues, monkeypatch, capsys):
+    """optar-gui --help says usage, headings and -h in the chosen language, as optar
+    --help does; a bare % in a translation (argparse expands it) is shown as it is."""
+    catalogues.add("ru", {
+        "language": {"name": "Русский"},
+        "cli": {"argparse": {"usage": "использование: ", "options": "параметры",
+                             "help": "показать справку"}},
+        "gui": {"cli": {"description": "описание", "version_help": "версия на 100%"}},
+    })  # fmt: skip
+    monkeypatch.setenv("OPTAR_LANG", "ru")
+    assert entry.main(["--help"]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith("использование: optar-gui [-h] [--version]\n")
+    assert "\nпараметры:\n" in out and "показать справку" in out
+    assert "описание" in out and "версия на 100%" in out
+    assert "usage" not in out and "options:" not in out
+
+
+def test_help_and_bad_arguments_survive_a_windowed_build_with_no_stdout_or_stderr(
+    catalogues, monkeypatch
+):
+    catalogues.add("ru", {"language": {"name": "Русский"}})
+    monkeypatch.setenv("OPTAR_LANG", "ru")
+    monkeypatch.setattr(sys, "stdout", None)
+    monkeypatch.setattr(sys, "stderr", None)
+    assert entry.main(["--help"]) == 0
+    assert entry.main(["--no-such-option"]) == 2
+
+
 def test_missing_pyside6_says_how_to_get_it(capsys, monkeypatch):
     monkeypatch.setitem(sys.modules, "PySide6", None)  # as if it were not installed
     assert entry.main([]) == 2
@@ -34,3 +63,49 @@ def test_the_entry_point_does_not_import_qt():
     result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == ""
+
+
+def test_main_survives_a_windowed_build_with_no_stderr(catalogues, monkeypatch, capsys):
+    """A windowed build has sys.stderr None: main must still run, and the language
+    is the environment's (the encoding is taken as UTF-8)."""
+    catalogues.add(
+        "ru", {"language": {"name": "Русский"}, "gui": {"cli": {"missing_qt": "Нужен PySide6."}}}
+    )
+    monkeypatch.setenv("OPTAR_LANG", "ru")
+    monkeypatch.setitem(sys.modules, "PySide6", None)
+    monkeypatch.setattr(sys, "stderr", None)
+    assert entry.main(["--version"]) == 0
+    assert entry.main([]) == 2  # print(file=None) goes to stdout, harmlessly
+    out = capsys.readouterr().out
+    assert out == f"optar-gui {__version__}\nНужен PySide6.\n"
+
+
+def test_terminal_messages_follow_the_system_language(monkeypatch, capsys):
+    """As optar does: with no language in the environment, the system's (on
+    Windows the interface language) words optar-gui's terminal messages."""
+    import optar.cli
+    from optar import i18n
+
+    monkeypatch.delenv("OPTAR_LANG")
+    monkeypatch.setattr(optar.cli, "system_language", lambda: "ru_RU")
+    monkeypatch.setitem(sys.modules, "PySide6", None)
+    assert entry.main([]) == 2
+    assert capsys.readouterr().err == i18n.catalogue("ru")["gui.cli.missing_qt"] + "\n"
+
+
+def test_an_unreadable_catalogue_gives_english_terminal_messages(monkeypatch, capsys):
+    from optar import i18n
+
+    real = i18n._read
+
+    def unreadable_ru(code):
+        if code == "ru":
+            raise PermissionError(13, "Permission denied", "ru.toml")
+        return real(code)
+
+    monkeypatch.setattr(i18n, "_cache", {})
+    monkeypatch.setattr(i18n, "_read", unreadable_ru)
+    monkeypatch.setenv("OPTAR_LANG", "ru")
+    monkeypatch.setitem(sys.modules, "PySide6", None)
+    assert entry.main([]) == 2
+    assert capsys.readouterr().err.startswith("optar-gui needs PySide6: ")

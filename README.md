@@ -14,6 +14,8 @@ those pages.
 
 **Documentation: <https://mezinster.github.io/optar/>**
 
+The site is also available in Russian, Ukrainian, Belarusian, Polish, Georgian, Turkish, Italian and Spanish; use the language switcher in its header.
+
 ![The application after reading two pages: both good, the file verified](docs/img/verified.png)
 
 - One A4 page holds about 200,000 bytes with the standard dot size.

@@ -29,10 +29,11 @@ jobs:
           python-version: "3.15"
       - run: pip install -e '.[docs,dev]'
       - run: python tools/translation_status.py --check
-      # The specification against the code. (The tests that compare the
-      # translated pages with the English ones arrive with the translated
-      # application and are added to this step then.)
-      - run: pytest -q tests/unit/test_spec.py
+      # The specification against the code, and the translated pages against
+      # the English ones (ids, code blocks, links, numbers, scripts).
+      - run: >-
+          pytest -q tests/unit/test_spec.py tests/unit/test_doc_translations.py
+          tests/unit/test_translation_text.py
       - run: mkdocs build --strict
       - if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v5

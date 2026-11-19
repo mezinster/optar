@@ -762,7 +762,7 @@ def test_a_slow_page_once_verified_says_how_many_bytes_the_protection_repaired()
         "After verification: 6,912 of this page's bytes were wrong and were repaired "
         "by the document's protection.",
     )
-    assert text.BY_PROTECTION in text.health_label(p, True, 1)
+    assert "by the document's protection" in text.health_label(p, True, 1)
     assert text.health_label(p, True, 1).endswith("1 byte repaired by the document's protection")
     assert text.detail_text(p, None, 3, repaired_bytes=1)[-1] == (
         "After verification: 1 of this page's bytes was wrong and was repaired by the "
@@ -918,3 +918,317 @@ def test_summary_line_does_not_call_slow_read_pages_good():
     )
     every = replace(S(D.INCOMPLETE, 6, 0, 0, 0, 0, 9), slow=6)
     assert text.summary_line(every) == "0 of 6 pages good · 6 read by the slower reader"
+
+
+# --- The wording through the catalogue --------------------------------------------
+
+# Every public string constant of text.py as it was before its wording moved into
+# the catalogue: the English must not change by a byte.
+ENGLISH_CONSTANTS = {
+    'ACTUAL_SIZE': 'Print at actual size (100%), not "fit to page".',
+    'ADD_SCANS': '+ Add scans…',
+    'ADD_SCANS_TITLE': 'Add scans',
+    'ASSIGN_PAGE': 'Assign to page…',
+    'ASSIGN_TITLE': 'Assign to a page',
+    'BEING_READ_SECTION': 'Being read',
+    'CHOOSE_FILE': 'Choose…',
+    'CHOOSE_FILE_TITLE': 'Choose a file to put on paper',
+    'COMPATIBLE': 'Compatible with optar 0.2 and the original optar',
+    'CONFIRM_SAVE_TITLE': 'Save anyway?',
+    'CREATE_PDF': 'Create PDF…',
+    'CREATE_TITLE': 'Save the PDF',
+    'CREATING': 'Creating the PDF…',
+    'DAMAGE_REPAIRED': 'damage within pages is repaired, but losing a whole page loses the file',
+    'DEST_IS_SOURCE': 'the PDF would replace the file being put on paper; choose another name',
+    'DOTS_FIELD': 'Dot size:',
+    'ERROR_TITLE': 'Could not save',
+    'FILE_FIELD': 'File:',
+    'NAME_FIELD': 'Name:',
+    'NOT_PART_OF_THIS_FILE': 'Not part of this file',
+    'NOT_READABLE': 'Not readable',
+    'NO_NAME': '(no name)',
+    'NO_PAGE_DATA': 'The data of this page could not be read',
+    'PAGE_FIELD': 'Page:',
+    'PAPER_FIELD': 'Paper:',
+    'PDF_FILTER': 'PDF (*.pdf);;All files (*)',
+    'PREPARING': 'Reading the file…',
+    'PREVIEW_LOADING': 'Loading…',
+    'PRINTS_AS_FIELD': 'Prints as:',
+    'PROTECT_FIELD': 'Protection:',
+    'READING_COARSE': 'Reading a coarse scan with the slower reader; this takes about a minute',
+    'READ_SLOWLY': 'Read by the slower reader for coarse scans',
+    'READ_SLOWLY_ROW': 'Read by the slower reader',
+    'READ_TAB': 'Read from paper',
+    'REMOVE_SCAN': 'Remove',
+    'REPAIRING': 'Repairing and checking the fingerprint…',
+    'REPLACE_REJECTED_TITLE': 'Scan not used',
+    'REPLACE_SCAN': 'Replace scan…',
+    'SAVE_AFTER_CLOSE': 'the window has been closed, so nothing more can be saved',
+    'SAVE_FILE': 'Save file…',
+    'SAVE_RUNNING': 'a save is already running',
+    'SAVE_TITLE': 'Save the recovered file',
+    'SLOW_TRIED': 'The slower reader for coarse scans was tried too, and could not read it.',
+    'START_BY_HAND': 'Start a document by hand…',
+    'START_BY_HAND_PROMPT': (
+        'No scan could be identified. Give the paper and the number of pages of the '
+        'printout, then assign each scan to its page.'
+    ),
+    'START_BY_HAND_TITLE': 'Start a document by hand',
+    'STILL_WRITING': (
+        'A file is still being written. Wait until it is finished? If you close now, '
+        'it may not be written.'
+    ),
+    'STILL_WRITING_TITLE': 'Still writing a file',
+    'SWITCH_DOCUMENT': 'Switch to this document',
+    'TOO_LARGE_TO_PROTECT': 'too large to protect',
+    'TOO_MANY_PAGES': 'too many pages',
+    'TOTAL_FIELD': 'Pages:',
+    'USE_SPARE': 'Use this scan',
+    'VERIFIED': 'File recovered and verified',
+    'WAITING': 'Waiting',
+    'WINDOW_TITLE': 'optar',
+    'WORKING': 'Working…',
+    'WRITE_TAB': 'Put on paper',
+}
+
+
+def test_english_constants_are_unchanged():
+    assert {name: getattr(text, name) for name in ENGLISH_CONSTANTS} == ENGLISH_CONSTANTS
+
+
+def test_text_module_does_not_load_numpy():
+    import subprocess
+    import sys
+
+    code = "import sys, optar_gui.text; print('numpy' in sys.modules)"
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
+    assert out.stdout.strip() == "False"
+
+
+def test_constants_follow_the_language(catalogues):
+    from optar import i18n
+
+    catalogues.add("ru", {"gui": {"READ_TAB": "Чтение"}})
+    i18n.set_language("ru")
+    assert text.READ_TAB == "Чтение"
+    assert text.WRITE_TAB == "Put on paper"  # a key the language lacks: English
+    i18n.set_language("en")
+    assert text.READ_TAB == "Read from paper"
+
+
+def test_a_kept_list_of_formats_is_joined_in_the_language_shown(tmp_path, catalogues):
+    from optar import i18n
+    from optar.errors import OptarError
+    from optar.imageio import read_scan
+
+    (tmp_path / "t.txt").write_text("hello")
+    with pytest.raises(OptarError) as caught:
+        read_scan(tmp_path / "t.txt")
+    words = text.Words.error(caught.value)  # kept while English is the language
+    assert str(words) == str(caught.value)
+    try:
+        for code in ("ru", "pl", "tr"):
+            i18n.set_language(code)
+            assert str(words) == i18n.error_text(caught.value)
+            assert text.error_text(caught.value) == str(words) and " or " not in str(words)
+    finally:
+        i18n.set_language("en")
+    assert str(words) == str(caught.value)
+
+
+def test_unknown_constant_is_an_attribute_error():
+    with pytest.raises(AttributeError):
+        text.NO_SUCH_NAME  # noqa: B018
+    with pytest.raises(AttributeError):
+        text.no_such_function  # noqa: B018
+    assert not hasattr(text, "_PRIVATE")
+
+
+def test_a_broken_constant_translation_names_its_key(catalogues):
+    from optar import i18n
+
+    catalogues.add("ru", {"gui": {"READ_TAB": "Чтение {oops}"}})
+    i18n.set_language("ru")
+    try:
+        with pytest.raises(KeyError, match="gui.READ_TAB"):
+            text.READ_TAB  # noqa: B018
+    finally:
+        i18n.set_language("en")
+
+
+def test_a_broken_name_translation_names_its_key(catalogues):
+    from optar import i18n
+
+    catalogues.add("ru", {"gui": {"button": {"ok": "ОК {oops}"}}})
+    i18n.set_language("ru")
+    try:
+        with pytest.raises(KeyError, match="gui.button.ok"):
+            text.button("ok")
+        assert text.button("odd") == "odd"  # a name the catalogues lack
+    finally:
+        i18n.set_language("en")
+
+
+def test_a_share_uses_the_languages_decimal_separator(catalogues):
+    from optar import i18n
+
+    catalogues.add("it", {"language": {"name": "Italiano"},
+                          "format": {"group": ".", "decimal": ","}})  # fmt: skip
+    i18n.set_language("it")
+    try:
+        line = text.detail_text(slow_page(1, 83, 1000), None, 1)[2]
+        assert "(8,3%)" in line
+    finally:
+        i18n.set_language("en")
+
+
+def test_error_text_shows_a_library_error_in_the_language(catalogues):
+    from optar import i18n
+    from optar.errors import OptarError, error
+
+    e = error(OptarError, "err.no_pages", "no pages to write")
+    assert text.error_text(e) == "no pages to write"
+    assert text.error_text(ValueError("x {y}")) == "x {y}"
+    catalogues.add("ru", {"err": {"no_pages": "нет страниц"}})
+    i18n.set_language("ru")
+    try:
+        assert text.error_text(e) == "нет страниц"
+    finally:
+        i18n.set_language("en")
+
+
+def test_untrusted_names_with_braces():
+    assert text.saved_message("/x/{0}.bin", 5) == "Saved 5 bytes to {0}.bin"
+    assert "{name}.png" in text.assign_prompt("{name}.png")
+    assert text.created_message("/x/{n}.pdf", 2) == "Created {n}.pdf · 2 pages"
+    assert text.save_failed("{x} {0}") == "The file could not be saved: {x} {0}"
+    assert text.unreadable_reason("odd {reason}") == "odd {reason}"
+
+
+def test_buttons():
+    names = ("ok", "cancel", "save", "yes", "no")
+    assert [text.button(b) for b in names] == ["OK", "Cancel", "Save", "Yes", "No"]
+
+
+def test_language_choice_wording():
+    assert text.LANGUAGE_MENU == "Language"
+    assert text.SYSTEM_LANGUAGE == "System default"
+
+
+def test_every_paper_and_dot_size_has_its_words():
+    from optar.format import DOT_SIZES, LAYOUTS, PAPERS
+
+    assert text.paper_label("a5") == "a5"  # a name the window does not know
+    for paper in PAPERS:
+        assert text.paper_label(paper) != paper
+    for (paper, _dots), layout in LAYOUTS.items():
+        assert text.paper_name(layout.fmt.to_string()).startswith(text.paper_label(paper))
+    base = text.too_large(text.TOO_MANY_PAGES, 9)
+    for dots in DOT_SIZES:
+        assert dots not in text.dot_size_label(dots, 600)
+        for unprotected_fits in (False, True):
+            fits = text.too_large(text.TOO_MANY_PAGES, 9, unprotected_fits, dots)
+            assert fits.startswith(base + " ") and dots not in fits[len(base):]
+    for protect in ("none", "standard", "high"):
+        assert text.protection_label(protect) != protect
+
+
+# Joiners of finished phrases: the only literals of text.py with a space that are
+# not wording.
+JOINERS = {" · ", "; ", " — ", " ", "    "}
+# Codes compared by value (``work.PrintPlan.too_large``), never shown: they must
+# not change with the language.
+CODES = {"too many pages", "too large to protect"}
+
+
+def test_text_source_holds_no_wording():
+    import ast
+    from pathlib import Path
+
+    tree = ast.parse(Path(text.__file__).read_text(encoding="utf-8"))
+    docstrings = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.FunctionDef, ast.ClassDef)) and node.body:
+            first = node.body[0]
+            if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant):
+                docstrings.add(id(first.value))
+    wording = [
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and id(node) not in docstrings
+        and " " in node.value
+        and node.value not in JOINERS | CODES
+    ]
+    assert wording == []
+
+
+# --- Templates other grammars can fill -------------------------------------------
+
+
+def test_a_page_list_chooses_single_or_several_by_how_many_it_names(catalogues):
+    """Not by the plural rule: in Russian the form for 1 also serves 21."""
+    from optar import i18n
+
+    catalogues.add("ru", {
+        "language": {"name": "Русский"}, "format": {"group": " "},
+        "gui": {
+            "state": {"recoverable": {"single": "ОДНА {pages}", "several": "НЕСК {pages}"}},
+            "rescan": {"add": {"single": "одна {pages}", "several": "неск {pages}"},
+                       "advice": "{what}"},
+        },
+    })  # fmt: skip
+    i18n.set_language("ru")
+    try:
+        assert text.summary_line(v1_summary(D.RECOVERABLE, None, (3,))) == "ОДНА 3"
+        twenty_one = tuple(range(1, 43, 2))  # 21 pages, none in a row
+        line = text.summary_line(v1_summary(D.RECOVERABLE, None, twenty_one))
+        assert line.startswith("НЕСК 1, 3, ")
+        assert text.rescan_advice(unwrapped(data=None, missing=twenty_one)).startswith("неск ")
+        assert text.rescan_advice(unwrapped(data=None, missing=(21,))) == "одна 21"
+    finally:
+        i18n.set_language("en")
+
+
+def test_a_range_of_pages_is_written_by_the_catalogue(catalogues):
+    from optar import i18n
+
+    assert plain(text.rescan_advice(unwrapped(data=None, missing=(2, 3, 4, 9)))).endswith(
+        "add pages 2-4 and 9."
+    )
+    catalogues.add("ru", {"gui": {"list": {"range": "{first}–{last}"}}})
+    i18n.set_language("ru")
+    try:
+        advice = text.rescan_advice(unwrapped(data=None, missing=(2, 3, 4, 9)))
+        assert "2–4 and 9" in advice
+    finally:
+        i18n.set_language("en")
+
+
+def test_a_sentence_ends_with_the_languages_full_stop(catalogues):
+    from optar import i18n
+
+    scan = ScanView(4, "/x/coarse.png", "working", None, None, "")
+    catalogues.add("ka", {"gui": {"sentence": "{words}!", "rejected": {"unread": "Nope!"}}})
+    i18n.set_language("ka")
+    try:
+        assert text.being_read_detail(scan, None) == ("coarse.png", "Waiting!")
+        detail = text.being_read_detail(scan, Progress("slow-sample", 0, 1, 0.1))
+        assert detail[-1].endswith("about a minute!")
+        rejected = text.replace_rejected(2, Fit.UNREADABLE, scan)
+        assert rejected.endswith("page 2. Nope!")  # already a sentence: not stopped twice
+    finally:
+        i18n.set_language("en")
+
+
+def test_the_version_help_escapes_a_bare_percent_for_argparse(catalogues):
+    from optar import i18n
+
+    catalogues.add("ru", {"gui": {"cli": {"version_help": "100%"}}})
+    i18n.set_language("ru")
+    try:
+        assert text.cli_version_help() == "100%%"
+    finally:
+        i18n.set_language("en")
+    assert text.cli_version_help() == "print the version and exit"

@@ -24,7 +24,7 @@ from optar.decoder.geometry import Geometry, compute_geometry, find_corners
 from optar.decoder.levels import Levels, analyze_levels
 from optar.decoder.options import DecodeOptions
 from optar.decoder.sample import _cell, _cell_point, sample_bits
-from optar.errors import DecodeError
+from optar.errors import DecodeError, error
 from optar.fec import decode_symbols, encode_symbols
 from optar.format import PageFormat
 
@@ -95,15 +95,20 @@ class DecodeResult:
 def _check_image(image: np.ndarray, fmt: PageFormat) -> np.ndarray:
     image = np.asarray(image)
     if image.ndim != 2 or image.dtype != np.uint8:
-        raise DecodeError(
-            f"scan must be a 2-D uint8 grey image, got shape {image.shape} dtype {image.dtype}"
+        raise error(
+            DecodeError, "err.scan_not_grey",
+            "scan must be a 2-D uint8 grey image, got shape {shape} dtype {dtype}",
+            shape=image.shape, dtype=image.dtype,
         )
     if image.size == 0:
-        raise DecodeError("scan is empty")
+        raise error(DecodeError, "err.scan_empty", "scan is empty")
     h, w = image.shape
     if w < fmt.width or h < fmt.height:
-        raise DecodeError(
-            f"scan of {w} x {h} pixels is smaller than the page format's {fmt.width} x {fmt.height}"
+        raise error(
+            DecodeError, "err.scan_too_small",
+            "scan of {width} x {height} pixels is smaller than the page format's "
+            "{page_width} x {page_height}",
+            width=w, height=h, page_width=fmt.width, page_height=fmt.height,
         )
     return image
 
@@ -157,9 +162,14 @@ def locate_page(
     try:
         geom = compute_geometry(corners, fmt, opts)
     except ZeroDivisionError:
-        raise DecodeError("page corners are degenerate (they coincide)") from None
+        raise error(
+            DecodeError, "err.corners_coincide", "page corners are degenerate (they coincide)"
+        ) from None
     if geom.chalf <= 0:
-        raise DecodeError("page found in the scan is too small to locate its crosses")
+        raise error(
+            DecodeError, "err.page_too_small",
+            "page found in the scan is too small to locate its crosses",
+        )
     positions, cutlevels = sync_crosses(cleaned, geom, fmt, levels, opts)
     return PageGrid(fmt, opts, cleaned, levels, geom, positions, cutlevels)
 

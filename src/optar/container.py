@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from optar.encoder import MAX_PAGES
-from optar.errors import FormatError, OptarError
+from optar.errors import FormatError, OptarError, error
 from optar.format import (
     CODEWORD,
     CONTAINER_VERSION,
@@ -81,7 +81,10 @@ def fingerprint(data: bytes) -> bytes:
 def _check_parity(parity: int) -> None:
     if parity not in PARITY.values():
         known = ", ".join(str(v) for v in PARITY.values())
-        raise FormatError(f"parity must be one of {known}, not {parity!r}")
+        raise error(
+            FormatError, "err.unknown_parity", "parity must be one of {known}, not {parity}",
+            known=known, parity=repr(parity),
+        )
 
 
 @dataclass(frozen=True)
@@ -169,7 +172,10 @@ def plan_for(total: int, fmt: PageFormat, parity: int) -> Plan:
     _check_parity(parity)
     page_bytes = fmt.net_bits // 8
     if page_bytes // HEADER_COPIES < HEADER_SIZE:
-        raise FormatError(f"page format {fmt.to_string()} is too small for the container")
+        raise error(
+            FormatError, "err.format_too_small",
+            "page format {format} is too small for the container", format=fmt.to_string(),
+        )
     page_body = page_bytes - HEADER_COPIES * HEADER_SIZE
     m = total * page_body // CODEWORD
     return Plan(
@@ -195,11 +201,15 @@ def plan(size: int, name: str, fmt: PageFormat, parity: int) -> Plan:
     m = -(-need // k)
     total = max(1, -(-(m * CODEWORD) // probe.page_body))
     if total > MAX_PAGES:
-        raise OptarError(f"too many pages: {total} needed, at most {MAX_PAGES}")
+        raise error(
+            OptarError, "err.too_many_pages", "too many pages: {total} needed, at most {limit}",
+            total=total, limit=MAX_PAGES,
+        )
     if parity and total * probe.page_bytes > PROTECTED_MAX_BYTES:
-        raise OptarError(
-            f"too large to protect: {total * probe.page_bytes} bytes on paper, "
-            f"at most {PROTECTED_MAX_BYTES}"
+        raise error(
+            OptarError, "err.too_large_to_protect",
+            "too large to protect: {size} bytes on paper, at most {limit}",
+            size=total * probe.page_bytes, limit=PROTECTED_MAX_BYTES,
         )
     return plan_for(total, fmt, parity)
 
@@ -307,7 +317,10 @@ def wrap(data: bytes, name: str, fmt: PageFormat, parity: int) -> bytes:
     # within the last page's net_bits; the last payload must still fit.
     length = p.total * net_bits // 8
     if -(-((p.total - 1) * net_bits + 8 * p.page_bytes) // 8) > length:
-        raise FormatError(f"page format {fmt.to_string()} cannot end a stream on a page")
+        raise error(
+            FormatError, "err.format_cannot_end",
+            "page format {format} cannot end a stream on a page", format=fmt.to_string(),
+        )
     out = np.zeros(length + 2, dtype=np.uint8)
     for index in range(p.total):
         byte, shift = divmod(index * net_bits, 8)
@@ -462,9 +475,11 @@ def unwrap(header: Header, fmt: PageFormat, pages: Mapping[int, PagePayload]) ->
     """
     p = document_plan(header, fmt)
     if p is None:
-        raise FormatError(
-            f"the pages describe a document that cannot exist: {header.total} pages "
-            f"for a file of {header.size} bytes"
+        raise error(
+            FormatError, "err.impossible_document",
+            "the pages describe a document that cannot exist: {total} pages for a file of "
+            "{size} bytes",
+            total=header.total, size=header.size,
         )
     k = CODEWORD - p.parity
     m = p.codewords

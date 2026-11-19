@@ -298,6 +298,12 @@ OUT_OF_RANGE = "page number out of range"
 COUNT_OUT_OF_RANGE = "page count out of range"
 SIZE_MISMATCH = "page size does not match this document"
 FORMAT_MISMATCH = "decoded for another page format"
+# The reason given when a page assigned by hand decodes badly in every rotation.
+NOT_DECODABLE = "could not be decoded in any orientation"
+# The reasons of optar.identify (NO_PAGE, LABEL_UNREADABLE), repeated here because
+# importing optar at run time loads numpy; text.py words all these codes.
+NO_PAGE = "no page found"
+LABEL_UNREADABLE = "label unreadable"
 # The encoder's page limit (optar.encoder.MAX_PAGES), repeated here because
 # importing optar at run time loads numpy.
 MAX_TOTAL_PAGES = 9999
@@ -526,7 +532,9 @@ class Summary:
     protection: int = 0  # version 1: parity bytes per codeword; else 0
     missing_pages: tuple[int, ...] = ()  # version 1: pages giving no data
     repair: Unwrapped | None = None  # version 1: the accepted repair result, if any
-    repair_error: str = ""  # version 1: why the repair job for these pages raised
+    # Version 1: why the repair job for these pages raised, as the caller gave it
+    # (the window gives a value that words itself when shown); "" for none.
+    repair_error: str = ""
     # Of the good pages, those read by the slower reader for coarse scans. That
     # reader counts no repairs, so "good" is not known of them: text.py lists
     # them apart.
@@ -892,7 +900,9 @@ class Document:
         self._changed()
 
     def set_unreadable(self, scan_id: int, reason: str, format: str | None = None) -> None:
-        """Records why the scan could not be read. Without ``format`` this is final
+        """Records why the scan could not be read: a code such as ``OUT_OF_RANGE``, or
+        a value the window words when it shows it; the document only keeps it and
+        never compares it with anything. Without ``format`` this is final
         for the scan itself. With ``format`` only its decode in that format failed:
         the scan keeps its identity, its own page and pages in other formats."""
         s = self._get(scan_id)
@@ -1222,7 +1232,8 @@ class Document:
             self._repair = repair
 
     def fail_repair(self, key: tuple, reason: str) -> None:
-        """Records that the ``RepairJob`` with ``key`` raised, with a plain ``reason``.
+        """Records that the ``RepairJob`` with ``key`` raised, with a ``reason`` the
+        document only keeps (the window's words for the error).
         For the pages it was made for the job is not offered again, the state is
         ``INCOMPLETE`` and ``Summary.repair_error`` is the reason; it counts no longer
         once the pages in use change. A key for other pages is ignored."""

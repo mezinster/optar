@@ -106,3 +106,66 @@ def scan_files(tmp_path):
         return data, paths
 
     return make
+
+
+@pytest.fixture(autouse=True)
+def platform_font(request):
+    """With OPTAR_TEST_FONT_SCALE=1.9 the application font is made that many times as
+    large before each test: it stands in for a platform whose own font is wider than
+    the Linux off-screen one (the Windows job measured 1.6 to 1.9 times), so that the
+    layout tests can be rehearsed for it here. Unset, nothing changes."""
+    scale = float(os.environ.get("OPTAR_TEST_FONT_SCALE") or 1)
+    if scale == 1 or not _HAVE_QT:
+        yield
+        return
+    from PySide6.QtGui import QFont
+
+    qapp = request.getfixturevalue("qapp")
+    font = QFont(qapp.font())
+    wider = QFont(font)
+    wider.setPointSizeF(font.pointSizeF() * scale)
+    qapp.setFont(wider)
+    yield
+    qapp.setFont(font)
+
+
+@pytest.fixture(autouse=True)
+def private_settings(tmp_path, monkeypatch):
+    """The window's settings live under tmp_path, never in the user's own; each test
+    starts in English and leaves it so."""
+    if not _HAVE_QT:
+        yield
+        return
+    from PySide6.QtCore import QLocale, QSettings
+
+    from optar import i18n
+
+    QSettings.setPath(
+        QSettings.Format.IniFormat, QSettings.Scope.UserScope, str(tmp_path / "settings")
+    )
+    monkeypatch.setattr(QLocale, "system", staticmethod(lambda: QLocale("en_US")))
+    yield
+    i18n.set_language("en")
+
+
+MARK = "¤"
+STUB = "it"  # a code the program knows; the real catalogue is replaced by the stub
+STUB_NAME = "Stub"
+
+
+def _marked(node):
+    if isinstance(node, dict):
+        return {key: _marked(value) for key, value in node.items()}
+    return MARK + node if isinstance(node, str) else node
+
+
+@pytest.fixture
+def stub(catalogues):
+    """The marked stand-in language, under the code ``STUB``: English with ``MARK``
+    before every string."""
+    english = catalogues._real("en")
+    data = {k: _marked(v) for k, v in english.items() if k not in ("language", "format")}
+    data["language"] = {"name": STUB_NAME}
+    data["format"] = english["format"]
+    catalogues.add(STUB, data)
+    return STUB

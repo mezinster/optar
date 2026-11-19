@@ -63,14 +63,25 @@ own reading.
 from __future__ import annotations
 
 import dataclasses
+import html
 import os
 import threading
 import time
 from collections.abc import Callable, Iterable, Iterator
 from functools import partial
 
-from PySide6.QtCore import QAbstractListModel, QModelIndex, QObject, QRect, Qt, QTimer, Signal
+from PySide6.QtCore import (
+    QAbstractListModel,
+    QModelIndex,
+    QObject,
+    QRect,
+    QSize,
+    Qt,
+    QTimer,
+    Signal,
+)
 from PySide6.QtGui import QFont, QFontMetrics, QPainter, QPalette
+from PySide6.QtGui import Qt as GuiQt  # Qt.mightBeRichText lives in this one
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -107,6 +118,7 @@ from optar_gui.document import (
     expand_paths,
     paper_for_size,
 )
+from optar_gui.flow import FlowLayout
 from optar_gui.jobs import JobRunner
 from optar_gui.preview import ScanPreview
 from optar_gui.work import (
@@ -217,12 +229,15 @@ class ReadController(QObject):
         self._works: dict[tuple[int, str | None], ScanWork] = {}
         self._summary = self._doc.summary()
         self._verdict_key: tuple | None = None  # what the running verdict job hashes
-        self._verdict_error: tuple[tuple, str] | None = None  # (key, message) of a failed job
+        # (key, why) of a failed job; why is a text.Words, worded when shown
+        self._verdict_error: tuple[tuple, text.Words] | None = None
         self._repair_key: tuple | None = None  # what the running repair job repairs
         self._save_path: str | None = None  # while a save runs
         self._save_stop = threading.Event()
         self._closed = False
-        self.note = ""  # what the last save did, until the document changes
+        # What the last save did (a text.Words, worded when shown), until the
+        # document changes; "" for none.
+        self.note: text.Words | str = ""
         self.refreshes = 0  # for tests: how often ``changed`` was emitted
 
     # --- Reading -----------------------------------------------------------------
@@ -254,8 +269,8 @@ class ReadController(QObject):
 
     @property
     def check_error(self) -> str:
-        """Why the check of the current pages failed, or ""."""
-        return self._verdict_error[1] if self._verdict_error is not None else ""
+        """Why the check of the current pages failed, or "", in the current language."""
+        return str(self._verdict_error[1]) if self._verdict_error is not None else ""
 
     def summary_text(self) -> str:
         """The bottom bar's text."""
@@ -266,7 +281,7 @@ class ReadController(QObject):
             line = text.with_reading(text.REPAIRING, s)
         else:
             line = text.summary_line(self._summary)
-        return text.summary_bar(line, self.note)
+        return text.summary_bar(line, str(self.note))
 
     @property
     def saving(self) -> bool:
@@ -639,12 +654,12 @@ class ReadController(QObject):
             return
         if work.header is not None and work.info.tag is None:  # a version-1 page
             if work.payload is None:
-                doc.set_unreadable(scan_id, work.reason or text.NO_PAGE_DATA)
+                doc.set_unreadable(scan_id, work.reason or text.Words.constant("NO_PAGE_DATA"))
                 return
             doc.set_payload(scan_id, work.payload)
         doc.set_outcome(scan_id, work.outcome)
 
-    def _on_failed(self, scan_id: int, message: str) -> None:
+    def _on_failed(self, scan_id: int, message: text.Words) -> None:
         fmt = self._decoding_in.pop(scan_id, None)
         try:
             self._doc.set_working(scan_id, False)
@@ -669,11 +684,11 @@ class ReadController(QObject):
             self._schedule(changed=False)  # a verdict does not change the pages
             return
         path, self._save_path = self._save_path, None
-        self.note = text.saved_message(path, result)
+        self.note = text.Words(text.saved_message, path, result)
         self.refresh()
         self.save_finished.emit(path, result)
 
-    def _on_task_failed(self, job: int, message: str) -> None:
+    def _on_task_failed(self, job: int, message: text.Words) -> None:
         if job == _REPAIR_JOB:
             key, self._repair_key = self._repair_key, None
             if key is not None:
@@ -688,14 +703,25 @@ class ReadController(QObject):
             return
         self._save_path = None
         self.refresh()
-        self.save_failed.emit(message)
+        self.save_failed.emit(str(message))  # shown at once, in a message box
 
 
 # A row of the list: (kind, key, text, bar). ``bar`` is (fraction, name, step) for
 # a scan being read, else None.
 _Line = tuple[str, object, str, "tuple[float, str, str] | None"]
+# The list's share of the tab's width at first, in percent; the user may move the splitter.
+LIST_SHARE = 38
 # The model's role for a being-read row's (name, step), which the delegate draws.
 _PARTS_ROLE = Qt.ItemDataRole.UserRole + 2
+
+
+def _plain_tooltip(label: str) -> str:
+    """The row's full text as a tooltip that Qt shows as plain text: Qt shows a
+    tooltip as rich text when it looks like it (``<b>x</b>.png``), and file names and
+    label text are untrusted, so such a text is escaped and marked as rich text."""
+    if GuiQt.mightBeRichText(label):
+        return f'<qt><p style="white-space:pre-wrap">{html.escape(label, quote=False)}</p></qt>'
+    return label
 
 
 class _RowModel(QAbstractListModel):
@@ -726,6 +752,8 @@ class _RowModel(QAbstractListModel):
         kind, _key, label, bar = self._rows[index.row()]
         if role == Qt.ItemDataRole.DisplayRole:
             return label
+        if role == Qt.ItemDataRole.ToolTipRole:
+            return _plain_tooltip(label)
         if role == Qt.ItemDataRole.FontRole and kind in ("title", "section"):
             return self._bold
         if role == FRACTION_ROLE and bar is not None:
@@ -786,6 +814,7 @@ class _RowDelegate(QStyledItemDelegate):
     # this share of the row; a longer name is elided in the middle.
     NAME_SHARE = 0.45
     GAP = 8
+    LINE_GAP = 2  # between the two lines of a scan being read
     # Room added to a name's measured width, so that text measured to fit is not
     # elided for a fraction of a pixel.
     _SLACK = 2
@@ -804,6 +833,62 @@ class _RowDelegate(QStyledItemDelegate):
             self._widest = (key, widest + self._SLACK)
         return self._widest[1]
 
+    @staticmethod
+    def _text_area(option: QStyleOptionViewItem, widget: QWidget | None) -> QRect:
+        style = widget.style() if widget is not None else QApplication.style()
+        area = style.subElementRect(QStyle.SubElement.SE_ItemViewItemText, option, widget)
+        return area.adjusted(2, 0, -2, 0)
+
+    @staticmethod
+    def _step_height(metrics, step: str, width: int) -> int:
+        """The height of the step wrapped at ``width``: one line, or more when the
+        font and the language make it longer than the row is wide (never elided)."""
+        flags = Qt.TextFlag.TextWordWrap | Qt.AlignmentFlag.AlignLeft
+        wrapped = metrics.boundingRect(QRect(0, 0, max(width, 1), 0), flags, step).height()
+        return max(metrics.height(), wrapped)
+
+    def _row_height(self, metrics, step: str, width: int) -> int:
+        return metrics.height() + self.LINE_GAP + self._step_height(metrics, step, width) + 2
+
+    def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex) -> QSize:  # noqa: N802
+        """The width is the list's own (a long row is elided, never scrolled); a scan
+        being read is two lines high or more: its name and bar, then its step, wrapped
+        at the list's width."""
+        size = super().sizeHint(option, index)
+        size.setWidth(0)
+        parts = index.data(_PARTS_ROLE)
+        if index.data(FRACTION_ROLE) is not None and parts is not None:
+            widget = option.widget
+            opt = QStyleOptionViewItem(option)
+            self.initStyleOption(opt, index)
+            opt.text = ""  # as paint measures it
+            if isinstance(widget, QAbstractItemView):
+                opt.rect = QRect(0, 0, widget.viewport().width(), size.height())
+            width = self._text_area(opt, widget).width()
+            size.setHeight(self._row_height(QFontMetrics(option.font), parts[1], width))
+        return size
+
+    def layout(
+        self, area: QRect, metrics, name: str, column: int, step: str = ""
+    ) -> tuple[QRect, QRect, QRect]:
+        """The rectangles of the name, the bar and the step of a scan being read in
+        ``area``: the name and the bar share the first line, the step has the whole
+        width of the lines below, as many as it needs wrapped."""
+        line = metrics.height()
+        step_height = self._step_height(metrics, step, area.width())
+        top = area.top() + max(0, (area.height() - line - step_height - self.LINE_GAP) // 2)
+        width = area.width()
+        column = max(column, metrics.horizontalAdvance(name) + self._SLACK)
+        name_width = max(0, min(column, int(width * self.NAME_SHARE)))
+        bar_width = max(0, min(self.BAR_WIDTH, int(width * self.BAR_SHARE)))
+        name_rect = QRect(area.left(), top, name_width, line)
+        bar_height = max(4, line - 4)
+        bar_rect = QRect(
+            name_rect.right() + 1 + self.GAP, top + (line - bar_height) // 2, bar_width, bar_height
+        )
+        step_rect = QRect(area.left(), top + line + self.LINE_GAP, width, step_height)
+        return name_rect, bar_rect, step_rect
+
     def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex) -> None:
         fraction = index.data(FRACTION_ROLE)
         parts = index.data(_PARTS_ROLE)
@@ -817,14 +902,11 @@ class _RowDelegate(QStyledItemDelegate):
         style = widget.style() if widget is not None else QApplication.style()
         opt.text = ""  # the row's panel, selection and focus only
         style.drawControl(QStyle.ControlElement.CE_ItemViewItem, opt, painter, widget)
-        area = style.subElementRect(QStyle.SubElement.SE_ItemViewItemText, opt, widget)
-        area = area.adjusted(2, 0, -2, 0)
+        area = self._text_area(opt, widget)
         metrics = QFontMetrics(opt.font)
-        width = area.width()
-        column = max(self._name_column(index, metrics, opt.font),
-                     metrics.horizontalAdvance(name) + self._SLACK)  # fmt: skip
-        name_width = max(0, min(column, int(width * self.NAME_SHARE)))
-        bar_width = max(0, min(self.BAR_WIDTH, int(width * self.BAR_SHARE)))
+        name_rect, bar_rect, step_rect = self.layout(
+            area, metrics, name, self._name_column(index, metrics, opt.font), step
+        )
         selected = bool(opt.state & QStyle.StateFlag.State_Selected)
         role = QPalette.ColorRole.HighlightedText if selected else QPalette.ColorRole.Text
         group = (
@@ -837,12 +919,11 @@ class _RowDelegate(QStyledItemDelegate):
             painter.setFont(opt.font)
             painter.setPen(opt.palette.color(group, role))
             align = Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft
-            name_rect = QRect(area.left(), area.top(), name_width, area.height())
             painter.drawText(
-                name_rect, align, metrics.elidedText(name, Qt.TextElideMode.ElideMiddle, name_width)
+                name_rect,
+                align,
+                metrics.elidedText(name, Qt.TextElideMode.ElideMiddle, name_rect.width()),
             )
-            left = name_rect.right() + 1 + self.GAP
-            height = max(4, min(area.height() - 6, metrics.height()))
             bar = QStyleOptionProgressBar()
             if widget is not None:
                 bar.initFrom(widget)
@@ -850,17 +931,15 @@ class _RowDelegate(QStyledItemDelegate):
             bar.state = enabled | QStyle.StateFlag.State_Horizontal
             bar.palette = opt.palette
             bar.direction = opt.direction
-            bar.rect = QRect(left, area.top() + (area.height() - height) // 2, bar_width, height)
+            bar.rect = bar_rect
             bar.minimum, bar.maximum = 0, 1000
             bar.progress = round(min(max(float(fraction), 0.0), 1.0) * 1000)
             bar.textVisible = False
             style.drawControl(QStyle.ControlElement.CE_ProgressBar, bar, painter, widget)
-            left += bar_width + self.GAP
-            step_rect = QRect(left, area.top(), max(0, area.right() + 1 - left), area.height())
             painter.drawText(
                 step_rect,
-                align,
-                metrics.elidedText(step, Qt.TextElideMode.ElideRight, step_rect.width()),
+                Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft | Qt.TextFlag.TextWordWrap,
+                step,
             )
         finally:
             painter.restore()
@@ -887,11 +966,14 @@ class ReadTab(QWidget):
         self.page_list = QListView(objectName="pageList")
         self.page_list.setModel(self._model)
         self.page_list.setItemDelegate(_RowDelegate(self.page_list))
-        self.page_list.setUniformItemSizes(True)
+        self.page_list.setUniformItemSizes(False)  # a scan being read is two lines high
+        self.page_list.setTextElideMode(Qt.TextElideMode.ElideMiddle)
+        self.page_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.page_list.setMouseTracking(True)
         self.page_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.page_list.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.page_list.selectionModel().selectionChanged.connect(self._on_selection)
-        self.add_button = QPushButton(text.ADD_SCANS, objectName="addButton")
+        self.add_button = QPushButton(objectName="addButton")
         self.add_button.clicked.connect(self._on_add)
 
         self.preview = ScanPreview(self.controller.preview_runner)
@@ -900,24 +982,26 @@ class ReadTab(QWidget):
         self.detail.setTextFormat(Qt.TextFormat.PlainText)
         self.detail.setWordWrap(True)
         self.detail.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.remove_button = QPushButton(text.REMOVE_SCAN, objectName="removeButton")
+        self.remove_button = QPushButton(objectName="removeButton")
         self.remove_button.clicked.connect(self._on_remove)
-        self.replace_button = QPushButton(text.REPLACE_SCAN, objectName="replaceButton")
+        self.replace_button = QPushButton(objectName="replaceButton")
         self.replace_button.clicked.connect(self._on_replace)
-        self.use_spare_button = QPushButton(text.USE_SPARE, objectName="useSpareButton")
+        self.use_spare_button = QPushButton(objectName="useSpareButton")
         self.use_spare_button.clicked.connect(self._on_use_spare)
-        self.switch_button = QPushButton(text.SWITCH_DOCUMENT, objectName="switchButton")
+        self.switch_button = QPushButton(objectName="switchButton")
         self.switch_button.clicked.connect(self._on_switch)
-        self.assign_button = QPushButton(text.ASSIGN_PAGE, objectName="assignButton")
+        self.assign_button = QPushButton(objectName="assignButton")
         self.assign_button.clicked.connect(self._on_assign)
-        self.start_by_hand_button = QPushButton(
-            text.START_BY_HAND, objectName="startByHandButton"
-        )
+        self.start_by_hand_button = QPushButton(objectName="startByHandButton")
         self.start_by_hand_button.clicked.connect(self._on_start_by_hand)
 
         self.summary = QLabel(objectName="summaryLabel")
         self.summary.setTextFormat(Qt.TextFormat.PlainText)
-        self.save_button = QPushButton(text.SAVE_FILE, objectName="saveButton")
+        # It wraps and never sets the window's minimum width: a saved file's note,
+        # a long translation or a long file name (whole in the tooltip) cannot widen it.
+        self.summary.setWordWrap(True)
+        self.summary.setMinimumWidth(1)
+        self.save_button = QPushButton(objectName="saveButton")
         self.save_button.clicked.connect(self._on_save)
 
         left = QWidget()
@@ -931,7 +1015,7 @@ class ReadTab(QWidget):
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.addWidget(self.preview, 1)
         right_layout.addWidget(self.detail)
-        buttons = QHBoxLayout()
+        buttons = FlowLayout()  # wraps, so the buttons never fix the pane's minimum width
         for button in (
             self.replace_button,
             self.use_spare_button,
@@ -940,12 +1024,15 @@ class ReadTab(QWidget):
             self.remove_button,
         ):
             buttons.addWidget(button)
-        buttons.addStretch(1)
         right_layout.addLayout(buttons)
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(left)
         splitter.addWidget(right)
-        splitter.setStretchFactor(1, 1)
+        splitter.setChildrenCollapsible(False)
+        splitter.setStretchFactor(0, LIST_SHARE)
+        splitter.setStretchFactor(1, 100 - LIST_SHARE)
+        self.splitter = splitter
+        self._shared = False  # whether the list has been given its share yet
         bar = QHBoxLayout()
         bar.addWidget(self.summary, 1)
         bar.addWidget(self.save_button)
@@ -958,6 +1045,44 @@ class ReadTab(QWidget):
         self.controller.changed.connect(self.refresh)
         self.controller.save_failed.connect(self._on_save_failed)
         self.controller.replace_rejected.connect(self._on_replace_rejected)
+        self.retranslate()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._share_list()
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        super().showEvent(event)
+        # A tab first shown later (another tab was current) is laid out only after this.
+        QTimer.singleShot(0, self._share_list)
+
+    def _share_list(self) -> None:
+        """The first time the tab is seen with a size the list gets its share of the width
+        (a splitter otherwise starts from its panes' size hints, which favour the preview,
+        and grows both by their stretch); after that the splitter is the user's."""
+        width = self.splitter.width()
+        if not self._shared and self.isVisible() and width > 1:
+            self._shared = True
+            first = width * LIST_SHARE // 100
+            self.splitter.setSizes([first, width - first])
+
+    def retranslate(self) -> None:
+        """Sets all of the tab's wording in the current language: its buttons, then,
+        through ``refresh``, the list, the detail, the caution and the bar, and the
+        preview's message. Called when the tab is made and when the language changes;
+        the selection, the scroll position and running work are left as they are."""
+        for button, words in (
+            (self.add_button, text.ADD_SCANS),
+            (self.start_by_hand_button, text.START_BY_HAND),
+            (self.replace_button, text.REPLACE_SCAN),
+            (self.use_spare_button, text.USE_SPARE),
+            (self.switch_button, text.SWITCH_DOCUMENT),
+            (self.assign_button, text.ASSIGN_PAGE),
+            (self.remove_button, text.REMOVE_SCAN),
+            (self.save_button, text.SAVE_FILE),
+        ):
+            button.setText(words)
+        self.preview.retranslate()
         self.refresh()
 
     # --- Interaction points tests replace -------------------------------------------
@@ -1051,7 +1176,9 @@ class ReadTab(QWidget):
         caution = text.caution(doc)
         self.caution.setText(caution or "")
         self.caution.setVisible(caution is not None)
-        self.summary.setText(self.controller.summary_text())
+        bar_text = self.controller.summary_text()
+        self.summary.setText(bar_text)
+        self.summary.setToolTip(_plain_tooltip(bar_text))
         self.save_button.setEnabled(self.controller.can_save)
         self.start_by_hand_button.setEnabled(doc.can_start_by_hand)
         self._show_selection()

@@ -60,7 +60,7 @@ from optar.errors import OptarError
 from optar.imageio import MAX_SCAN_PIXELS, SCAN_FORMATS, scan_pixel_limit
 from optar_gui import text
 from optar_gui.jobs import JobRunner
-from optar_gui.work import Cancelled, regular_file
+from optar_gui.work import Cancelled, WindowError, regular_file
 
 __all__ = [
     "MARK_SIZE",
@@ -184,7 +184,9 @@ def load_for_preview(path: str, rotation: int, cancelled: Callable[[], bool]) ->
             im = Image.open(path, formats=SCAN_FORMATS)
             width, height = im.size
             if width * height > MAX_SCAN_PIXELS:
-                raise OptarError(text.too_large_to_show(width * height, MAX_SCAN_PIXELS))
+                raise WindowError(
+                    text.Words(text.too_large_to_show, width * height, MAX_SCAN_PIXELS)
+                )
             drafted = 1  # JPEG decodes straight to a smaller size; others ignore it
             factor = _reduction(width, height)
             if factor > 1:
@@ -199,12 +201,12 @@ def load_for_preview(path: str, rotation: int, cancelled: Callable[[], bool]) ->
             # Pillow may turn the image while loading it (TIFF orientation);
             # read_scan, and so the marks, see the loaded image.
             if im.width * im.height != width * height:
-                raise OptarError(text.size_changed())
+                raise WindowError(text.Words(text.size_changed))
             width, height = im.size
         elif im.size != (_ceil_div(width, drafted), _ceil_div(height, drafted)):
             # A JPEG decoded smaller must be exactly the reduction draft reported,
             # or its pixels would be drawn over the wrong scan pixels.
-            raise OptarError(text.size_changed())
+            raise WindowError(text.Words(text.size_changed))
         _check(cancelled)
         gray, reduced = _gray8(im)
         gray = np.asarray(gray)  # may be ``im`` itself: take the pixels first
@@ -384,7 +386,7 @@ class ScanPreview(QGraphicsView):
         self._size: tuple[int, int] | None = None  # upright scan size, once shown
         self._marks_item: QGraphicsItem | None = None
         self._loading = False
-        self._message = ""
+        self._failure: text.Words | None = None  # why the scan cannot be shown
         self._fitted = True  # whether resizing refits the page
 
     # --- State -------------------------------------------------------------------
@@ -401,7 +403,7 @@ class ScanPreview(QGraphicsView):
     @property
     def message(self) -> str:
         """Why the scan cannot be shown, or ""."""
-        return self._message
+        return str(self._failure) if self._failure is not None else ""
 
     @property
     def mark_count(self) -> int:
@@ -471,7 +473,7 @@ class ScanPreview(QGraphicsView):
         self._size = None
         self._marks_item = None
         self._loading = False
-        self._message = ""
+        self._failure = None
         self._fitted = True
 
     def _set_marks(self, marks: np.ndarray | None) -> None:
@@ -504,13 +506,21 @@ class ScanPreview(QGraphicsView):
         self.fit()
         self.loaded.emit(self._path)
 
-    def _on_failed(self, job: int, message: str) -> None:
+    def _on_failed(self, job: int, message: text.Words) -> None:
         if job != _LOAD_JOB or not self._loading:
             return
         self._loading = False
-        self._message = text.preview_failed(message)
-        self._show_text(self._message)
+        self._failure = text.Words(text.preview_failed, message)
+        self._show_text(self.message)
         self.loaded.emit(self._path)
+
+    def retranslate(self) -> None:
+        """Words the message shown (loading, or why the scan cannot be shown) again,
+        in the current language; a scan shown is left as it is."""
+        if self._loading:
+            self._show_text(text.PREVIEW_LOADING)
+        elif self._failure is not None:
+            self._show_text(self.message)
 
     def _show_text(self, line: str) -> None:
         """Shows only ``line``, at its natural size."""
