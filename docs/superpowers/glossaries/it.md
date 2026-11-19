@@ -28,7 +28,11 @@ from English; the Russian glossary was used only as a model of shape.
 - **Status words** in rows and in the bottom bar are past participles or
   adjectives that agree with the page («Riparata», «Danneggiata», «Mancante»,
   «Illeggibile»), or invariant label forms with a colon («Pagine buone: 4 su
-  6», «Scansioni lette: 3 su 6»), never full sentences.
+  6», «Scansioni lette: 3 su 6»), never full sentences. A phrase the window
+  only ever shows after « · » in the bottom bar starts lower-case, as Italian
+  does mid-line («… · scansioni lette: 3 su 6», «… · stampato senza
+  protezione…»); the row-state labels after «Pagina 3 · » stay capitalised,
+  as labels, and so does «Scansioni» after «Elaborazione…».
 - **Headings of pages and site navigation** use the infinitive or a noun, as
   Italian manuals do («Scrivere un file su carta», «Installazione»).
 - **Articles before a number or a placeholder.** Italian elides the article
@@ -106,7 +110,7 @@ from English; the Russian glossary was used only as a model of shape.
 | margin (wide, moderate, close to the limit) | margine (margine ampio, margine moderato, vicino al limite) | |
 | check the fingerprint, checking | controllare l'impronta, controllo dell'impronta | «Controllo dell'impronta…». Keeps «verific-» free for "verified". |
 | matches / does not match the fingerprint | corrisponde / non corrisponde all'impronta | |
-| identify (a scan), identified | identificare, identificata | «Identificazione della pagina» (the step), «scansione non identificata». |
+| identify (a scan), identified | identificare, identificata | «Identificazione della pagina» (the step), «scansione non identificata». Reserved for the program identifying a scan: the printed name that lets people tell pages apart «permette di riconoscere le pagine» (`gui.name.printed`). |
 | assign (a scan) to a page | assegnare a una pagina | Button «Assegna a una pagina…». |
 | start a document by hand, put together by hand | comporre un documento a mano, composto a mano | One verb for both, so the button and the later caution match. |
 | replace (scan) | sostituire | |
@@ -262,7 +266,7 @@ names it:
 
 Counters whose form is chosen by one number while a participle would agree
 with another use an invariant label form: «Pagine buone: {good} su {n}»,
-«Scansioni lette: {done} su {n}», «pagine lette: solo {read} su {count}».
+«scansioni lette: {done} su {n}», «pagine lette: solo {read} su {count}».
 
 ## Site navigation
 
@@ -330,7 +334,7 @@ there; a page puts them in «caporali»).
 | Recoverable: page 3 missing, can be repaired from the others | Recuperabile: manca la pagina 3, si può ricostruire dalle altre (`gui.state.recoverable`) |
 | Recoverable: page 3 missing, repaired from the others · matches the fingerprint | Recuperabile: manca la pagina 3, ricostruita dalle altre · corrisponde all'impronta (`gui.state.recovered`, `gui.state.matches`) |
 | Working… 3 of 6 scans read | Elaborazione… Scansioni lette: 3 su 6 (`gui.scans_read_working`) |
-| 3 of 6 scans read | Scansioni lette: 3 su 6 (`gui.scans_read`) |
+| 3 of 6 scans read | scansioni lette: 3 su 6 (`gui.scans_read`; only ever after « · », hence lower case) |
 | Checking the fingerprint… | Controllo dell'impronta… (`gui.state.checking`) |
 | All N pages read · cannot be verified (no tag) | Lette tutte le pagine (N) · non verificabile (nessun contrassegno) (`gui.state.all_read`, `gui.state.no_tag`) |
 | 4 of 6 pages good · 1 damaged · 1 missing | Pagine buone: 4 su 6 · 1 danneggiata · 1 mancante (`gui.state.good`, `.damaged`, `.missing`) |

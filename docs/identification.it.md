@@ -85,7 +85,7 @@ Il contrassegno permette all'applicazione di:
   comunque superare il controllo);
 - tagliare il file recuperato alla sua vera dimensione, così che non abbia
   zeri di riempimento;
-- confrontare il file recuperato con l'impronta, che è il controllo finale
+- confrontare il file recuperato con l'impronta, che è la verifica finale
   che il file sia l'originale.
 
 Per stampare senza contrassegno, usa `optar encode --no-tag`. Le pagine che

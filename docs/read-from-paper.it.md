@@ -102,7 +102,7 @@ La barra mostra lo stato dell'intero documento.
 | Non corrisponde all'impronta sulla carta | Tutte le pagine sono state lette, ma il file non è l'originale, perché alcuni dati sono stati decodificati in modo errato. Scansiona di nuovo le pagine, a cominciare da quelle indicate come «Riparata». |
 | Recuperabile: manca la pagina 3, si può ricostruire dalle altre | Un documento con protezione: mancano delle pagine, ma quelle lette dovrebbero bastare a ricostruirle. |
 | Recuperabile: manca la pagina 3, ricostruita dalle altre · corrisponde all'impronta | Questa riparazione è stata eseguita e controllata. Seguono la dimensione e che cosa ha fatto la riparazione. |
-| Elaborazione… Scansioni lette: 3 su 6 | Ci sono ancora scansioni in lettura. Quando il documento ha già uno stato da mostrare, il conteggio lo segue: «File recuperato e verificato · N byte · Scansioni lette: 3 su 6». |
+| Elaborazione… Scansioni lette: 3 su 6 | Ci sono ancora scansioni in lettura. Quando il documento ha già uno stato da mostrare, il conteggio lo segue: «File recuperato e verificato · N byte · scansioni lette: 3 su 6». |
 | Controllo dell'impronta… | Il controllo è in corso in background. |
 | Lette tutte le pagine (N) · non verificabile (nessun contrassegno) | Le pagine vengono da un vecchio programma e non portano nessuna impronta. |
 | Pagine buone: 4 su 6 · 1 danneggiata · 1 mancante | Negli altri casi, un conteggio. |
@@ -117,7 +117,7 @@ indica le pagine da aggiungere o da scansionare di nuovo.
 !!! info "Che cosa significa «verificato»"
     «Verificato» significa sempre che l'impronta del file recuperato
     corrispondeva a quella sulla carta. Non significa mai soltanto che la
-    riparazione non ha segnalato errori.
+    riparazione non ha segnalato alcun fallimento.
 
 ## Salvataggio { #saving }
 

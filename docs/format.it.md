@@ -776,8 +776,8 @@ Il riempimento non porta nulla. Esistono due contenuti, ed entrambi sono validi:
 
 - optar 0.3.0 scriveva byte zero;
 - optar 0.3.1 e successivi scrivono il **flusso di riempimento**: il suo blocco
-  `n`, `n = 0, 1, 2, ...`, è composto dai `PADDING_BLOCK` byte dello SHA-256 di
-  `PADDING_KEY` seguito da `n` come 8 byte, big-endian; il flusso è composto dai
+  `n`, `n = 0, 1, 2, ...`, è composto dai `PADDING_BLOCK` byte dello SHA-256 della
+  sequenza formata da `PADDING_KEY` seguita da `n` come 8 byte, big-endian; il flusso è composto dai
   blocchi concatenati. Il riempimento della regione dei dati è il flusso a
   partire dal suo byte 0; il riempimento alla fine del corpo prosegue il flusso
   dove si era fermato il riempimento della regione dei dati. (I byte zero si
@@ -1155,9 +1155,10 @@ Al decodificatore viene fornito il formato di pagina. Lavora sull'immagine
 diritta.
 
 1. **Livelli di grigio.** Il livello di soglia parte dal valore di grigio medio.
-   Per al massimo 32 volte: `black` è la soglia meno la distanza quadratica
-   media dalla soglia dei pixel che stanno sotto di essa, `white` la soglia più
-   la stessa distanza calcolata per i pixel che stanno sopra; la nuova soglia è
+   Per al massimo 32 volte: `black` è la soglia meno la radice quadrata della
+   media dei quadrati delle distanze dalla soglia dei pixel che stanno sotto di
+   essa, `white` la soglia più la stessa grandezza calcolata per i pixel che
+   stanno sopra; la nuova soglia è
    `sync_white_cut * white + (1 - sync_white_cut) * black`, arrotondata; il
    procedimento si ferma quando la soglia non cambia più. Un secondo livello, la
    soglia di propagazione (*fill cut*), sta a metà tra `black` e `white`.
@@ -1197,7 +1198,7 @@ le sta sopra, per cui ogni ricerca parte da una croce già trovata. Per ciascuna
 croce:
 
 1. una ricerca approssimativa su pixel interi della scansione, fino a metà di
-   mezza croce in ogni direzione, della posizione in cui l'immagine ha la
+   `chalf` (un quarto del lato della croce) in ogni direzione, della posizione in cui l'immagine ha la
    correlazione migliore con il motivo della croce (scuro, chiaro, chiaro,
    scuro);
 2. una ricerca fine entro mezzo pixel della scansione a incrementi di un quarto
@@ -1305,7 +1306,7 @@ formato).
 ## 8. Storia { #8-history }
 
 La pagina della parte 2 è il formato di Twibright Optar, un programma in C
-scritto da Karel Kulhavy nel 2007 e mantenuto dal 2012 in `colindean/optar`. I
+scritto da Karel Kulhavy nel 2007 e mantenuto a partire dal 2012 in `colindean/optar`. I
 suoi sorgenti sono conservati senza modifiche nella cartella `lega-c` di questo
 progetto, così come erano al commit `9c8379c25466bf142459a26b0f34521bdde2af12`
 di quel repository. I vettori in `tests/vectors/c` sono stati registrati da quel

@@ -628,7 +628,7 @@ dropped = "Questi caratteri non sono nel font dell'etichetta e non vengono stamp
 no_room = "Con questa dimensione dei punti l'etichetta non ha spazio per il nome, quindi il nome non viene stampato."
 cut = "Il nome è troppo lungo per la pagina e viene troncato."
 stored = "Alle pagine non serve: il nome completo è conservato insieme al file."
-printed = "È il nome stampato a identificare le pagine in seguito."
+printed = "Il nome stampato è ciò che in seguito permetterà di riconoscere le pagine."
 
 # A scan made at too low a resolution; {measured} is rounded to the nearest 10.
 [gui.coarse]
@@ -665,8 +665,8 @@ other = "Elaborazione"
 
 # {done} of {n} scans are read.
 [gui.scans_read]
-one = "Scansioni lette: {done} su {n}"
-other = "Scansioni lette: {done} su {n}"
+one = "scansioni lette: {done} su {n}"
+other = "scansioni lette: {done} su {n}"
 
 # The bar while scans are being read and the document has nothing else to say.
 [gui.scans_read_working]
@@ -687,7 +687,7 @@ other = "altre {n}"
 
 # What repairing a document did.
 [gui.repair]
-unprotected = "Stampato senza protezione, quindi non è stato possibile riparare nulla"
+unprotected = "stampato senza protezione, quindi non è stato possibile riparare nulla"
 too_much = "la zona peggiore richiedeva {used} su {budget}: troppo per ripararla"
 
 [gui.repair.bytes]
