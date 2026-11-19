@@ -103,7 +103,7 @@ is chosen and the rejected one is named below.
 | margin (wide, moderate, close to the limit) | запас (великий запас, помірний запас, на межі) | |
 | check the fingerprint, checking | звірити з відбитком, звіряння | «Звіряння з відбитком…». Keeps «перевір-» free for "verified". Rejected: «звірка» (colloquial). |
 | matches / does not match the fingerprint | збігається / не збігається з відбитком | Rejected: «співпадає» (a Russianism). |
-| identify (a scan), identified | розпізнати, розпізнано | Step «Розпізнавання сторінки», «скан не розпізнано». Rejected: «ідентифікувати» (bookish in running text; kept only inside the term «самоідентифікація»), «визначити» (too vague). |
+| identify (a scan), identified | розпізнати, розпізнано | Step «Розпізнавання сторінки», «скан не розпізнано». Rejected: «ідентифікувати» (bookish in running text; kept only inside the term «самоідентифікація»), «визначити» (too vague). Only the program identifies: where a person tells pages apart (the printed name, `gui.name.printed`), the sentence names its subject and avoids «розпізнати» («Саме надрукована назва пізніше вказуватиме, що це за сторінки»). |
 | assign (a scan) to a page | вказати сторінку | Button «Вказати сторінку…»; prose «вручну вказати для скану сторінку». Rejected: «призначити» (bureaucratic), «прив’язати». |
 | start a document by hand, put together by hand | зібрати документ вручну, зібрано вручну | One verb for both, so the button and the later caution match. |
 | replace (scan) | замінити | «Замінити скан…». |
