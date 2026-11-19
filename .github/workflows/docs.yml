@@ -2,7 +2,8 @@ name: Docs
 
 # Builds the documentation site from docs/ with MkDocs. A pull request only
 # builds it (broken links fail the build); a push to master also publishes it
-# to GitHub Pages.
+# to GitHub Pages. A change that touches only the documentation starts this
+# workflow and not CI, so the tests that read the pages run here too.
 on:
   push:
     branches: [master]
@@ -26,7 +27,12 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.15"
-      - run: pip install -e '.[docs]'
+      - run: pip install -e '.[docs,dev]'
+      - run: python tools/translation_status.py --check
+      # The specification against the code. (The tests that compare the
+      # translated pages with the English ones arrive with the translated
+      # application and are added to this step then.)
+      - run: pytest -q tests/unit/test_spec.py
       - run: mkdocs build --strict
       - if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v5

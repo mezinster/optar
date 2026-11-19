@@ -87,18 +87,19 @@ The bar shows the state of the whole document.
 
 | The bar says | Meaning |
 |---|---|
-| Verified · N bytes | All pages were read, and the recovered file matches the fingerprint on the paper. |
+| File recovered and verified · N bytes | All pages were read, and the recovered file matches the fingerprint on the paper. |
 | Does not match the fingerprint on the paper | All pages were read, but the file is not the original, because some data was decoded wrongly. Rescan the pages, starting with those marked Repaired. |
 | Recoverable: page 3 missing, can be repaired from the others | A protected document: pages are missing, but the pages that were read should be enough to rebuild them. |
 | Recoverable: page 3 missing, repaired from the others · matches the fingerprint | That repair has been done and checked. The size and what the repair did follow. |
-| Working… 3 of 6 scans read | Scans are still being read. When the document already has a state to show, the count follows it: "Verified · N bytes · 3 of 6 scans read". |
+| Working… 3 of 6 scans read | Scans are still being read. When the document already has a state to show, the count follows it: "File recovered and verified · N bytes · 3 of 6 scans read". |
 | Checking the fingerprint… | The check is running in the background. |
 | All N pages read · cannot be verified (no tag) | The pages come from an old program and carry no fingerprint. |
 | 4 of 6 pages good · 1 damaged · 1 missing | Otherwise, a count. |
 
 For a protected document the window also shows how many bytes the protection
 repaired and how much of its repair capacity the worst place used, for example
-"the worst spot used 18 of 32 of its repair capacity". If the repair fails, it
+"the worst spot used 57% of its repair capacity (18 of 32): a moderate margin".
+If the repair fails, it
 names the pages to add or rescan.
 
 !!! info "What "verified" means"
