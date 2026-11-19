@@ -30,6 +30,38 @@ theme:
         icon: material/weather-sunny
         name: Switch to light mode
 
+plugins:
+  - search
+  - i18n:
+      docs_structure: suffix       # docs/<page>.<code>.md beside docs/<page>.md
+      fallback_to_default: true    # a page not yet translated shows in English
+      reconfigure_material: true   # language switcher in the header
+      reconfigure_search: true     # search index per language
+      languages:
+        - locale: en
+          default: true
+          name: English
+          build: true
+        # Each further language is one entry like this, in this order:
+        # ru, uk, be, pl, ka, tr, it, es. Its nav titles go in nav_translations,
+        # keyed by the English title exactly as written under `nav:` below
+        # (the eleven page titles and the three section titles), and its
+        # site_description translates the description at the top of this file:
+        #
+        # - locale: ru
+        #   name: Русский
+        #   build: true
+        #   site_description: <translated description>
+        #   nav_translations:
+        #     Home: <translated>
+        #     Using optar: <translated>
+        #     ...
+
+validation:
+  anchors: warn
+  links:
+    not_found: warn
+
 markdown_extensions:
   - admonition
   - attr_list

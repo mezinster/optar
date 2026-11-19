@@ -21,7 +21,7 @@ optar-gui = "optar_gui.__main__:main"
 dev = ["pytest", "pytest-xdist", "ruff", "pyinstaller"]
 gui = ["PySide6-Essentials>=6.6"]
 gui-dev = ["optar[gui]", "pytest-qt"]
-docs = ["mkdocs-material>=9.5"]
+docs = ["mkdocs-material>=9.5", "mkdocs-static-i18n>=1.2"]
 
 [tool.hatch.version]
 path = "src/optar/__init__.py"
