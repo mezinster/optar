@@ -27,6 +27,7 @@ jobs:
         with:
           python-version: "3.15"
       - run: pip install -e '.[docs]'
+      - run: python tools/translation_status.py --check
       - run: mkdocs build --strict
       - if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v5

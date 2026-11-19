@@ -35,7 +35,14 @@ def _load_tool():
 
 
 status = _load_tool()
-LANGUAGES = [c for c in i18n.languages() if c != "en"]
+# Languages with a catalogue or any translated page, in the order of ``i18n.ORDER``: a
+# language that has only one of the two is still listed, so the tests of the other fail
+# with a clear message instead of the language going unchecked.
+LANGUAGES = [
+    c
+    for c in i18n.ORDER
+    if c != "en" and c in set(status.started_languages(ROOT)) | set(i18n.languages())
+]
 PAGES = [p.stem for p in status.english_pages(DOCS)]
 CODE_AND_PAGE = [pytest.param(c, p, id=f"{c}-{p}") for c in LANGUAGES for p in PAGES]
 
@@ -118,25 +125,31 @@ def headings(body: str) -> list[tuple[int, str, str | None]]:
 
 
 @functools.cache
-def english_anchors(body: str) -> list[str]:
-    """The ids the site gives the headings of an English page, in order.
+def english_headings(body: str) -> list[tuple[int, str]]:
+    """(level, id) of each heading of an English page, in order, as the site gives them.
 
     This runs Python-Markdown's own ``toc`` extension with the settings of
     ``mkdocs.yml`` (default slugify, ``_1`` suffixes for repeats, explicit
     ``{ #id }`` kept), so the result is what the site produces.
     """
-    markdown = pytest.importorskip("markdown")
+    import markdown
+
     md = markdown.Markdown(extensions=["toc", "attr_list", "fenced_code", "tables", "admonition"])
     md.convert(body)
     found = []
 
     def walk(tokens):
         for token in tokens:
-            found.append(token["id"])
+            found.append((token["level"], token["id"]))
             walk(token["children"])
 
     walk(md.toc_tokens)
     return found
+
+
+def english_anchors(body: str) -> list[str]:
+    """The ids the site gives the headings of an English page, in order."""
+    return [ident for _, ident in english_headings(body)]
 
 
 # --- The checks ---------------------------------------------------------------------
@@ -161,19 +174,39 @@ def code_block_problems(english: str, translated: str) -> list[str]:
     return problems
 
 
+_SETEXT = re.compile(r"^ {0,3}(?:=+|-{2,})[ \t]*$")
+
+
+def setext_problems(body: str) -> list[str]:
+    """Underlined (setext) headings: they carry no ``{ #id }``, so they are not allowed."""
+    problems, previous = [], ""
+    for line in outside_fences(body):
+        if _SETEXT.match(line) and previous.strip() and not re.match(
+            r"^\s*(?:[|>#*+-]|\d+[.)])", previous
+        ):
+            problems.append(f"{previous.strip()!r} is a heading underlined with {line.strip()[:1]}")
+        previous = line
+    return problems
+
+
 def heading_id_problems(english: str, translated: str) -> list[str]:
-    wanted = english_anchors(body_of(english))
+    """Headings of the translation against the English page: number, level, id, in order."""
+    wanted = english_headings(body_of(english))
     found = headings(body_of(translated))
-    problems = [
+    problems = setext_problems(body_of(translated))
+    problems += [
         f"heading {text!r} does not end with {{ #id }}" for _, text, ident in found if ident is None
     ]
-    ids = [ident for _, _, ident in found if ident is not None]
     if len(found) != len(wanted):
         problems.append(f"{len(found)} headings, English has {len(wanted)}")
-    elif not problems and ids != wanted:
-        for i, (got, want) in enumerate(zip(ids, wanted, strict=True), 1):
-            if got != want:
-                problems.append(f"heading {i} has id {got!r}, English has {want!r}")
+    elif not problems:
+        for i, ((level, _, ident), (want_level, want)) in enumerate(
+            zip(found, wanted, strict=True), 1
+        ):
+            if ident != want:
+                problems.append(f"heading {i} has id {ident!r}, English has {want!r}")
+            if level != want_level:
+                problems.append(f"heading {i} is level {level}, English has level {want_level}")
     return problems
 
 
@@ -268,6 +301,21 @@ def normative_problems(translated: str) -> list[str]:
     return []
 
 
+def orphan_pages(docs: Path = DOCS) -> list[str]:
+    """Translated-looking pages (a dotted stem) with an unknown code or no English source."""
+    known = set(i18n.ORDER) - {"en"}
+    problems = []
+    for path in sorted(docs.glob("*.md")):
+        page, _, code = path.stem.rpartition(".")
+        if not page:
+            continue
+        if code not in known:
+            problems.append(f"{path.name}: {code!r} is not a language code")
+        elif not (docs / f"{page}.md").exists():
+            problems.append(f"{path.name}: there is no English page {page}.md")
+    return problems
+
+
 def hash_problems(translated: str) -> list[str]:
     if status.source_hash(translated) is None:
         return ["front matter has no source_hash of 40 hex digits"]
@@ -279,15 +327,64 @@ _REFERENCE = re.compile(r"^ {0,3}\[[^\]]+\]:\s*<?(\S+?)>?(?:\s+.*)?$")
 _ABSOLUTE = re.compile(r"^(?:[a-zA-Z][a-zA-Z0-9+.\-]*:|//)")
 
 
-def links(body: str) -> list[str]:
+def _is_image(line: str, close: int) -> bool:
+    """Whether the link text that ends at ``line[close]`` (a ``]``) starts with ``![``."""
+    depth = 0
+    for i in range(close - 1, -1, -1):
+        if line[i] == "]":
+            depth += 1
+        elif line[i] == "[":
+            if depth == 0:
+                return i > 0 and line[i - 1] == "!"
+            depth -= 1
+    return False
+
+
+def destinations(body: str) -> list[tuple[bool, str]]:
+    """(is an image, target) of each link, image and reference definition, in order."""
     found = []
     for line in outside_fences(body):
         line = re.sub(r"(`+)[^`]*?\1", "", line)
-        found += _LINK.findall(line)
+        for m in _LINK.finditer(line):
+            found.append((_is_image(line, m.start()), m.group(1)))
         m = _REFERENCE.match(line)
         if m:
-            found.append(m.group(1))
+            found.append((False, m.group(1)))
     return found
+
+
+def links(body: str) -> list[str]:
+    return [target for image, target in destinations(body) if not image]
+
+
+def _same_in_order(kind: str, wanted: list[str], found: list[str]) -> list[str]:
+    if len(wanted) != len(found):
+        return [f"{len(found)} {kind}, English has {len(wanted)}"]
+    return [
+        f"{kind} {i} is {got!r}, English has {want!r}"
+        for i, (want, got) in enumerate(zip(wanted, found, strict=True), 1)
+        if want != got
+    ]
+
+
+def link_target_problems(english: str, translated: str, page: str = "") -> list[str]:
+    """Link targets equal English, in order. The format page may add one link to the
+    English format page (its opening note); absolute URLs must otherwise be identical."""
+    wanted = links(body_of(english))
+    found = links(body_of(translated))
+    if page == "format" and len(found) == len(wanted) + 1:
+        for i, target in enumerate(found):
+            if target.rstrip("/#").startswith(FORMAT_URL.rstrip("/")):
+                del found[i]
+                break
+    return _same_in_order("link targets", wanted, found)
+
+
+def image_problems(english: str, translated: str) -> list[str]:
+    def paths(text):
+        return [t for image, t in destinations(body_of(text)) if image]
+
+    return _same_in_order("images", paths(english), paths(translated))
 
 
 def page_ids(body: str) -> set[str]:
@@ -343,6 +440,10 @@ def english_text(page: str) -> str:
 # --- The per-language tests (an empty set until translations arrive) -----------------
 
 
+def test_every_translated_page_has_an_english_source_and_a_known_code():
+    assert not orphan_pages()
+
+
 @pytest.mark.parametrize("code", LANGUAGES)
 def test_every_page_exists(code):
     assert not missing_pages(code)
@@ -375,6 +476,18 @@ def test_format_page_says_english_is_normative(code):
 @pytest.mark.parametrize(("code", "page"), CODE_AND_PAGE)
 def test_source_hash_is_present(code, page):
     assert not hash_problems(translated_path(code, page).read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize(("code", "page"), CODE_AND_PAGE)
+def test_link_targets_equal_english(code, page):
+    translated = translated_path(code, page).read_text(encoding="utf-8")
+    assert not link_target_problems(english_text(page), translated, page)
+
+
+@pytest.mark.parametrize(("code", "page"), CODE_AND_PAGE)
+def test_image_paths_equal_english(code, page):
+    translated = translated_path(code, page).read_text(encoding="utf-8")
+    assert not image_problems(english_text(page), translated)
 
 
 @pytest.mark.parametrize(("code", "page"), CODE_AND_PAGE)
@@ -560,6 +673,56 @@ def test_reference_style_links_are_checked():
     assert link_problems("ru", "a", pages, {"a", "gone"})
 
 
+def test_heading_levels_must_equal_english():
+    assert heading_id_problems(EN_PAGE, TR_PAGE.replace("### Wohin", "## Wohin"))
+    assert heading_id_problems(EN_PAGE, TR_PAGE.replace("# Titel", "## Titel"))
+
+
+def test_setext_headings_are_reported_not_miscounted():
+    bad = TR_PAGE.replace("# Titel { #title }", "Titel\n=====")
+    assert any("underlined" in p for p in heading_id_problems(EN_PAGE, bad))
+    assert any("underlined" in p for p in setext_problems("Text\n-----\n"))
+    assert not setext_problems("Text\n\n---\n\n| a |\n|---|\n- item\n---\n")
+
+
+def test_link_targets_must_equal_english_in_order():
+    en = "[a](x.md#s) [b](https://example.org/p) ![i](img/a.png) [c](#top)\n"
+    ok = "[A](x.md#s) [B](https://example.org/p) ![I](img/a.png) [C](#top)\n"
+    assert not link_target_problems(en, ok)
+    assert not image_problems(en, ok)
+    assert link_target_problems(en, ok.replace("x.md#s", "x.md#t"))
+    assert link_target_problems(en, ok.replace("example.org/p", "example.org/q"))
+    assert link_target_problems(en, ok.replace(" [C](#top)", ""))
+    assert link_target_problems(en, "[B](https://example.org/p) [A](x.md#s) [C](#top)\n")
+    assert image_problems(en, ok.replace("img/a.png", "img/b.png"))
+    assert image_problems(en, ok.replace("![I](img/a.png)", "[I](img/a.png)"))
+    assert image_problems(en, ok + "![j](img/b.png)")
+
+
+def test_an_image_inside_a_link_counts_as_an_image_and_a_link():
+    text = "[![alt](img/a.png)](https://example.org/)\n"
+    assert destinations(text) == [(True, "img/a.png"), (False, "https://example.org/")]
+
+
+def test_only_the_format_page_may_add_the_english_note_link():
+    en = "# Format\n\n[a](x.md)\n"
+    note = f"# Format\n\n[en]({FORMAT_URL}) [a](x.md)\n"
+    assert not link_target_problems(en, note, "format")
+    assert link_target_problems(en, note, "install")
+    twice = note + f"[again]({FORMAT_URL})\n"
+    assert link_target_problems(en, twice, "format")
+
+
+def test_orphan_pages_are_reported(tmp_path):
+    for name in ("index.md", "index.ru.md", "gone.ru.md", "index.xx.md", "index.en.md"):
+        (tmp_path / name).write_text("# T\n")
+    found = orphan_pages(tmp_path)
+    assert any("gone.ru.md" in p and "no English page" in p for p in found)
+    assert any("index.xx.md" in p and "language code" in p for p in found)
+    assert any("index.en.md" in p for p in found)
+    assert not any("index.ru.md" in p for p in found)
+
+
 def test_missing_pages_are_listed(tmp_path):
     docs = tmp_path / "docs"
     docs.mkdir()
@@ -623,5 +786,5 @@ def test_main_prints_lines_and_check_fails_only_for_missing(tmp_path, monkeypatc
     assert "stale" in capsys.readouterr().out
 
 
-def test_the_real_tree_has_nothing_stale_or_missing_yet():
-    assert all(state != "stale" for _, state in status.problems(ROOT, []))
+def test_the_tool_reports_no_missing_page_for_a_started_language():
+    assert [p for p, state in status.problems(ROOT) if state == "missing"] == []

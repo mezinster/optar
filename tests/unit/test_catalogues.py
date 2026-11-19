@@ -8,16 +8,41 @@ no language but English until translations arrive, so the per-language tests are
 an empty set today.
 """
 
+import importlib.util
 import inspect
 import itertools
+from pathlib import Path
 from string import Formatter
 
 import pytest
 
 from optar import i18n
 
-LANGUAGES = [c for c in i18n.languages() if c != "en"]
-GROUPS = (",", ".", " ", " ", " ", "")
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def _started() -> list[str]:
+    """Languages with a catalogue or any translated page, in the order of ``i18n.ORDER``.
+
+    A language that has only one of the two is still listed, so the tests of the
+    other fail with a clear message instead of the language going unchecked.
+    """
+    spec = importlib.util.spec_from_file_location(
+        "translation_status", ROOT / "tools" / "translation_status.py"
+    )
+    tool = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(tool)
+    known = set(tool.started_languages(ROOT)) | set(i18n.languages())
+    return [c for c in i18n.ORDER if c != "en" and c in known]
+
+
+LANGUAGES = _started()
+GROUPS = (",", ".", " ", "\u00a0", "\u202f", "")
+# The thousands separator each language must use (the translators' brief).
+LANGUAGE_GROUP = {
+    "ru": "\u00a0", "uk": "\u00a0", "be": "\u00a0", "pl": "\u00a0", "ka": "\u00a0",
+    "it": ".", "es": ".", "tr": ".",
+}
 
 
 def _fields(template: str) -> set[str]:
@@ -98,13 +123,20 @@ def value_problems(catalogue: dict) -> list[str]:
     return problems
 
 
-def name_and_separator_problems(catalogue: dict) -> list[str]:
+def name_and_separator_problems(catalogue: dict, code: str | None = None) -> list[str]:
     problems = []
+    if not catalogue:
+        return ["there is no catalogue (src/optar/locale/<code>.toml)"]
     name = catalogue.get("language.name")
     if not isinstance(name, str) or not name.strip():
         problems.append("[language].name is missing or empty")
     if catalogue.get("format.group") not in GROUPS:
         problems.append(f"[format].group is {catalogue.get('format.group')!r}, not a separator")
+    elif code in LANGUAGE_GROUP and catalogue["format.group"] != LANGUAGE_GROUP[code]:
+        problems.append(
+            f"[format].group is {catalogue['format.group']!r}, {code} uses "
+            f"{LANGUAGE_GROUP[code]!r}"
+        )
     return problems
 
 
@@ -299,7 +331,10 @@ def _answer_problem(where: str, annotation: str, result) -> str | None:
     return f"{where}: answered {result!r}"
 
 
-def text_function_problems(code: str, limit: int = 400) -> list[str]:
+COMBINATION_LIMIT = 20_000
+
+
+def text_function_problems(code: str, limit: int = COMBINATION_LIMIT) -> list[str]:
     """Call every public function of text.py in language ``code`` with examples."""
     from optar_gui import text
 
@@ -318,6 +353,15 @@ def text_function_problems(code: str, limit: int = 400) -> list[str]:
                 problems.append(f"{fname}: {e}")
                 continue
             returns = str(inspect.signature(func).return_annotation)
+            combinations = 1
+            for pool in pools:
+                combinations *= len(pool)
+            if combinations > limit:
+                problems.append(
+                    f"{fname}: {combinations} input combinations exceed the limit {limit}; "
+                    "shorten its example lists so nothing is silently skipped"
+                )
+                continue
             for combo in itertools.islice(itertools.product(*pools), limit):
                 where = f"{fname}{tuple(map(repr, combo))}"[:200]
                 given = list(zip(params, combo, strict=True))
@@ -346,6 +390,11 @@ def english():
 
 
 @pytest.mark.parametrize("code", LANGUAGES)
+def test_the_language_has_a_catalogue(code):
+    assert code in i18n.languages(), f"{code} has pages but no src/optar/locale/{code}.toml"
+
+
+@pytest.mark.parametrize("code", LANGUAGES)
 def test_same_keys_as_english(code, english):
     assert not key_problems(english, i18n.catalogue(code))
 
@@ -367,7 +416,7 @@ def test_no_empty_strings_and_no_stray_braces(code):
 
 @pytest.mark.parametrize("code", LANGUAGES)
 def test_language_name_and_group_separator(code):
-    assert not name_and_separator_problems(i18n.catalogue(code))
+    assert not name_and_separator_problems(i18n.catalogue(code), code)
 
 
 @pytest.mark.parametrize("code", LANGUAGES)
@@ -449,6 +498,24 @@ def test_language_name_and_separator_are_checked():
     assert name_and_separator_problems({"format.group": ","})
     assert name_and_separator_problems({"language.name": "X", "format.group": ";"})
     assert name_and_separator_problems({"language.name": "X"})
+    assert name_and_separator_problems({})
+
+
+def test_each_language_must_use_its_own_group_separator():
+    nbsp = {"language.name": "X", "format.group": "\u00a0"}
+    dot = {"language.name": "X", "format.group": "."}
+    for code in ("ru", "uk", "be", "pl", "ka"):
+        assert not name_and_separator_problems(nbsp, code)
+        assert name_and_separator_problems(dot, code)
+    for code in ("it", "es", "tr"):
+        assert not name_and_separator_problems(dot, code)
+        assert name_and_separator_problems(nbsp, code)
+        assert name_and_separator_problems({"language.name": "X", "format.group": ","}, code)
+
+
+def test_a_function_with_too_many_combinations_is_reported():
+    problems = text_function_problems("en", limit=3)
+    assert any("exceed the limit 3" in p for p in problems)
 
 
 def test_a_text_function_failing_in_a_language_is_reported(catalogues, monkeypatch):
