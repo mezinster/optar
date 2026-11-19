@@ -277,9 +277,16 @@ pages are feminine («1 исправлена, 2 исправлены, 5 испр
 symbols masculine («1 исправлен, 2 исправлены, 5 исправлено»). The `one`
 form is also used for 21, 31, …, so it must not say «одна».
 
-The invariant pattern «Прочитано сканов: {done} из {n}» (noun in the genitive
+The invariant pattern «прочитано сканов: {done} из {n}» (noun in the genitive
 plural before the colon) avoids agreement entirely and is the first choice
-for counters in the bottom bar.
+for counters in the bottom bar. A phrase that the window only ever shows after
+« · » starts lower-case, as Russian does mid-line («… · прочитано сканов: 3 из
+6», `gui.scans_read`; «документ напечатан без защиты…», `gui.repair.unprotected`).
+After a closing ellipsis a new phrase is capitalised («Обработка… Прочитано
+сканов: 3 из 6», `gui.scans_read_working`). Row-state labels («В порядке»,
+«Исправлена», «Прочитана медленным методом») stay capitalised: they are labels.
+"Identifies the pages" said of the printed name (for people, not the program)
+is «узнать», not the reserved «опознать» (`gui.name.printed`).
 
 ## Site navigation
 
@@ -404,7 +411,7 @@ only with care. Written before the catalogue; what became of each item when
     `gui.write.dot_size` and `{name}` in `cli.dot_need` do, where only the
     nominative works) should be kept to label-like positions.
 15. **`gui.state.read`, `gui.scans_read`, `gui.scans_read_working`**: the
-    natural Russian counters «Прочитано страниц: {n}», «Прочитано сканов:
+    natural Russian counters «Прочитано страниц: {n}», «прочитано сканов:
     {done} из {n}» are invariant, so all three plural forms will be the same
     text. That is intended, not a mistake.
 16. **`cli.ACTUAL_SIZE`** and the docs quote the print dialog's "fit to

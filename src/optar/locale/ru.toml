@@ -671,7 +671,7 @@ dropped = "Этих знаков нет в шрифте надписи, и он�
 no_room = "В надписи при этом размере точек нет места для имени, поэтому оно не печатается."
 cut = "Имя слишком длинное для страницы и будет обрезано."
 stored = "Страницам оно не нужно: полное имя хранится вместе с файлом."
-printed = "Именно по напечатанному имени страницы потом опознаются."
+printed = "Потом страницы можно будет узнать именно по напечатанному имени."
 
 # A scan made at too low a resolution; {measured} is rounded to the nearest 10.
 [gui.coarse]
@@ -709,9 +709,9 @@ other = "Обработка"
 
 # {done} of {n} scans are read.
 [gui.scans_read]
-one = "Прочитано сканов: {done} из {n}"
-few = "Прочитано сканов: {done} из {n}"
-many = "Прочитано сканов: {done} из {n}"
+one = "прочитано сканов: {done} из {n}"
+few = "прочитано сканов: {done} из {n}"
+many = "прочитано сканов: {done} из {n}"
 
 # The bar while scans are being read and the document has nothing else to say.
 [gui.scans_read_working]
@@ -734,7 +734,7 @@ many = "ещё {n}"
 
 # What repairing a document did.
 [gui.repair]
-unprotected = "Документ напечатан без защиты, поэтому ничего нельзя было исправить"
+unprotected = "документ напечатан без защиты, поэтому ничего нельзя было исправить"
 too_much = "в худшем месте понадобилось {used} из {budget}: слишком много для исправления"
 
 [gui.repair.bytes]
