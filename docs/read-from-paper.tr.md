@@ -38,8 +38,8 @@ korumayı da kendisi belirler; ayarlanacak bir şey yoktur.
 
 Listede her sayfa için durumunu gösteren bir satır vardır. Bir satır
 seçildiğinde tarama, hasarlı yerleri işaretlenmiş olarak gösterilir:
-fare tekerleğiyle yakınlaştırın, sürükleyerek kaydırın, sayfayı sığdırmak
-için çift tıklayın.
+fare tekerleğiyle yakınlaştırıp uzaklaştırın, sürükleyerek kaydırın,
+sayfayı sığdırmak için çift tıklayın.
 
 Alttaki çubuk dosyanın doğrulandığını söylediğinde “Dosyayı kaydet…” dosyayı
 yazar.
@@ -112,8 +112,8 @@ eklenecek ya da yeniden taranacak sayfaları belirtir.
 
 !!! info "“Doğrulandı” ne demektir"
     “Doğrulandı” her zaman, kurtarılan dosyanın parmak izinin kâğıttakiyle
-    eşleştiği anlamına gelir. Hiçbir zaman yalnızca onarımın hata
-    bildirmediği anlamına gelmez.
+    eşleştiği anlamına gelir. Hiçbir zaman yalnızca onarımın
+    başarısızlık bildirmediği anlamına gelmez.
 
 ## Kaydetme { #saving }
 

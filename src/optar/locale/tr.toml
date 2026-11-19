@@ -587,7 +587,7 @@ dropped = "Şu karakterler etiket yazı tipinde yok ve yazdırılmaz: {chars}."
 no_room = "Bu nokta boyutunun etiketinde ada yer yok; bu yüzden ad yazdırılmaz."
 cut = "Ad sayfa için çok uzun ve kısaltılır."
 stored = "Sayfaların buna ihtiyacı yok: tam ad dosyayla birlikte saklanır."
-printed = "Sayfaları daha sonra tanıtan, yazdırılan addır."
+printed = "Sayfaların daha sonra hangi çıktıya ait olduğunu gösteren, yazdırılan addır."
 
 # A scan made at too low a resolution; {measured} is rounded to the nearest 10.
 [gui.coarse]
@@ -642,7 +642,7 @@ other = "{n} sayfa daha"
 
 # What repairing a document did.
 [gui.repair]
-unprotected = "Korumasız yazdırıldığı için hiçbir şey onarılamadı"
+unprotected = "korumasız yazdırıldığı için hiçbir şey onarılamadı"
 too_much = "en kötü noktada {used}/{budget} gerekti: onarılamayacak kadar çok"
 
 [gui.repair.bytes]

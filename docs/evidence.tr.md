@@ -22,8 +22,8 @@ taramasına göre ayarlandı.
 
 ## Yavaş okuma yöntemi { #the-slower-reader }
 
-[Yavaş okuma yöntemi](slower-reader.md) bir gerçek ve bir simüle edilmiş
-belge üzerinde gösterildi.
+[Yavaş okuma yöntemi](slower-reader.md) yalnızca bir gerçek ve bir simüle
+edilmiş belge üzerinde gösterildi.
 
 **Gerçek.** Proje sahibinin altı A4 sayfalık belgesi: standart noktalar,
 yüksek koruma; 600 dpi önerilirken yaklaşık 290 dpi ile taranmış. Normal
@@ -57,7 +57,7 @@ sayfalar yavaş yöntemin kapsamında değildir.
   noktalı ya da koruma eklenmiş her çıktı buna dâhildir.
 - Sayfa beslemeli tarayıcılar, programın üç gerçek taramada nokta ızgarasını
   bulmasının ötesinde test edilmedi.
-- Bir çıktının üç gerçek 300 dpi taraması yaklaşık 286 dpi olarak ölçüldü;
+- Tek bir çıktının üç gerçek 300 dpi taraması yaklaşık 286 dpi olarak ölçüldü;
   bu, o çıktının gerçek boyutun yaklaşık %95'i olarak basıldığı anlamına
   gelir. Küçük noktalar daha zor okunur; bu yüzden gerçek boyutunda (%100)
   yazdırın.

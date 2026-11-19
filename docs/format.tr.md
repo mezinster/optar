@@ -7,7 +7,7 @@ source_hash: 90182c569913da957ad8b2b3c51203f66726cc36
 Bu belirtimin bağlayıcı metni İngilizce metindir: [The optar format](https://mezinster.github.io/optar/format/). Biçimi İngilizce metin ile `tests/vectors` içindeki test vektörleri tanımlar. Bu çeviri bilgilendiricidir; İngilizce metinle çeliştiği yerde İngilizce metin geçerlidir.
 
 optar, bir dosyayı kâğıt üzerinde siyah ve beyaz noktalardan oluşan sayfalar
-olarak saklar. Bu metin, bir sayfanın ve bir belgenin (tek bir dosyayı taşıyan
+olarak saklar. Bu belirtim, bir sayfanın ve bir belgenin (tek bir dosyayı taşıyan
 sayfalar kümesi) ne olduğunu tanımlar; böylece sayfalarını bu projenin okuduğu
 bir kodlayıcı ve bu projenin sayfalarını okuyan bir kod çözücü yazılabilir.
 
@@ -1149,7 +1149,7 @@ Kod çözücüye sayfa biçimi verilir. Kod çözücü dik konumdaki görüntü 
 3. **Çerçevede bir boşluk.** Bir yazıcı sayfanın bir kenarını kırptıysa,
    çerçevede bir boşluk olur; sayfanın çevresindeki beyaz da noktaların
    arasına sızar ve 2. adım sayfanın yalnızca bir parçasını bulur. Bulunan alan,
-   beyaz kenar olmayan kısmın yarısından azsa, sayfanın çevresindeki beyaz
+   sayfanın çevresindeki beyaz olmayan kısmın yarısından azsa, sayfanın çevresindeki beyaz
    bunun yerine en az `2 * r + 1` piksel genişliğindeki geçitlerden
    ulaşılabilen kısım olarak alınır; burada
    `r = max(5, longest side // 250) // 2`; noktaların arasındaki beyaz bundan
@@ -1275,8 +1275,8 @@ sabitler).
 
 ## 8. Tarihçe { #8-history }
 
-Kısım 2'deki sayfa, Karel Kulhavy'nin 2007'de yazdığı ve 2012'den beri
-`colindean/optar` adresinde bakımı yapılan C programı Twibright Optar'ın
+Kısım 2'deki sayfa, Karel Kulhavy'nin 2007'de yazdığı ve 2012'den itibaren
+`colindean/optar` adresinde bakımı yapılmış C programı Twibright Optar'ın
 biçimidir. Programın kaynak kodu, bu projenin `lega-c` klasöründe, o deponun
 `9c8379c25466bf142459a26b0f34521bdde2af12` işlemesindeki hâliyle,
 değiştirilmeden saklanır. `tests/vectors/c` içindeki vektörler o programdan,

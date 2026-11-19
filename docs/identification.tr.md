@@ -80,8 +80,8 @@ Künye sayesinde uygulama şunları yapabilir:
   geçebilir);
 - kurtarılan dosyayı gerçek boyutuna kesmek; böylece dosyada sıfır dolgusu
   kalmaz;
-- kurtarılan dosyayı parmak iziyle karşılaştırmak; bu, dosyanın özgün dosya
-  olduğuna dair son denetimdir.
+- kurtarılan dosyayı parmak iziyle karşılaştırmak; dosyanın özgün dosya
+  olduğunu doğrulayan son adım budur.
 
 Künyesiz yazdırmak için `optar encode --no-tag` kullanın. Kendini
 verilerinden tanıtan sayfalara künye yazdırılmaz.

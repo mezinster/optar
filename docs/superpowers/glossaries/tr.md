@@ -185,7 +185,7 @@ catalogue.
 | page pixel, data pixel, scan pixel | sayfa pikseli, veri pikseli, tarama pikseli |
 | integer | tam sayı |
 | dodecahedron | on iki yüzlü |
-| the specification (as "the document" in development) | belirtim; the format page calls itself «bu metin», the English original «İngilizce metin» |
+| the specification (as "the document" in development) | belirtim; where the format page says what defines the format it calls itself «bu belirtim» (never «bu metin», which next to «Bu çeviri bilgilendiricidir» reads as the translation); elsewhere «metin»; the English original «İngilizce metin» |
 | page format, format string | sayfa biçimi, biçim dizesi |
 | layout | düzen |
 | grid | ızgara |
