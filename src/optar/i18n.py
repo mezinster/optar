@@ -118,11 +118,21 @@ def _lookup(key: str):
     raise KeyError(key)
 
 
+def _fill(template: str, key: str, code: str, values: dict) -> str:
+    try:
+        return template.format(**values)
+    except (KeyError, IndexError) as e:
+        name = e.args[0] if isinstance(e, KeyError) else "(positional)"
+        raise KeyError(
+            f"catalogue key {key!r} in language {code!r} names the placeholder "
+            f"{name!r}, which was not supplied") from None
+
+
 def t(key: str, /, **values: object) -> str:
-    entry, _ = _lookup(key)
+    entry, code = _lookup(key)
     if isinstance(entry, dict):
         raise KeyError(key)
-    return entry.format(**values)
+    return _fill(entry, key, code, values)
 
 
 def number(value: int) -> str:
@@ -140,7 +150,7 @@ def n(key: str, count: int, /, **values: object) -> str:
     if isinstance(entry, dict):
         category = plural_category(code, count)
         entry = entry.get(category) or entry.get("other") or next(iter(entry.values()))
-    return entry.format(n=number(count), count=count, **values)
+    return _fill(entry, key, code, {"n": number(count), "count": count, **values})
 
 
 def pick_language(candidates: Iterable[str | None]) -> str | None:

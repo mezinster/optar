@@ -63,7 +63,8 @@ def test_pick_language(catalogues, names, want):
     assert i18n.pick_language(names) == want
 
 
-def test_pick_language_needs_a_present_catalogue():
+def test_pick_language_needs_a_present_catalogue(catalogues):
+    catalogues.only("en")
     assert i18n.pick_language(["ru_RU"]) is None
     assert i18n.pick_language(["xx", "en_US"]) == "en"
 
@@ -112,6 +113,7 @@ def test_unknown_language_is_english():
 
 
 def test_languages_lists_only_present_catalogues_in_order(catalogues):
+    catalogues.only("en")
     assert i18n.languages() == {"en": "English"}
     catalogues.add("es", {"language": {"name": "Español"}})
     catalogues.add("ru", {"language": {"name": "Русский"}})
@@ -151,6 +153,24 @@ def test_catalogues_fixture_restores_everything(catalogues):
 
 def test_catalogues_fixture_teardown_is_clean():
     assert i18n.language() == "en"
-    assert list(i18n.languages()) == ["en"]
+    assert getattr(i18n._read, "__self__", None) is None
     with pytest.raises(KeyError):
         i18n.t("x.y")
+
+
+def test_catalogues_only_hides_real_catalogues(catalogues):
+    catalogues.only()
+    assert i18n.languages() == {}
+    catalogues.add("en", {"language": {"name": "E"}})
+    assert i18n.languages() == {"en": "E"}
+
+
+def test_unsupplied_placeholder_names_key_and_language(catalogues):
+    catalogues.add("en", {"x": {"y": "Hello {who}", "z": "Bad {0}",
+                                "p": {"one": "{n} {thing}", "other": "{n} {thing}s"}}})
+    with pytest.raises(KeyError, match=r"'x\.y'.*'en'.*'who'"):
+        i18n.t("x.y")
+    with pytest.raises(KeyError, match=r"'x\.z'.*positional"):
+        i18n.t("x.z")
+    with pytest.raises(KeyError, match=r"'x\.p'.*'thing'"):
+        i18n.n("x.p", 2)
