@@ -139,11 +139,9 @@ def test_missing_qt_message_follows_the_environment(catalogues, monkeypatch, cap
 
 
 def test_self_test_runs_in_english_and_loads_every_catalogue(qapp, catalogues, capsys):
-    catalogues.add("ru", RU)
     i18n.set_language("ru")
     assert selftest.run_self_test() == 0
     out = capsys.readouterr().out
-    count = len(list(i18n.languages()))
-    assert f"ok loaded the catalogues of {count} languages" in out
+    assert f"ok loaded the catalogues of {len(i18n.ORDER)} languages" in out
     assert "ok created a PDF" in out
     assert i18n.language() == "ru"

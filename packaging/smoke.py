@@ -3,20 +3,26 @@
 
 Usage: python packaging/smoke.py EXECUTABLE
 
-Standard library only: it runs the executable and never imports optar.
+Standard library only: it runs the executable and never imports optar (it reads
+the catalogue files as data).
 """
 
 import hashlib
+import locale
 import os
 import re
 import subprocess
 import sys
 import tempfile
+import tomllib
 from pathlib import Path
 
 TIMEOUT = 600
 PAYLOAD_SIZE = 50_000
-INIT_FILE = Path(__file__).resolve().parent.parent / "src" / "optar" / "__init__.py"
+SOURCE = Path(__file__).resolve().parent.parent / "src" / "optar"
+INIT_FILE = SOURCE / "__init__.py"
+LOCALE = SOURCE / "locale"
+ORDER = ("en", "ru", "uk", "be", "pl", "ka", "tr", "it", "es")
 
 
 def fail(message):
@@ -63,6 +69,37 @@ def run_ok(exe, *args, env=None):
     return result
 
 
+def output_encoding():
+    """The encoding the executable's output pipe will have.
+
+    A frozen build does not reliably honour PYTHONIOENCODING or PYTHONUTF8, so none is
+    forced: PYTHONIOENCODING counts only when the caller set it (an unfrozen test of
+    this script), otherwise a pipe has the preferred (ANSI) encoding of the machine.
+    """
+    named = os.environ.get("PYTHONIOENCODING", "").split(":")[0]
+    return named or locale.getpreferredencoding(False)
+
+
+def encodable(code, encoding):
+    """What ``optar.i18n.encodable`` says, read from the catalogue file (optar is not imported)."""
+    path = LOCALE / f"{code}.toml"
+    try:
+        catalogue = tomllib.loads(path.read_text(encoding="utf-8"))
+        strings = []
+        stack = [catalogue]
+        while stack:
+            item = stack.pop()
+            if isinstance(item, dict):
+                stack.extend(item.values())
+            elif isinstance(item, str):
+                strings.append(item)
+        for string in strings:
+            string.encode(encoding)
+    except (UnicodeEncodeError, LookupError, OSError):
+        return False
+    return True
+
+
 def help_in(exe, code):
     """The text of ``--help`` with OPTAR_LANG=code, as a string."""
     env = {**os.environ, "OPTAR_LANG": code}
@@ -71,14 +108,31 @@ def help_in(exe, code):
 
 
 def check_catalogues(exe):
-    """The build carries the catalogues: Georgian help is Georgian, not the English help."""
+    """The build carries the catalogues.
+
+    The command line answers in English when its output encoding cannot hold the
+    language, so a language is required to differ from English only when the output
+    encoding can encode it. The first such language proves the catalogues are in the
+    build; Georgian is checked as well when it can be encoded, else noted.
+    """
+    encoding = output_encoding()
     english = help_in(exe, "en")
-    georgian = help_in(exe, "ka")
-    if georgian == english:
-        fail("--help with OPTAR_LANG=ka is the English help: the catalogues are not in the build")
-    if not any("\u10a0" <= ch <= "\u10ff" for ch in georgian):
-        fail("--help with OPTAR_LANG=ka has no Georgian letters")
-    print("ok: --help in Georgian differs from English")
+    for code in ORDER:
+        if code != "en" and encodable(code, encoding):
+            if help_in(exe, code) == english:
+                fail(f"--help with OPTAR_LANG={code} is the English help: "
+                     "the catalogues are not in the build")
+            print(f"ok: --help in {code} differs from English")
+            break
+    else:
+        print(f"note: no language fits the output encoding {encoding}; catalogues not checked")
+    if encodable("ka", encoding):
+        georgian = help_in(exe, "ka")
+        if georgian == english or not any("\u10a0" <= ch <= "\u10ff" for ch in georgian):
+            fail("--help with OPTAR_LANG=ka is not Georgian")
+        print("ok: --help in Georgian differs from English")
+    else:
+        print(f"note: output encoding {encoding} cannot hold Georgian; not required here")
 
 
 def main(argv):
