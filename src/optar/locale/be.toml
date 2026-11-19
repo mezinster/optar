@@ -707,9 +707,9 @@ other = "Апрацоўка"
 
 # {done} of {n} scans are read.
 [gui.scans_read]
-one = "Прачытана сканаў: {done} з {n}"
-few = "Прачытана сканаў: {done} з {n}"
-many = "Прачытана сканаў: {done} з {n}"
+one = "прачытана сканаў: {done} з {n}"
+few = "прачытана сканаў: {done} з {n}"
+many = "прачытана сканаў: {done} з {n}"
 
 # The bar while scans are being read and the document has nothing else to say.
 [gui.scans_read_working]
@@ -732,7 +732,7 @@ many = "яшчэ {n}"
 
 # What repairing a document did.
 [gui.repair]
-unprotected = "Дакумент надрукаваны без абароны, таму нічога нельга было выправіць"
+unprotected = "дакумент надрукаваны без абароны, таму нічога нельга было выправіць"
 too_much = "у найгоршым месцы спатрэбілася {used} з {budget}: занадта шмат для выпраўлення"
 
 [gui.repair.bytes]

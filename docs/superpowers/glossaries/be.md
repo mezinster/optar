@@ -265,8 +265,13 @@ noun: pages feminine («1 выпраўлена, 2 выпраўлены, 5 вып
 and bytes masculine («1 выпраўлены, 2 выпраўлены, 5 выпраўлена»). The `one`
 form also serves 21, 31, …, so it never says «адна».
 
-Invariant counters «Прачытана сканаў: {done} з {n}», «Прачытана старонак:
+Invariant counters «прачытана сканаў: {done} з {n}», «Прачытана старонак:
 {n}» avoid agreement and have the same text in all three forms on purpose.
+«прачытана сканаў» is lower-case because the window shows it only after
+« · »; inside `gui.scans_read_working` it follows «Апрацоўка…», which closes
+a phrase of its own, so there it keeps the capital. Phrases shown only after
+« · » (such as `gui.repair.unprotected`) start lower-case; the row-state
+labels (`gui.health.*`) stay capitalised.
 
 ## Site navigation
 
@@ -337,7 +342,7 @@ English pages quote).
 | Recoverable: page 3 missing, can be repaired from the others | Аднаўленне магчымае: няма старонкі 3, яе можна аднавіць па астатніх | `gui.state.recoverable` |
 | Recoverable: page 3 missing, repaired from the others · matches the fingerprint | Аднаўленне магчымае: няма старонкі 3, яна адноўлена па астатніх · супадае з адбіткам | `gui.state.recovered`, `gui.state.matches` |
 | Working… 3 of 6 scans read | Апрацоўка… Прачытана сканаў: 3 з 6 | `gui.scans_read_working` |
-| 3 of 6 scans read | Прачытана сканаў: 3 з 6 | `gui.scans_read` |
+| 3 of 6 scans read | прачытана сканаў: 3 з 6 | `gui.scans_read` |
 | Checking the fingerprint… | Звярка з адбіткам… | `gui.state.checking` |
 | All N pages read · cannot be verified (no tag) | Прачытаны ўсе старонкі: N · праверыць нельга (няма пазнакі) | `gui.state.all_read`, `gui.state.no_tag` |
 | 4 of 6 pages good · 1 damaged · 1 missing | 4 з 6 старонак у парадку · 1 пашкоджана · 1 адсутнічае | `gui.state.good`, `.damaged`, `.missing` |
