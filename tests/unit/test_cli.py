@@ -1,6 +1,9 @@
 # (c) GPL 2007 Karel 'Clock' Kulhavy, Twibright Labs; Python port 2026
+import ast
 import os
 import struct
+import sys
+from pathlib import Path
 from unittest import mock
 
 import numpy as np
@@ -947,17 +950,6 @@ def test_an_ordinary_reading_of_a_page_is_preferred_to_a_slow_one(capsys):
 # --- Languages ---------------------------------------------------------------
 
 
-@pytest.fixture(autouse=True)
-def _english_unless_chosen(monkeypatch):
-    """These tests pin English wording: neither the machine's language nor a
-    language chosen by one test may reach another."""
-    from optar import i18n
-
-    monkeypatch.setenv("OPTAR_LANG", "en")
-    yield
-    i18n.set_language("en")
-
-
 ENGLISH_HELP = {
     "": """\
 usage: optar [-h] [--version] {encode,decode} ...
@@ -1048,9 +1040,147 @@ def test_choose_language(env, enc, want, catalogues):
 
     for code in ("ru", "pl", "it", "ka", "tr"):
         catalogues.add(
-            code, {"language": {"name": code}, "x": "\u10d0\u0431" if code == "ka" else "x"}
+            code,
+            {"language": {"name": code}, "cli": {"x": "\u10d0\u0431" if code == "ka" else "x"}},
         )
     assert choose_language(env, enc) == want
+
+
+def test_every_output_stream_must_hold_the_language(catalogues):
+    """--help goes to stdout, the rest to stderr: both encodings count; a stream
+    without one (None) limits nothing."""
+    from optar.cli import choose_language
+
+    catalogues.add("ka", {"language": {"name": "\u10e5\u10d0"}, "cli": {"x": "\u10d0"}})
+    env = {"LANG": "ka_GE.UTF-8"}
+    assert choose_language(env, "utf-8", "utf-8") == "ka"
+    assert choose_language(env, "cp1252", "utf-8") == "en"
+    assert choose_language(env, "utf-8", "cp1252") == "en"
+    assert choose_language(env, None, "utf-8") == "ka"
+    assert choose_language(env, None, None) == "ka"
+    assert choose_language(env) == "ka"
+
+
+def test_only_the_terminal_tables_must_fit_the_output(catalogues):
+    from optar.cli import choose_language
+
+    catalogues.add("it", {"language": {"name": "Italiano"}, "cli": {"x": "uno"},
+                          "gui": {"y": "due\u2026"}})  # fmt: skip
+    assert choose_language({"LANG": "it_IT"}, "cp850") == "it"
+    catalogues.add("it", {"language": {"name": "Italiano"}, "err": {"x": "uno\u2026"}})
+    assert choose_language({"LANG": "it_IT"}, "cp850") == "en"
+
+
+def test_help_to_a_narrower_stdout_than_stderr_is_english(monkeypatch):
+    """A redirected stdout in the ANSI code page while stderr is UTF-8 (Windows):
+    the language must fit both, or --help would end in UnicodeEncodeError."""
+    import io
+
+    out = io.TextIOWrapper(io.BytesIO(), encoding="cp1252", errors="strict")
+    err = io.TextIOWrapper(io.BytesIO(), encoding="utf-8", errors="backslashreplace")
+    monkeypatch.setenv("OPTAR_LANG", "ka")
+    monkeypatch.setenv("COLUMNS", "100")
+    monkeypatch.setattr(sys, "stdout", out)
+    monkeypatch.setattr(sys, "stderr", err)
+    with pytest.raises(SystemExit) as e:
+        main(["--help"])
+    assert e.value.code == 0
+    out.flush()
+    assert out.buffer.getvalue().decode("cp1252") == ENGLISH_HELP[""]
+
+
+def test_a_malformed_catalogue_of_the_chosen_language_gives_english(monkeypatch, capsys):
+    """The command line must still start; an English run does not even read it."""
+    import tomllib
+
+    from optar import i18n
+
+    real = i18n._read
+    read = []
+
+    def broken_ru(code):
+        read.append(code)
+        return tomllib.loads("= broken") if code == "ru" else real(code)
+
+    monkeypatch.setattr(i18n, "_cache", {})
+    monkeypatch.setattr(i18n, "_read", broken_ru)
+    monkeypatch.setenv("COLUMNS", "100")
+    with pytest.raises(SystemExit):
+        main(["--help"])  # OPTAR_LANG=en
+    assert capsys.readouterr().out == ENGLISH_HELP[""]
+    assert "ru" not in read
+    monkeypatch.setenv("OPTAR_LANG", "ru")
+    with pytest.raises(SystemExit) as e:
+        main(["--help"])
+    assert e.value.code == 0
+    assert capsys.readouterr().out == ENGLISH_HELP[""]
+    assert "ru" in read
+    from optar.cli import choose_language
+
+    assert choose_language({"LANG": "ru_RU"}) == "en"  # no stream to check it against
+
+
+# Windows language ids (LANGID) of the nine languages and the code each gives.
+WINDOWS_IDS = {0x0409: "en", 0x0419: "ru", 0x0422: "uk", 0x0423: "be", 0x0415: "pl",
+               0x0437: "ka", 0x041F: "tr", 0x0410: "it", 0x0C0A: "es"}  # fmt: skip
+
+
+@pytest.mark.parametrize("ident, code", WINDOWS_IDS.items())
+def test_the_windows_interface_language_gives_the_language(ident, code):
+    """On Windows the C runtime's locale is "Russian_Russia", which names no
+    language: the user's interface language id does (0x0419 is ru_RU)."""
+    import locale
+
+    from optar.cli import choose_language, windows_language
+
+    name = windows_language(lambda: ident, locale.windows_locale)
+    assert choose_language({}, "utf-8", system=name) == code
+
+
+def test_a_failing_windows_call_means_no_system_language():
+    import locale
+
+    from optar.cli import windows_language
+
+    def raises():
+        raise OSError("no such function")
+
+    assert windows_language(raises, locale.windows_locale) is None
+    assert windows_language(lambda: 0x7FFF, locale.windows_locale) is None  # unknown id
+    assert windows_language(lambda: [], locale.windows_locale) is None  # unhashable
+    assert windows_language(lambda: 1, {1: None}) is None
+
+
+def test_system_language_asks_windows_only_on_windows(monkeypatch):
+    from optar import cli
+
+    monkeypatch.setattr(cli, "_user_ui_language", lambda: 0x0437)
+    if sys.platform != "win32":
+        assert cli.system_language() is None
+    monkeypatch.setattr(sys, "platform", "win32")
+    assert cli.system_language() == "ka_GE"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="ctypes.windll exists on Windows")
+def test_system_language_survives_a_missing_windll(monkeypatch):
+    from optar import cli
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    assert cli.system_language() is None
+
+
+def test_main_follows_the_system_language_when_the_environment_names_none(
+    monkeypatch, capsys
+):
+    from optar import cli, i18n
+
+    monkeypatch.delenv("OPTAR_LANG")
+    monkeypatch.setattr(cli, "system_language", lambda: "ru_RU")
+    with pytest.raises(SystemExit):
+        main(["--help"])
+    out = capsys.readouterr().out
+    assert out.startswith(i18n.catalogue("ru")["cli.argparse.usage"])
+    assert out != ENGLISH_HELP[""]
 
 
 def test_choose_language_uses_the_system_language_last(catalogues):
@@ -1114,8 +1244,9 @@ def test_argparse_words_follow_the_language(capsys, monkeypatch, catalogues):
 
 
 def test_a_message_with_braces_in_a_name_is_shown_as_it_is(tmp_path, capsys):
-    assert main(["decode", str(tmp_path / "{x}")]) == 2
-    assert f"cannot open {tmp_path}/{{x}}_0001.png" in capsys.readouterr().err
+    base = str(tmp_path / "{x}")  # the program prints the base it was given, as given
+    assert main(["decode", base]) == 2
+    assert f"cannot open {base}_0001.png" in capsys.readouterr().err
 
 
 def test_cli_source_holds_no_wording():
@@ -1174,3 +1305,47 @@ def test_a_page_list_chooses_single_or_several_by_how_many_it_names(catalogues):
     i18n.set_language("en")
     assert cli._listing("cli.summary.missing", 1, list="3") == "missing page 3"
     assert cli._listing("cli.summary.missing", 2, list="3, 4") == "missing pages 3, 4"
+
+
+def _catalogue_keys_named(tree, english):
+    """The catalogue keys (or key prefixes, as ``cli.summary.missing``) a source names."""
+    found = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and "." in node.value:
+            name = node.value
+            if name in english or any(key.startswith(name + ".") for key in english):
+                found.add(name)
+    return found
+
+
+def test_the_terminal_words_only_keys_of_the_terminal_tables():
+    """A language is used on the command line when its words in TERMINAL_TABLES
+    fit the output: every key the library (whose errors reach the terminal),
+    cli.py and optar-gui's terminal messages name must be under one of them."""
+    from optar import i18n
+    from optar.cli import TERMINAL_TABLES
+
+    english = i18n.catalogue("en")
+    root = Path(optar.cli.__file__).parent
+    keys = {}
+    for path in sorted(root.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for key in _catalogue_keys_named(tree, english):
+            keys.setdefault(key, path.relative_to(root.parent).as_posix())
+    # optar-gui's terminal lines: the text.py functions its entry point calls.
+    gui = root.parent / "optar_gui"
+    entry = ast.parse((gui / "__main__.py").read_text(encoding="utf-8"))
+    called = {node.attr for node in ast.walk(entry)
+              if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
+              and node.value.id == "text"}  # fmt: skip
+    text_tree = ast.parse((gui / "text.py").read_text(encoding="utf-8"))
+    functions = {node.name: node for node in text_tree.body if isinstance(node, ast.FunctionDef)}
+    assert called and called <= set(functions), called - set(functions)
+    for name in called:
+        for key in _catalogue_keys_named(functions[name], english):
+            keys.setdefault(key, f"optar_gui/text.py:{name}")
+    assert len(keys) > 100  # the scan finds the keys
+    assert {key.split(".")[0] for key in keys} >= {"cli", "err", "gui", "language"}
+    tables = tuple(f"{table}." for table in TERMINAL_TABLES)
+    outside = {key: where for key, where in keys.items() if not f"{key}.".startswith(tables)}
+    assert not outside, outside

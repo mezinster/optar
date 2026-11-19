@@ -10,12 +10,15 @@ library never looks the key up itself: only ``cli.py`` and the window do.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from types import MappingProxyType
+
 
 class OptarError(Exception):
     """Base class for all optar errors."""
 
     key: str | None = None
-    values: dict[str, object] = {}  # replaced per instance, never changed in place
+    values: Mapping[str, object] = MappingProxyType({})  # replaced per instance
 
 
 class Grouped(int):

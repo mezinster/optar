@@ -78,3 +78,16 @@ def test_main_survives_a_windowed_build_with_no_stderr(catalogues, monkeypatch, 
     assert entry.main([]) == 2  # print(file=None) goes to stdout, harmlessly
     out = capsys.readouterr().out
     assert out == f"optar-gui {__version__}\nНужен PySide6.\n"
+
+
+def test_terminal_messages_follow_the_system_language(monkeypatch, capsys):
+    """As optar does: with no language in the environment, the system's (on
+    Windows the interface language) words optar-gui's terminal messages."""
+    import optar.cli
+    from optar import i18n
+
+    monkeypatch.delenv("OPTAR_LANG")
+    monkeypatch.setattr(optar.cli, "system_language", lambda: "ru_RU")
+    monkeypatch.setitem(sys.modules, "PySide6", None)
+    assert entry.main([]) == 2
+    assert capsys.readouterr().err == i18n.catalogue("ru")["gui.cli.missing_qt"] + "\n"

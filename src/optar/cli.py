@@ -67,28 +67,65 @@ def __getattr__(name: str) -> str:
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
+# The catalogue tables whose words the command line (and optar-gui's terminal
+# messages) can print; a language is used only if its words there fit the output.
+TERMINAL_TABLES = ("cli", "err", "count", "alternatives", "format", "gui.cli", "language")
+
+
 def choose_language(
-    environ: Mapping[str, str], encoding: str | None, system: str | None = None
+    environ: Mapping[str, str], *encodings: str | None, system: str | None = None
 ) -> str:
     """The language code for the given environment: OPTAR_LANG, LC_ALL, LC_MESSAGES,
-    LANG, then the system's, else English. A language whose text the output
-    encoding cannot hold gives English."""
+    LANG, then the system's, else English. A language whose terminal words one of
+    the output ``encodings`` cannot hold gives English (None limits nothing), as
+    does one whose catalogue cannot be read."""
     names = [environ.get(key) for key in ("OPTAR_LANG", "LC_ALL", "LC_MESSAGES", "LANG")]
     code = i18n.pick_language([*names, system]) or "en"
     try:
-        return code if i18n.encodable(code, encoding or "utf-8") else "en"
+        i18n.catalogue(code)  # read here, so that a malformed one gives English
+        fits = all(
+            i18n.encodable(code, encoding, TERMINAL_TABLES)
+            for encoding in encodings
+            if encoding is not None
+        )
     except LookupError:  # an encoding Python does not know
         return "en"
+    except ValueError:  # a malformed catalogue (TOMLDecodeError, UnicodeDecodeError)
+        return "en"
+    return code if fits else "en"
 
 
-def _system_language() -> str | None:
-    """The user's interface language where the environment does not carry it (Windows)."""
+def stream_encoding(stream: object) -> str | None:
+    """The encoding of an output stream; None for a missing stream (a windowed
+    build) or one that names none."""
+    return getattr(stream, "encoding", None) or None
+
+
+def system_language() -> str | None:
+    """The user's interface language where the environment does not carry it
+    (Windows), as a locale name such as ``ru_RU``; None elsewhere or on failure."""
     if sys.platform != "win32":
         return None
+    return windows_language(_user_ui_language, locale.windows_locale)
+
+
+def _user_ui_language() -> int:
+    import ctypes  # windll exists on Windows only
+
+    return ctypes.windll.kernel32.GetUserDefaultUILanguage()
+
+
+def windows_language(
+    ui_language: Callable[[], int], names: Mapping[int, str]
+) -> str | None:
+    """The locale name of the user's interface language: ``ui_language()`` gives
+    its Windows language id (0x0419), ``names`` maps ids to names (``ru_RU``).
+    Any failure means no system language."""
     try:
-        return locale.getlocale()[0]
-    except (ValueError, TypeError):
+        name = names.get(ui_language())
+    except Exception:  # noqa: BLE001 - a missing or failing system call
         return None
+    return name if isinstance(name, str) else None
 
 
 class _Formatter(argparse.HelpFormatter):
@@ -575,7 +612,14 @@ def _decode(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     previous = i18n.language()
-    i18n.set_language(choose_language(os.environ, sys.stderr.encoding, _system_language()))
+    # --help and --version go to stdout, everything else to stderr: both must hold it.
+    code = choose_language(
+        os.environ,
+        stream_encoding(sys.stdout),
+        stream_encoding(sys.stderr),
+        system=system_language(),
+    )
+    i18n.set_language(code)
     try:
         return _run(argv)
     finally:

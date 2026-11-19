@@ -172,6 +172,36 @@ def test_encodable(catalogues):
     assert not i18n.encodable("ka", "cp1252")
 
 
+def test_encodable_looks_only_at_the_tables_named(catalogues):
+    catalogues.add("it", {"language": {"name": "Italiano"}, "cli": {"x": "uno"},
+                          "gui": {"y": "due\u2026", "cli": {"z": "tre"}}})  # fmt: skip
+    catalogues.add("ru", {"gui": {"cli": {"z": "\u0442\u0440\u0438"}}})
+    assert not i18n.encodable("it", "cp850")  # the window's "…"
+    assert i18n.encodable("it", "cp850", ("cli", "language"))
+    assert not i18n.encodable("it", "cp850", ("cli", "gui"))
+    assert i18n.encodable("ru", "cp1251", ("gui.cli",))
+    assert not i18n.encodable("ru", "cp1252", ("gui.cli",))
+    assert i18n.encodable("ru", "cp1252", ("gui.c",))  # a table, not a prefix of a name
+
+
+def test_choosing_a_language_reads_no_catalogue(monkeypatch):
+    """Only the files' presence counts: a malformed catalogue stops nothing there."""
+    read = []
+    monkeypatch.setattr(i18n, "_cache", {})
+    monkeypatch.setattr(i18n, "_read", lambda code: read.append(code))
+    assert i18n.pick_language(["ru_RU.UTF-8"]) == "ru"
+    assert i18n.pick_language(["xx", "de_DE", "pl"]) == "pl"
+    assert i18n.pick_language(["de_DE", None, ""]) is None
+    assert read == []
+
+
+def test_a_language_without_a_file_is_not_picked(catalogues):
+    catalogues.only("en")
+    assert i18n.pick_language(["ru_RU"]) is None
+    catalogues.add("ru", {"language": {"name": "Русский"}})
+    assert i18n.pick_language(["ru_RU"]) == "ru"
+
+
 def test_module_reads_no_environment_and_imports_no_qt():
     source = Path(i18n.__file__).read_text(encoding="utf-8")
     for banned in ("os.environ", "getenv", "PySide6", "print(", "sys.exit", "sys.argv"):

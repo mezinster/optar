@@ -253,3 +253,11 @@ def test_the_window_shows_the_translated_reason(tmp_path, catalogues):
 def english_after():
     yield
     i18n.set_language("en")
+
+
+def test_an_error_without_values_shares_no_mutable_dict():
+    plain = OptarError("plain")
+    assert dict(plain.values) == {}
+    with pytest.raises(TypeError):
+        plain.values["x"] = 1
+    assert OptarError("other").values == {}

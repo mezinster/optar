@@ -35,10 +35,21 @@ def main(argv: list[str] | None = None) -> int:
 def _main(argv: list[str] | None) -> int:
     # The terminal messages follow the environment; the window, once there is
     # one, follows the saved choice.
-    from optar.cli import choose_language  # not before --version needs it
+    from optar.cli import (  # not before --version needs it
+        choose_language,
+        stream_encoding,
+        system_language,
+    )
 
-    # A windowed build has no stderr (None): its encoding is then unknown.
-    i18n.set_language(choose_language(os.environ, getattr(sys.stderr, "encoding", None)))
+    # A windowed build has no stdout or stderr (None): it then limits nothing.
+    i18n.set_language(
+        choose_language(
+            os.environ,
+            stream_encoding(sys.stdout),
+            stream_encoding(sys.stderr),
+            system=system_language(),
+        )
+    )
     try:
         args = _parser().parse_args(sys.argv[1:] if argv is None else argv)
     except SystemExit as e:  # argparse has printed the usage or the error

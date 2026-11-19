@@ -32,14 +32,25 @@ _current = "en"
 _cache: dict[str, dict | None] = {}
 
 
+def _path(code: str):
+    return resources.files("optar") / "locale" / f"{code}.toml"
+
+
 def _read(code: str) -> dict | None:
     """The nested catalogue of a language, or None when it has no file."""
     try:
-        path = resources.files("optar") / "locale" / f"{code}.toml"
-        with path.open("rb") as f:
+        with _path(code).open("rb") as f:
             return tomllib.load(f)
     except (FileNotFoundError, NotADirectoryError):
         return None
+
+
+def _exists(code: str) -> bool:
+    """Whether the language has a catalogue file (it is not read)."""
+    try:
+        return _path(code).is_file()
+    except (FileNotFoundError, NotADirectoryError):
+        return False
 
 
 def _flatten(data: dict, prefix: str = "") -> dict:
@@ -209,8 +220,10 @@ def listing(key: str, count: int, /, **values: object) -> str:
 
 
 def pick_language(candidates: Iterable[str | None]) -> str | None:
-    """The first candidate (such as ``ru_RU.UTF-8``) that names a language present."""
-    present = languages()
+    """The first candidate (such as ``ru_RU.UTF-8``) that names a language present.
+
+    Only the catalogue files' presence is looked at: no catalogue is read, so a
+    malformed one stops nothing here."""
     for name in candidates:
         if not name:
             continue
@@ -219,14 +232,18 @@ def pick_language(candidates: Iterable[str | None]) -> str | None:
             if ch in _SEPARATORS:
                 code = code[:i]
                 break
-        if code in present:
+        if code in ORDER and _exists(code):
             return code
     return None
 
 
-def encodable(code: str, encoding: str) -> bool:
-    """Whether every string of the catalogue encodes in ``encoding``."""
-    for value in catalogue(code).values():
+def encodable(code: str, encoding: str, tables: Iterable[str] | None = None) -> bool:
+    """Whether every string of the catalogue encodes in ``encoding``; with
+    ``tables`` (names such as ``cli`` or ``gui.cli``), every string under them."""
+    prefixes = None if tables is None else tuple(f"{table}." for table in tables)
+    for key, value in catalogue(code).items():
+        if prefixes is not None and not key.startswith(prefixes):
+            continue
         for text in value.values() if isinstance(value, dict) else (value,):
             try:
                 text.encode(encoding)
