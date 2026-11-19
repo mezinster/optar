@@ -39,7 +39,7 @@ punti e la protezione; non c'è niente da impostare.
 
 L'elenco mostra una riga per pagina con il suo stato. Selezionando una riga
 si vede la scansione con le zone danneggiate evidenziate: la rotellina
-ingrandisce, il trascinamento sposta, il doppio clic adatta la pagina alla
+regola lo zoom, il trascinamento sposta, il doppio clic adatta la pagina alla
 finestra.
 
 Quando la barra in basso dice che il file è verificato, «Salva file…» lo
@@ -104,12 +104,12 @@ La barra mostra lo stato dell'intero documento.
 | Recuperabile: manca la pagina 3, ricostruita dalle altre · corrisponde all'impronta | Questa riparazione è stata eseguita e controllata. Seguono la dimensione e che cosa ha fatto la riparazione. |
 | Elaborazione… Scansioni lette: 3 su 6 | Ci sono ancora scansioni in lettura. Quando il documento ha già uno stato da mostrare, il conteggio lo segue: «File recuperato e verificato · N byte · Scansioni lette: 3 su 6». |
 | Controllo dell'impronta… | Il controllo è in corso in background. |
-| Lette tutte le N pagine · non verificabile (nessun contrassegno) | Le pagine vengono da un vecchio programma e non portano nessuna impronta. |
+| Lette tutte le pagine (N) · non verificabile (nessun contrassegno) | Le pagine vengono da un vecchio programma e non portano nessuna impronta. |
 | Pagine buone: 4 su 6 · 1 danneggiata · 1 mancante | Negli altri casi, un conteggio. |
 
 Per un documento con protezione la finestra mostra anche quanti byte ha
-riparato la protezione e quanta della sua capacità di riparazione ha usato il
-punto peggiore, per esempio «capacità di riparazione usata nel punto
+riparato la protezione e quanta della sua capacità di riparazione ha usato la
+zona peggiore, per esempio «capacità di riparazione usata nella zona
 peggiore: 57% (18 su 32), margine moderato».
 Se la riparazione non riesce, la finestra
 indica le pagine da aggiungere o da scansionare di nuovo.

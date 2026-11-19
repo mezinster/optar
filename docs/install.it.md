@@ -29,7 +29,7 @@ Ognuno è un unico file e non richiede di installare nient'altro.
 
 ## Dai sorgenti { #from-source }
 
-Ti servono Python 3.12 o successivo e una copia locale del repository.
+Ti servono Python 3.12 o una versione successiva e una copia locale del repository.
 
 Il programma a riga di comando (installa numpy e Pillow):
 

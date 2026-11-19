@@ -81,7 +81,7 @@ La finestra e `optar encode` promettono che una pagina persa si può recuperare
 solo per i documenti abbastanza lunghi, e in quel caso dicono «si può perdere
 N pagina su T» o «si possono perdere N pagine su T».
 
-| Protezione | Si può perdere 1 pagina da | Si possono perdere 2 pagine da |
+| Protezione | Si può perdere 1 pagina a partire da | Si possono perdere 2 pagine a partire da |
 |---|---|---|
 | Standard | 12 pagine | 24 pagine |
 | Alta | 6 pagine | 12 pagine |

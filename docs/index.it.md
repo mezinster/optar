@@ -33,7 +33,7 @@ I programmi sono due e usano lo stesso codice:
 | Stampare un file | [Scrivere un file su carta](put-on-paper.md) |
 | Recuperare un file da una stampa | [Rileggere il file](read-from-paper.md) |
 | Leggere scansioni fatte a una risoluzione troppo bassa | [Scansioni a risoluzione troppo bassa](slower-reader.md) |
-| Usarlo dagli script | [Riga di comando](command-line.md) |
+| Usarlo negli script | [Riga di comando](command-line.md) |
 | Sapere quanto fidarti | [Che cosa è stato mostrato e che cosa no](evidence.md) |
 | Scrivere un tuo programma di lettura o un tuo codificatore | [Specifica del formato](format.md) |
 

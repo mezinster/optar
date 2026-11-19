@@ -11,8 +11,8 @@ lo più vengono da scansioni simulate, non dalla carta.
 
 I test automatici leggono immagini generate con sfocatura, rumore e
 rotazione. La sfocatura simulata è stata adattata a tre scansioni reali a
-300 dpi di una pagina stampata, fatte con una stampante e uno scanner con
-alimentatore di fogli.
+300 dpi di una sola pagina stampata, fatte con una sola stampante e un solo
+scanner con alimentatore di fogli.
 
 - Con quella sfocatura i punti standard non sono stati decodificati a 300 dpi
   con il metodo normale.
@@ -24,16 +24,17 @@ alimentatore di fogli.
 
 ## Il metodo lento { #the-slower-reader }
 
-Il [metodo lento](slower-reader.md) è stato mostrato su un documento reale e
-su uno simulato.
+Il funzionamento del [metodo lento](slower-reader.md) è stato mostrato su un
+solo documento reale e su uno simulato.
 
 **Reale.** Il documento del proprietario del progetto: sei pagine A4, punti
 standard, protezione alta, scansionate a circa 290 dpi dove sono consigliati
 600 dpi. Il metodo normale non ha identificato nessuna delle pagine. Con il
 metodo lento il file è stato recuperato e verificato dalla sua impronta:
 759.879 byte, di cui 41.495 byte riparati dalla protezione del documento; il
-blocco peggiore ha usato 40 della sua capacità di riparazione di 64. Si
-tratta di un documento, una stampante, uno scanner e una risoluzione. Le
+blocco peggiore ha usato 40 su 64 della sua capacità di riparazione. Si
+tratta di un solo documento, una sola stampante, un solo scanner e una sola
+risoluzione. Le
 scansioni non fanno parte del repository.
 
 **Simulato** (`tests/unit/test_coarse_claim.py`). Un documento di due pagine
@@ -62,7 +63,7 @@ vecchie pagine nello stile della 0.2 non sono coperte dal metodo lento.
   vale per ogni stampa con punti più grandi o con protezione.
 - Gli scanner con alimentatore di fogli non sono stati provati, salvo il fatto
   che il programma trova la griglia di punti su tre scansioni reali.
-- Tre scansioni reali a 300 dpi di una stampa misuravano circa 286 dpi, il che
+- Tre scansioni reali a 300 dpi di una stessa stampa misuravano circa 286 dpi, il che
   significa che quella stampa è uscita a circa il 95% della dimensione reale.
   I punti più piccoli sono più difficili da leggere, quindi stampa a
   dimensione reale (100%).

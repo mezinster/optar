@@ -36,9 +36,10 @@ from English; the Russian glossary was used only as a model of shape.
   but «il 57%», «i 12»). A template cannot know which, so the catalogue never
   puts an article directly before a number placeholder: it puts a noun in
   between («la pagina {page}», «il limite di {limit}») or uses a label form
-  with a colon («capacità di riparazione usata nel punto peggiore: {percent}%»).
-  Plural «le» and «delle» before a number are always safe («tutte le {n}
-  pagine»). A file name (`{name}`, `{path}`) is never the bare subject of an
+  with a colon («capacità di riparazione usata nella zona peggiore: {percent}%»).
+  Plural «le» and «delle» before a number are always safe, but «tutte le
+  {n} pagine» is avoided: with 2 Italian says «tutte e due», so the
+  catalogue writes «Lette tutte le pagine ({n})». A file name (`{name}`, `{path}`) is never the bare subject of an
   agreeing participle: a noun stands before it («La scansione {name} non è
   stata usata…», «File {name} creato»).
 - **Typography.** Quotes «caporali» for quoting interface wording and words
@@ -101,7 +102,7 @@ from English; the Russian glossary was used only as a model of shape.
 | rebuild (a lost page) | ricostruire | «ricostruita dalle altre». |
 | corrected (dots, symbols, bits) | corretto | Kept apart from "repaired": «265.112 punti corretti · 6.912 byte riparati dalla protezione del documento». "Error correction" «correzione degli errori», "error-correcting code" «codice a correzione d'errore». |
 | uncorrectable, beyond correction | non correggibile | Not «incorreggibile» (said of incorrigible people). |
-| repair capacity, budget | capacità di riparazione | "Used 18 of 32" «18 su 32». "The worst spot" «il punto peggiore». |
+| repair capacity, budget | capacità di riparazione | "Used 18 of 32" «18 su 32». "The worst spot" «la zona peggiore» (agreement: «troppo per ripararla»). Not «il punto peggiore»: «punto» is reserved for a dot, and the same line can stand near «… punti corretti». «zona» is also the pages' word for damaged places («zone danneggiate»). |
 | margin (wide, moderate, close to the limit) | margine (margine ampio, margine moderato, vicino al limite) | |
 | check the fingerprint, checking | controllare l'impronta, controllo dell'impronta | «Controllo dell'impronta…». Keeps «verific-» free for "verified". |
 | matches / does not match the fingerprint | corrisponde / non corrisponde all'impronta | |
@@ -130,6 +131,7 @@ from English; the Russian glossary was used only as a model of shape.
 | actual size (100%), fit to page | dimensione reale (100%), «Adatta alla pagina» | The second is quoted as Italian print dialogs usually name it. |
 | grayscale, colour, black and white | scala di grigi, a colori, bianco e nero | |
 | bottom bar | barra in basso | |
+| System default (entry of the language menu) | Lingua del sistema | `gui.SYSTEM_LANGUAGE`. The usual Italian entry; «Predefinita del sistema» was a long calque. |
 | progress bar | barra di avanzamento | |
 | row, list of scans | riga, elenco delle scansioni | |
 | preview, marked | anteprima, evidenziati | Marks on the preview are «evidenziati», never «contrassegnati» (see "tag"). |
@@ -188,6 +190,7 @@ from English; the Russian glossary was used only as a model of shape.
 | stream | flusso | |
 | payload, body | carico utile, corpo | |
 | padding, padding stream | riempimento, flusso di riempimento | The noun; a file is «completato con zeri». |
+| fill cut | soglia di propagazione | The level for the flood fill from the edges (7.2). Not «diffusione» (suggests error diffusion, and is close to «distribuzione»). "Connected by edges, not corners" «connesso attraverso i lati dei pixel, non i vertici» («angoli» is kept for the corners of the scan). |
 | erasure | cancellazione | Coding-theory term («correzione di cancellazioni»). |
 | generator polynomial, field polynomial | polinomio generatore, polinomio del campo | |
 | big-endian | big-endian (byte più significativo per primo) | |
@@ -210,6 +213,11 @@ from English; the Russian glossary was used only as a model of shape.
   dalle altre» (done).
 - **Promise of the tools** — «si può perdere N pagina/e su T» keeps the modal
   «può», not «resiste a» (stronger).
+- **"One document, one printer, one scanner"** (the evidence page) — «un solo
+  documento, una sola stampante, un solo scanner»: the bare article «un/una»
+  would lose the stress on how narrow the evidence is.
+- **"Is meant to be printed"** (format page, PDF) — «è pensato per essere
+  stampato», not «va stampato» (a requirement).
 - **"Has been shown", "is expected"** — «è stato mostrato», not «è stato
   dimostrato» (proved, stronger); "is expected not to be enough" «non
   dovrebbe bastare».
@@ -324,9 +332,9 @@ there; a page puts them in «caporali»).
 | Working… 3 of 6 scans read | Elaborazione… Scansioni lette: 3 su 6 (`gui.scans_read_working`) |
 | 3 of 6 scans read | Scansioni lette: 3 su 6 (`gui.scans_read`) |
 | Checking the fingerprint… | Controllo dell'impronta… (`gui.state.checking`) |
-| All N pages read · cannot be verified (no tag) | Lette tutte le N pagine · non verificabile (nessun contrassegno) (`gui.state.all_read`, `gui.state.no_tag`) |
+| All N pages read · cannot be verified (no tag) | Lette tutte le pagine (N) · non verificabile (nessun contrassegno) (`gui.state.all_read`, `gui.state.no_tag`) |
 | 4 of 6 pages good · 1 damaged · 1 missing | Pagine buone: 4 su 6 · 1 danneggiata · 1 mancante (`gui.state.good`, `.damaged`, `.missing`) |
-| the worst spot used 57% of its repair capacity (18 of 32): a moderate margin | capacità di riparazione usata nel punto peggiore: 57% (18 su 32), margine moderato (`gui.margin.moderate`) |
+| the worst spot used 57% of its repair capacity (18 of 32): a moderate margin | capacità di riparazione usata nella zona peggiore: 57% (18 su 32), margine moderato (`gui.margin.moderate`) |
 | Page 3 · Read by the slower reader · 265,112 dots corrected | Pagina 3 · Letta con il metodo lento · 265.112 punti corretti (`gui.row.page`, `gui.READ_SLOWLY_ROW`, `gui.health.dots_corrected`) |
 | · 6,912 bytes repaired by the document's protection | · 6.912 byte riparati dalla protezione del documento (`gui.health.bytes_repaired`) |
 | fit to page | Adatta alla pagina (`cli.ACTUAL_SIZE`) |

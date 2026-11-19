@@ -325,7 +325,7 @@ READ_SLOWLY_ROW = "Letta con il metodo lento"
 WAITING = "In attesa"
 # The choice of language.
 LANGUAGE_MENU = "Lingua"
-SYSTEM_LANGUAGE = "Predefinita del sistema"
+SYSTEM_LANGUAGE = "Lingua del sistema"
 # A phrase made a sentence, where the window shows it as a line of its own after
 # others (a detail panel, a reason after "was not used"): {words} with the full
 # stop of your language. A phrase that already ends with it is shown as it is.
@@ -430,7 +430,7 @@ other = "{n} pagine lette"
 # Every page of a document without a tag is read: more than one.
 [gui.state.all_read]
 one = "Letta {n} pagina su {n}"
-other = "Lette tutte le {n} pagine"
+other = "Lette tutte le pagine ({n})"
 
 # {good} of {n} pages are good.
 [gui.state.good]
@@ -509,7 +509,7 @@ by_hand = "Questo documento è stato composto a mano, quindi non si può conferm
 no_page = "In questa immagine non è stata trovata nessuna pagina optar"
 label_unreadable = "Non è stato possibile leggere l'etichetta in fondo alla pagina"
 page_number = "Il numero di pagina indicato nell'etichetta non corrisponde a questo documento"
-page_count = "Il numero di pagine indicato nell'etichetta non è possibile"
+page_count = "Il numero di pagine indicato nell'etichetta è impossibile"
 size_mismatch = "Questa scansione è di un formato di carta diverso da quello del documento"
 format_mismatch = "Questa scansione è stata decodificata per un formato di carta diverso da quello del documento"
 # A scan assigned to a page by hand that decodes badly whichever way up it is read.
@@ -688,7 +688,7 @@ other = "altre {n}"
 # What repairing a document did.
 [gui.repair]
 unprotected = "Stampato senza protezione, quindi non è stato possibile riparare nulla"
-too_much = "il punto peggiore richiedeva {used} su {budget}: troppo per ripararlo"
+too_much = "la zona peggiore richiedeva {used} su {budget}: troppo per ripararla"
 
 [gui.repair.bytes]
 one = "{n} byte riparato"
@@ -697,9 +697,9 @@ other = "{n} byte riparati"
 # How close a repair came to failing: {percent}% of the repair capacity ({used}
 # of {budget}) used at the worst spot.
 [gui.margin]
-wide = "capacità di riparazione usata nel punto peggiore: {percent}% ({used} su {budget}), margine ampio"
-moderate = "capacità di riparazione usata nel punto peggiore: {percent}% ({used} su {budget}), margine moderato"
-close = "capacità di riparazione usata nel punto peggiore: {percent}% ({used} su {budget}), vicino al limite"
+wide = "capacità di riparazione usata nella zona peggiore: {percent}% ({used} su {budget}), margine ampio"
+moderate = "capacità di riparazione usata nella zona peggiore: {percent}% ({used} su {budget}), margine moderato"
+close = "capacità di riparazione usata nella zona peggiore: {percent}% ({used} su {budget}), vicino al limite"
 
 # After a repair that could not give the file.
 [gui.rescan]

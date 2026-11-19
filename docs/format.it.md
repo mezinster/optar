@@ -980,7 +980,7 @@ a4_large_image_width_pt = 560.16
 a4_large_image_height_pt = 802.08
 ```
 
-Il PDF va stampato a dimensione reale (100%). Nessun vettore fissa il PDF; lo fa
+Il PDF è pensato per essere stampato a dimensione reale (100%). Nessun vettore fissa il PDF; lo fa
 `tests/unit/test_pdf.py`.
 
 Le immagini delle pagine si scrivono anche come file PNG o PGM con un pixel
@@ -1160,11 +1160,11 @@ diritta.
    la stessa distanza calcolata per i pixel che stanno sopra; la nuova soglia è
    `sync_white_cut * white + (1 - sync_white_cut) * black`, arrotondata; il
    procedimento si ferma quando la soglia non cambia più. Un secondo livello, la
-   soglia di diffusione (*fill cut*), sta a metà tra `black` e `white`.
+   soglia di propagazione (*fill cut*), sta a metà tra `black` e `white`.
 2. **Isolamento della pagina.** Il bianco attorno alla pagina è ogni pixel pari
-   o superiore alla soglia di diffusione che sia connesso (per i lati, non per
-   gli angoli) a uno dei quattro angoli della scansione o al centro di uno dei
-   suoi quattro lati. La pagina è tutto il resto che è connesso al centro della
+   o superiore alla soglia di propagazione che sia connesso (attraverso i lati
+   dei pixel, non i vertici) a uno dei quattro angoli della scansione o al
+   centro di uno dei suoi quattro lati. La pagina è tutto il resto che è connesso al centro della
    scansione. Tutti gli altri pixel (lo sporco tra la pagina e il lato della
    scansione) vengono resi bianchi.
 3. **Un'interruzione nella cornice.** Se una stampante ha tagliato un lato della

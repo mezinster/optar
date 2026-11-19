@@ -5,7 +5,7 @@ source_hash: 3205775811b328fd30b9d40d49b0c5b503e8cced
 # Storia { #history }
 
 optar è stato scritto in C da Karel 'Clock' Kulhavy di Twibright Labs nel
-2007, come i programmi `optar`, `unoptar` e `pgm2ps`. Il suo sito è
+2007, sotto forma dei programmi `optar`, `unoptar` e `pgm2ps`. Il suo sito è
 [ronja.twibright.com/optar](http://ronja.twibright.com/optar/). Colin Dean ha
 mantenuto disponibili i sorgenti e li ha migliorati dal 2012 al 2018 su
 [github.com/colindean/optar](https://github.com/colindean/optar).

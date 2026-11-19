@@ -22,7 +22,7 @@ Entra in funzione da solo, in due casi:
 - Una scansione a bassa risoluzione (meno di 2,5 pixel della scansione per
   punto) ha dato al metodo normale solo un'etichetta senza contrassegno e
   nessuna intestazione, e i dati della pagina sono stati letti male (l'1% o
-  più dei suoi simboli non correggibile). Su una scansione del genere
+  più dei suoi simboli risultava non correggibile). Su una scansione del genere
   l'etichetta può essere ancora leggibile dove i dati non lo sono.
 
 Una pagina i cui dati si leggono bene è una vecchia pagina senza
@@ -59,7 +59,7 @@ bassa. I punti corretti sono evidenziati nell'anteprima.*
   protezione del documento»). Selezionando la pagina si vedono entrambi i
   numeri.
 
-Una pagina del genere non viene mai detta «Buona» ed è contata a parte nella
+Una pagina del genere non viene mai indicata come «Buona» ed è contata a parte nella
 barra in basso. Il metodo lento dà a ogni simbolo la sua ipotesi migliore,
 quindi non può dire che cosa nella pagina non si può riparare.
 

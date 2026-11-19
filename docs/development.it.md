@@ -42,7 +42,7 @@ L'applicazione:
     .venv/bin/pyinstaller --onefile --name optar-gui --collect-data optar packaging/gui_entry.py
 
 Il workflow di rilascio compila entrambi per Linux, macOS e Windows quando
-viene inviato un tag di versione.
+si fa il push di un tag di versione.
 
 ## Questo sito { #this-site }
 
