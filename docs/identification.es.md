@@ -85,7 +85,7 @@ La etiqueta permite a la aplicación:
   aun así el control);
 - recortar el archivo recuperado a su tamaño real, para que no tenga relleno
   de ceros;
-- comparar el archivo recuperado con la huella, que es la comprobación final
+- comparar el archivo recuperado con la huella, que es la verificación final
   de que el archivo es el original.
 
 Para imprimir sin etiqueta, use `optar encode --no-tag`. Las páginas que se

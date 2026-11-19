@@ -37,8 +37,8 @@ protección; no hay nada que configurar.
 ![Escaneos en lectura, cada uno con una barra de progreso y su paso](img/being-read.png)
 
 La lista muestra una fila por página con su estado. Al seleccionar una fila se
-muestra el escaneo con las zonas dañadas marcadas: con la rueda se amplía,
-arrastrando se desplaza y con un doble clic la página se ajusta a la vista.
+muestra el escaneo con las zonas dañadas marcadas: con la rueda se acerca o se
+aleja la vista, arrastrando se desplaza y con un doble clic la página se ajusta a la vista.
 
 Cuando la barra inferior dice que el archivo está verificado, «Guardar
 archivo…» lo escribe.

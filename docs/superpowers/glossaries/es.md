@@ -122,7 +122,7 @@ the one both understand (see "add" and "file" below).
 | margin (wide, moderate, close to the limit) | margen (un margen amplio, un margen moderado, cerca del límite) | |
 | check the fingerprint, checking | comprobar la huella, comprobación | «Comprobando la huella…». Keeps «verific-» free for "verified". |
 | matches / does not match the fingerprint | coincide / no coincide con la huella | |
-| identify (a scan), identified | identificar, identificado | «Identificando la página» (step), «no identificado». |
+| identify (a scan), identified | identificar, identificado | «Identificando la página» (step), «no identificado». Reserved for the program identifying a scan: where English says the printed name "identifies the pages" for people, Spanish says «permitirá reconocer las páginas» (`gui.name.printed`). |
 | assign (a scan) to a page | asignar a una página | Button «Asignar a página…». |
 | start a document by hand, put together by hand | componer un documento a mano, se compuso a mano | One verb for both, so the button and the later caution match. Rejected: «armar» (American colloquial), «montar» (Spain colloquial), «crear» (suggests making a new file). |
 | replace (scan) | reemplazar | |

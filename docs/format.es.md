@@ -6,8 +6,8 @@ source_hash: 90182c569913da957ad8b2b3c51203f66726cc36
 
 El texto normativo de esta especificación es el inglés, [The optar format](https://mezinster.github.io/optar/format/): el formato lo definen ese texto y los vectores de prueba de `tests/vectors`. Esta traducción es informativa; si difiere del texto inglés, prevalece el texto inglés.
 
-optar guarda un archivo en papel como páginas de puntos negros y blancos. Este
-texto define qué es una página y qué es un documento (un conjunto de páginas
+optar guarda un archivo en papel como páginas de puntos negros y blancos. La
+especificación define qué es una página y qué es un documento (un conjunto de páginas
 que lleva un archivo), de modo que se pueda escribir un codificador cuyas
 páginas lea este proyecto y un decodificador que lea las páginas de este
 proyecto.
@@ -773,7 +773,7 @@ El relleno no lleva nada. Existen dos contenidos, y los dos son válidos:
 - optar 0.3.0 escribía bytes cero;
 - optar 0.3.1 y posteriores escriben el **flujo de relleno**: su bloque `n`,
   `n = 0, 1, 2, ...`, son los `PADDING_BLOCK` bytes del SHA-256 de
-  `PADDING_KEY` seguido de `n` como 8 bytes, big-endian; el flujo son los
+  la concatenación de `PADDING_KEY` y `n` como 8 bytes, big-endian; el flujo son los
   bloques unidos. El relleno de la región de datos es el flujo desde su byte 0;
   el relleno del final del cuerpo continúa el flujo donde se detuvo el relleno
   de la región de datos. (Los bytes cero se imprimen como líneas blancas que
@@ -1189,7 +1189,7 @@ de la que tiene encima, de modo que cada búsqueda parte de una cruz ya
 encontrada. Para cada cruz:
 
 1. una búsqueda gruesa sobre píxeles de escaneo enteros, hasta la mitad de
-   media cruz en cada dirección, del lugar donde la imagen mejor se
+   media cruz (`chalf`) en cada dirección, del lugar donde la imagen mejor se
    correlaciona con el patrón de la cruz (oscuro, claro, claro, oscuro);
 2. una búsqueda fina dentro de medio píxel de escaneo, en incrementos de un
    cuarto de píxel, sobre una cruz reducida en `cross_trim` píxeles de página

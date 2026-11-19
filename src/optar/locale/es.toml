@@ -628,7 +628,7 @@ dropped = "Estos caracteres no están en la fuente del rótulo y no se imprimen:
 no_room = "El rótulo de este tamaño de punto no tiene espacio para el nombre, así que no se imprime."
 cut = "El nombre es demasiado largo para la página y se recorta."
 stored = "Las páginas no lo necesitan: el nombre completo se guarda con el archivo."
-printed = "El nombre impreso es lo que identificará las páginas más adelante."
+printed = "El nombre impreso es lo que permitirá reconocer las páginas más adelante."
 
 # A scan made at too low a resolution; {measured} is rounded to the nearest 10.
 [gui.coarse]
@@ -687,7 +687,7 @@ other = "{n} más"
 
 # What repairing a document did.
 [gui.repair]
-unprotected = "Se imprimió sin protección, así que no se pudo reparar nada"
+unprotected = "se imprimió sin protección, así que no se pudo reparar nada"
 too_much = "la peor zona necesitó {used} de {budget}: demasiado para reparar"
 
 [gui.repair.bytes]

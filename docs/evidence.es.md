@@ -11,8 +11,8 @@ procede de escaneos simulados, no de papel.
 
 Las pruebas automáticas leen imágenes generadas con desenfoque, ruido y
 rotación. El desenfoque simulado se ajustó a tres escaneos reales a 300 dpi de
-una página impresa, hechos con una impresora y un escáner con alimentador de
-hojas.
+una sola página impresa, hechos con una sola impresora y un solo escáner con
+alimentador de hojas.
 
 - Con ese desenfoque, los puntos estándar no se decodificaron a 300 dpi con el
   lector normal.
@@ -25,16 +25,16 @@ hojas.
 
 ## El lector lento { #the-slower-reader }
 
-Lo que hace el [lector lento](slower-reader.md) se ha visto en un documento real
-y en uno simulado.
+Lo que hace el [lector lento](slower-reader.md) se ha visto en un solo documento
+real y en uno solo simulado.
 
 **Real.** El documento del propietario, de seis páginas A4, puntos estándar,
 protección alta, escaneado a unos 290 dpi cuando se recomiendan 600 dpi. El
 lector normal no identificó ninguna de las páginas. Con el lector lento, el
 archivo se recuperó y quedó verificado por su huella: 759.879 bytes, de los
 cuales la protección del documento reparó 41.495; el peor bloque usó
-40 de su capacidad de reparación de 64. Es un documento, una impresora, un
-escáner y una resolución. Los escaneos no forman parte del repositorio.
+40 de su capacidad de reparación de 64. Se trata de un solo documento, una
+sola impresora, un solo escáner y una sola resolución. Los escaneos no forman parte del repositorio.
 
 **Simulado** (`tests/unit/test_coarse_claim.py`). Un documento de dos páginas
 del mismo tipo, escaneado a 290 y a 300 dpi con un desenfoque de 1,8 puntos de
