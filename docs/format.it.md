@@ -1,5 +1,5 @@
 ---
-source_hash: 90182c569913da957ad8b2b3c51203f66726cc36
+source_hash: 116c27601de6c43ed57c443b775aafdc63d50d6c
 ---
 
 # Il formato optar { #the-optar-format }
@@ -89,7 +89,7 @@ delle stesse pagine di versione 0 (parte 2).
 | Tipo | Scritto da | Il flusso è | L'etichetta porta |
 |---|---|---|---|
 | semplice | il programma in C, optar 0.1.0, `--no-tag` | il file | solo testo libero |
-| con contrassegno | optar 0.2.0 e successivi («compatibile») | il file | il contrassegno (parte 3) |
+| con contrassegno | optar 0.2.0, e le versioni successive nella loro stampa «compatibile» | il file | il contrassegno (parte 3) |
 | autoidentificante | optar 0.3.0 e successivi | il contenitore (parte 4) | solo testo libero |
 
 ### 1.5 Costanti { #15-constants }
@@ -464,8 +464,8 @@ Vettori: `tests/vectors/c/encoder_pages.json`.
 ### 2.8 L'etichetta { #28-the-label }
 
 La banda dell'etichetta contiene una riga di testo, per le persone e, in un
-documento con contrassegno, per il programma di lettura. È disegnata con un font
-prestabilito.
+documento con contrassegno, per il programma di lettura. È sempre disegnata con lo
+stesso font, quello definito dalla striscia del font descritta qui sotto.
 
 **La striscia del font** è un'immagine di `LABEL_HEIGHT` righe e 1500 colonne,
 con ogni pixel nero o bianco. Le colonne da `0` a `TEXT_WIDTH * GLYPH_CELLS - 1`
@@ -727,10 +727,10 @@ rs_32_parity_of_one = 744034ae367e10c2a221219db0c5e10c3b37fde4942fb3b9188afd148e
 rs_32_parity_of_counting = 41841183b11fdb537421939696cda70e1db5c86684af222564b89cc6069f172e
 ```
 
-`rs_32_parity_of_one` è la parità, per parità 32, dei 223 byte di dati che sono
-tutti zero tranne l'ultimo, che vale 1; questi sono i coefficienti di `g(x)` da
-`x^31` a `x^0`. `rs_32_parity_of_counting` è la parità dei byte di dati 0, 1, 2,
-..., 222.
+`rs_32_parity_of_one` sono, per parità 32, i byte di parità dei 223 byte di dati
+che sono tutti zero tranne l'ultimo, che vale 1; questi sono i coefficienti di
+`g(x)` da `x^31` a `x^0`. `rs_32_parity_of_counting` sono, per parità 32, i byte
+di parità dei byte di dati 0, 1, 2, ..., 222.
 
 Vettori: `tests/vectors/py/reed_solomon.json`.
 
@@ -776,8 +776,9 @@ Il riempimento non porta nulla. Esistono due contenuti, ed entrambi sono validi:
 
 - optar 0.3.0 scriveva byte zero;
 - optar 0.3.1 e successivi scrivono il **flusso di riempimento**: il suo blocco
-  `n`, `n = 0, 1, 2, ...`, è composto dai `PADDING_BLOCK` byte dello SHA-256 della
-  sequenza formata da `PADDING_KEY` seguita da `n` come 8 byte, big-endian; il flusso è composto dai
+  `n`, `n = 0, 1, 2, ...`, è composto dai `PADDING_BLOCK` byte dello SHA-256 di
+  un'unica stringa di byte: `PADDING_KEY` con in coda `n` come intero di 8 byte,
+  big-endian; il flusso è composto dai
   blocchi concatenati. Il riempimento della regione dei dati è il flusso a
   partire dal suo byte 0; il riempimento alla fine del corpo prosegue il flusso
   dove si era fermato il riempimento della regione dei dati. (I byte zero si
@@ -844,22 +845,23 @@ Una pagina persa costa a una parola di codice al massimo
 possono perdere `n` pagine qualsiasi quando
 `n * (ceil(page_body / m) + 1) <= PROMISE_NUM * parity // PROMISE_DEN`, il che
 lascia un quarto della parità per i danni sulle pagine rimaste. Questa è una
-promessa degli strumenti, non una proprietà su cui un programma di lettura può
-fare affidamento o che deve controllare.
+promessa degli strumenti: non è una proprietà su cui un programma di lettura può
+fare affidamento, né una proprietà che un programma di lettura deve controllare.
 
 ### 4.10 Dal contenitore alle pagine { #410-from-the-container-to-pages }
 
 Il flusso è composto da `T * net_bits // 8` byte. Letto come stringa di bit, il
-carico utile della pagina `p` (da 1) inizia al bit `(p - 1) * net_bits`; tutti
-gli altri bit sono 0. Quando `net_bits` è multiplo di 8 il flusso è
+carico utile della pagina `p` (da 1) inizia al bit `(p - 1) * net_bits`; ogni bit
+del flusso che non si trova in alcun carico utile è 0. Quando `net_bits` è multiplo di 8 il flusso è
 semplicemente composto dai carichi utili concatenati. Quando non lo è, ogni
 pagina ha `net_bits mod 8` bit inutilizzati dopo il proprio carico utile, e i
 carichi utili di alcune pagine non iniziano al confine di un byte del flusso.
 
 Il flusso viene stampato come dice la sezione 2.7, il che dà esattamente `T`
 pagine. L'etichetta di una pagina è una normale riga dell'etichetta il cui testo
-libero è per le persone: è il nome del file (l'etichetta data dall'utente o il
-nome del file), uguale su ogni pagina, e non porta alcun contrassegno. (Un
+libero è per le persone: è l'etichetta data dall'utente o, in sua assenza, un nome scelto
+dallo strumento (la finestra usa il nome del file, la riga di comando il nome
+dato con `-o`, che può essere vuoto), uguale su ogni pagina, e non porta alcun contrassegno. (Un
 contrassegno valido farebbe prendere la pagina a un programma di lettura per una
 pagina di un documento con contrassegno, sezione 6.1.)
 
@@ -926,8 +928,8 @@ pagina stampato su di essa. Ce ne sono dieci. Le carte si chiamano `a4` e
 sezione 4.1. Questo progetto stampa un documento semplice o con contrassegno in
 un layout `standard` (oppure, quando gli si dà a mano una stringa di formato, in
 quel formato di pagina con la dimensione dei punti standard e gli offset del
-layout `standard` della carta, purché ogni margine sia di almeno
-`MIN_MARGIN_PT`), e un documento autoidentificante in uno qualsiasi dei dieci
+layout `standard` della carta; rifiuta una stringa di formato di questo tipo a
+meno che ogni margine non risulti allora di almeno `MIN_MARGIN_PT`), e un documento autoidentificante in uno qualsiasi dei dieci
 layout.
 
 Vettori: `tests/vectors/c/bit_placement.json`, `tests/vectors/py/container.json`.
@@ -959,15 +961,15 @@ lato, e ogni offset è la metà della lunghezza libera, arrotondata per difetto 
 un numero intero di punti della stampante. Sono le tabelle, non questa regola, a
 definire i layout.
 
-L'identità di una pagina non dipende da dove si trova sulla carta: un programma
-di lettura trova la pagina dal suo bordo. La posizione conta solo per la stampa:
+Una pagina è la stessa pagina ovunque si trovi sulla carta: un programma di
+lettura trova la pagina dal suo bordo. La posizione conta solo per la stampa:
 una pagina stampata in un'altra scala ha punti di un'altra dimensione, e una
 pagina stampata più vicino all'orlo della carta può venire tagliata.
 
 ### 5.3 Il PDF che scrive questo progetto { #53-the-pdf-this-project-writes }
 
-Ogni pagina del documento è una pagina PDF la cui media box è la carta,
-`[0 0 width height]` in pt. L'immagine della pagina è un'unica immagine a 1 bit
+Ogni pagina del documento è una pagina PDF la cui media box è la carta:
+`[0 0 width height]`, con la larghezza e l'altezza della carta in pt. L'immagine della pagina è un'unica immagine a 1 bit
 per pixel (1 è bianco), di `width` per `height` pixel della pagina, senza
 interpolazione, disegnata con l'angolo in basso a sinistra agli offset del
 layout e scalata in modo che un pixel della pagina sia un punto di dati:
@@ -992,8 +994,8 @@ ASCII, poi i byte dei pixel riga per riga.
 ### 5.4 La striscia dell'etichetta { #54-the-label-strip }
 
 Un'etichetta si disegna in pixel della pagina (sezione 2.8), per cui su una
-pagina con punti più grandi contiene meno caratteri: sulla dimensione più
-grande, troppo pochi per la sua stessa stringa di formato. In un PDF, una pagina
+pagina con punti più grandi contiene meno caratteri: con i punti più
+grandi, troppo pochi per la sua stessa stringa di formato. In un PDF, una pagina
 di un layout la cui dimensione dei punti non è `standard` ha quindi la propria
 etichetta sostituita da una **striscia dell'etichetta**, una seconda immagine
 disegnata in punti di dati standard:
@@ -1041,7 +1043,7 @@ un numero di pagina da 1 al numero di pagine (oppure 1 con il numero di pagine
 0), e il suo testo libero inizia con un contrassegno valido per quel numero di
 pagina e quel numero di pagine (sezione 3.2), la pagina è una pagina di un
 documento con contrassegno. Deve essere trattata come tale anche se i suoi dati
-contengono un'intestazione valida.
+contengono un'intestazione accettabile (sezione 6.2).
 
 Il motivo: il flusso di un documento autoidentificante, così come lo restituisce
 un vecchio programma, può essere stampato di nuovo come documento con
@@ -1091,8 +1093,10 @@ usate.
   quando uno dei suoi bit si trova in un simbolo che il codice di pagina non ha
   potuto correggere; ogni byte di una pagina che non è stata fornita è una
   cancellazione. Il file è composto dai primi `size` byte della regione dei
-  dati, ed è recuperato solo se ogni parola di codice che contiene uno di quei
-  byte è stata letta o riparata (con parità 0: non ha cancellazioni). Il file è
+  dati, ed è recuperato quando, e solo quando, ogni parola di codice che
+  contiene uno di quei byte è stata letta o riparata (con parità 0, dove non si
+  ripara nulla: quando ogni parola di codice di questo tipo non ha
+  cancellazioni). Il file è
   **verificato** quando è recuperato e i primi `FINGERPRINT_SIZE` byte del suo
   SHA-256 sono uguali all'impronta dell'intestazione.
 - **Documento con contrassegno.** Il file è composto dai primi `SIZE` byte del
@@ -1171,7 +1175,8 @@ diritta.
 3. **Un'interruzione nella cornice.** Se una stampante ha tagliato un lato della
    pagina, il bordo ha un'interruzione, il bianco attorno alla pagina penetra
    tra i punti e la fase 2 trova solo un pezzo della pagina. Quando l'area
-   trovata è meno della metà di ciò che non è bianco attorno alla pagina, il
+   trovata è meno della metà di ciò che non è bianco attorno alla pagina così
+   come l'ha trovato la fase 2, il
    bianco attorno alla pagina viene invece preso come ciò che si può
    raggiungere attraverso passaggi larghi almeno `2 * r + 1` pixel, con
    `r = max(5, longest side // 250) // 2`; il bianco tra i punti è più stretto
@@ -1266,13 +1271,14 @@ accettazione appartengono a questo programma di lettura, non al formato.
 
 ### 7.6 Il metodo di lettura lento { #76-the-slower-reader }
 
-Quando le fasi di 7.5 non identificano nulla ma il contorno di una pagina è
-stato trovato, oppure accettano una pagina in base alla sola etichetta senza
-contrassegno su una scansione con meno di 2.5 pixel della scansione per pixel di
-dati mentre l'1% o più dei simboli della pagina non è correggibile, questo
-progetto prova un secondo metodo di lettura, più lento
+Questo progetto prova un secondo metodo di lettura, più lento
 (`src/optar/decoder/soft.py`), pensato per una scansione a risoluzione troppo
-bassa per la sua dimensione dei punti. Per ciascun layout e ciascuna rotazione
+bassa per la sua dimensione dei punti, in due casi. Primo: le fasi di 7.5 non
+identificano nulla, benché il contorno di una pagina sia stato trovato. Secondo:
+valgono tutte e tre queste condizioni: le fasi di 7.5 accettano una pagina in
+base alla sola etichetta senza contrassegno; un pixel di dati di quella scansione
+è largo meno di 2.5 pixel della scansione; e l'1% o più dei simboli della pagina
+non è correggibile. Per ciascun layout e ciascuna rotazione
 candidati, nell'ordine di 7.5, il metodo:
 
 1. ingrandisce la scansione in modo che un pixel di dati sia largo circa quattro
@@ -1284,8 +1290,8 @@ candidati, nell'ordine di 7.5, il metodo:
    quei campioni ai bit noti, un filtro per ciascuna di 16 per 22 zone della
    pagina;
 4. applica i filtri a ogni pixel di dati, il che dà una confidenza con segno per
-   ciascun bit, e sceglie per ogni simbolo di Golay la parola di codice che
-   meglio si adatta alle sue 24 confidenze;
+   ciascun bit, e sceglie, per ogni simbolo della pagina, il simbolo di Golay
+   (sezione 2.5) che meglio si adatta alle sue 24 confidenze;
 5. prende come noti il 60% dei simboli con la confidenza più alta e ripete dalla
    fase 3, per cinque adattamenti in tutto.
 
@@ -1306,7 +1312,8 @@ formato).
 ## 8. Storia { #8-history }
 
 La pagina della parte 2 è il formato di Twibright Optar, un programma in C
-scritto da Karel Kulhavy nel 2007 e mantenuto a partire dal 2012 in `colindean/optar`. I
+scritto da Karel Kulhavy nel 2007; in seguito è stato mantenuto, a partire dal
+2012, in `colindean/optar`. I
 suoi sorgenti sono conservati senza modifiche nella cartella `lega-c` di questo
 progetto, così come erano al commit `9c8379c25466bf142459a26b0f34521bdde2af12`
 di quel repository. I vettori in `tests/vectors/c` sono stati registrati da quel
