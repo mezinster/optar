@@ -211,12 +211,8 @@ Authorship and Licensing
 ------------------------
 
 © GPL 2007 Karel 'Clock' Kulhavy of Twibright Labs. 
-
 See COPYING for the text of the GPL license.
-
 e-mail: clock (at) twibright (dot) com
-
 Twibright Optar homepage: http://ronja.twibright.com/optar/
-
 Improvements © 2012-2018 Colin Dean
 
