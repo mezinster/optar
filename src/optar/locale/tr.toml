@@ -1,0 +1,673 @@
+# optar'ın Türkçe kataloğu. Anahtarlar, sıra ve yorumlar en.toml ile aynıdır; terimler docs/superpowers/glossaries/tr.md sözlüğündendir.
+
+[language]
+name = "Türkçe"
+
+[format]
+group = "."
+decimal = ","
+
+[cli]
+ACTUAL_SIZE = "Gerçek boyutunda (%100) yazdırın, “Sayfaya sığdır” ile değil."
+PAPER_HINT = "--paper değerinin çıktıyla aynı olduğunu ve sayfanın dik (döndürülmeden) tarandığını kontrol edin."
+description = "Dosyaları kâğıt üzerinde saklar."
+after_encoding = "{actual_size} {dpi} dpi çözünürlükle tarayın."
+or_two = "{first} veya {second}"
+list_separator = ", "
+sentences = "{first} {second}"
+wrote = "{path} yazıldı"
+format_does_not_fit = "{format} biçimi {paper} kâğıda sığmıyor"
+cannot_open = "{path} açılamıyor"
+line = "optar: {message}"
+line_hint = "optar: {message}. {hint}"
+os_error = "optar: {reason}"
+os_error_file = "optar: {file}: {reason}"
+compatible_conflict = "--compatible, {options} ile birlikte kullanılamaz"
+format_conflict = "--format, {options} ile birlikte kullanılamaz"
+slow_reader = "optar: {name}: normal okuma yöntemi bu taramanın verilerini okuyamadı; yaklaşık bir dakika süren yavaş okuma yöntemi deneniyor"
+debug_images_unavailable = "optar: --debug-images, kendini tanıtan sayfalarda kullanılamaz"
+force_no_effect = "optar: --force, 0.2.0 ve önceki sürümlerin çıktılarında etkisizdir"
+gap = "optar: {missing} dosyası eksik, ama {existing} dosyası var"
+page_stats = "sayfa {number}: {symbols}, {corrected}, {uncorrectable}"
+force_advice = "--force kurtarılabilen kısmı kaydeder, ama bu kısım hasarlı olabilir."
+dot_need = "{name} {dpi}"
+in_scan = "{name}: {message}"
+
+[cli.wrote_pdf]
+other = "{path} yazıldı ({count} sayfa)"
+
+[cli.dot_name]
+standard = "Standart"
+medium = "Orta"
+big = "Büyük"
+large = "İri"
+xlarge = "Çok iri"
+
+[cli.protection]
+nothing = "Koruma düzeyi {level}: hiçbir şey onarılmaz; bir sayfa kaybolur ya da hasar görürse dosyanın bir kısmı kaybolur."
+within = "Koruma düzeyi {level}: sayfa içindeki hasarlar onarılır, ama kaybolan bir sayfa telafi edilemez."
+
+[cli.protection.lose]
+other = "Koruma düzeyi {level}: {total} sayfadan {count} sayfa kaybolsa da dosya kurtarılabilir."
+
+[cli.scan]
+missing = "optar: {name}: {reason}; eksik sayfa olarak sayıldı."
+page = "{name}: sayfa {page}/{total}{note}"
+page_again_better = "{name}: yine sayfa {page}/{total}{note}; daha iyi tarama kullanılıyor"
+page_again_earlier = "{name}: yine sayfa {page}/{total}{note}; önceki tarama kullanılıyor"
+note_slow = " (yavaş yöntemle okundu)"
+
+[cli.probe]
+unread = "okunamadı ({detail})"
+unidentified = "tanınamadı ({detail})"
+coarse = "tanınamadı ({detail}); yaklaşık {dpi} dpi ile taranmış; nokta boyutlarına göre gereken çözünürlük: {needs}"
+coarse_tried = "tanınamadı ({detail}); yaklaşık {dpi} dpi ile taranmış (yavaş yöntem de denendi); nokta boyutlarına göre gereken çözünürlük: {needs}"
+
+[cli.scan.note_unreadable]
+other = ", {count} bayt okunamadı"
+
+[cli.scan.ignored]
+other = "optar: başka bir belgeye ait {count} tarama yok sayıldı: {names}"
+
+[cli.summary]
+too_many_missing = "dosyayı onarmak için çok fazla sayfa eksik"
+worst = "en kötü kod sözcüğünde kullanılan: {used}/{budget}"
+none_missing = "eksik sayfa yok"
+separator = "; "
+line = "optar: {summary}"
+
+[cli.summary.repaired]
+other = "{count} bayt onarıldı"
+
+[cli.summary.blocks_failed]
+other = "{count} blok onarılamadı"
+
+# {list} is a list of page numbers ("3", "2, 5, 7"). The two forms are chosen by
+# whether the list names exactly one page (single) or more (several), not by a
+# plural rule: in some languages the "one" form also serves 21, 31 and so on.
+[cli.summary.missing]
+single = "eksik sayfa: {list}"
+several = "eksik sayfalar: {list}"
+
+[cli.too_few.read]
+other = "optar: dosya onarılamadı ve kaydedilmedi: {count} sayfadan yalnızca {read} sayfa okundu."
+
+# {list}: the missing pages; single when it names exactly one page, several when more.
+# {fraction}: a number (2: "one page in 2").
+[cli.too_few.rescan]
+single = "{list}. sayfayı tarayın ve kod çözmeyi yineleyin; --force, her {fraction} sayfadan en az biri okunmadıkça hiçbir şey kaydetmez."
+several = "Eksik sayfaları ({list}) tarayın ve kod çözmeyi yineleyin; --force, her {fraction} sayfadan en az biri okunmadıkça hiçbir şey kaydetmez."
+
+[cli.verified]
+other = "optar: dosya doğrulandı ({count} bayt)"
+
+[cli.force_saved]
+unrepaired = "optar: dosya onarılamadı: doğrulamadan geçmedi ve hasarlı olabilir. --force nedeniyle yine de kaydedildi."
+mismatch = "optar: dosya parmak iziyle eşleşmiyor: doğrulamadan geçmedi ve hasarlı olabilir. --force nedeniyle yine de kaydedildi."
+
+[cli.not_saved]
+unrepaired = "optar: dosya onarılamadı ve kaydedilmedi. {advice}"
+mismatch = "optar: dosya parmak iziyle eşleşmiyor ve kaydedilmedi. {advice}"
+
+# {list}: pages to rescan; single when it names exactly one page, several when more.
+# {force}: the sentence cli.force_advice.
+[cli.rescan_advice]
+single = "{list}. sayfayı yeniden tarayın ve kod çözmeyi yineleyin; {force}"
+several = "Sayfaları ({list}) yeniden tarayın ve kod çözmeyi yineleyin; {force}"
+
+[cli.list_more]
+other = "({count} tane daha)"
+
+[cli.stat_symbols]
+other = "{count} sembol"
+
+[cli.stat_corrected]
+other = "düzeltilen: {count}"
+
+[cli.stat_uncorrectable]
+other = "düzeltilemeyen: {count}"
+
+[cli.uncorrectable_codewords]
+other = "optar: {count} kod sözcüğü düzeltilemiyor. {hint}"
+
+[cli.argparse]
+usage = "kullanım: "
+positionals = "konumsal argümanlar"
+options = "seçenekler"
+error = "{prog}: hata: {message}"
+help = "bu yardım iletisini gösterip çık"
+version = "programın sürüm numarasını gösterip çık"
+
+[cli.help]
+paper = "kâğıt boyutu (varsayılan: a4)"
+format = "sayfa biçimini elle belirle"
+encode = "bir dosyayı yazdırılabilir sayfalara kodla"
+input = "kodlanacak dosya"
+output = "çıktı dosyalarının temel adı (varsayılan: optar_out)"
+to = "çıktı türü: tek bir PDF (varsayılan) ya da PNG veya PGM sayfa dosyaları"
+label = "her sayfaya yazdırılan metin (varsayılan: -o ile verilen dosya adı)"
+no_tag = "sayfa etiketlerine boyut, parmak izi ve denetim değeri içeren künyeyi ekleme"
+dots = "nokta boyutu (varsayılan: standard). Boyut standard dışında olursa kendini tanıtan sayfalar üretilir; --protect başka bir düzey belirtmedikçe bunlar standard düzeyde korunur"
+protect = "tüm belgeye yayılan onarım verisi; kendini tanıtan sayfalar üretir, --dots başka bir boyut belirtmedikçe standard noktalarla. Korumasız kendini tanıtan sayfalar için 'none' kullanın. --dots ve --protect olmadan sayfalar uyumlu ve korumasız olur"
+compatible = "optar 0.2 ile C aracının okuyabildiği sayfalar (--dots ve --protect verilmezse varsayılan)"
+decode = "taranmış sayfaların kodunu çözüp dosyaya geri dönüştür"
+base = "taramalar: BASE_0001.png, BASE_0002.png, ..."
+decode_output = "çıktı dosyası (varsayılan: stdout)"
+debug_images = "BASE_NNNN_debug.png dosyalarını yaz"
+force = "kendini tanıtan sayfalardan kurtarılanı, doğrulamadan geçmese bile kaydet"
+no_slow_reader = "normal yöntemin tanıyamadığı taramalarda yavaş okuma yöntemini deneme"
+
+# Library errors (optar.errors): each entry is the English text of the error,
+# word for word; a test compares them with the code.
+[err]
+cannot_read = "{path} okunamıyor: {reason}"
+cannot_write = "{path} yazılamıyor: {reason}"
+unknown_paper = "bilinmeyen kâğıt: {name}; bilinenler: {known}"
+unknown_dots = "bilinmeyen nokta boyutu: {name}; bilinenler: {known}"
+format_syntax = "sayfa biçimi, tirelerle ayrılmış sekiz tam sayı olmalıdır: {text}"
+label_band = "etiket alanının yüksekliği {rows} satır olmalı, {height} satır değil"
+label_font = "{height} satırlık bir etiket alanı okunamaz; yazı tipinin yüksekliği {rows} satır"
+too_many_pages = "çok fazla sayfa: {total} sayfa gerekiyor, en çok {limit} olabilir"
+too_large_to_protect = "korunamayacak kadar büyük: kâğıt üzerinde {size} bayt, en çok {limit} olabilir"
+unknown_parity = "eşlik düzeyi şu değerlerden biri olmalı: {known}; verilen: {parity}"
+format_too_small = "{format} sayfa biçimi kapsayıcı için çok küçük"
+format_cannot_end = "{format} sayfa biçimiyle bir akış bir sayfada sonlandırılamaz"
+impossible_document = "sayfalar var olamayacak bir belgeyi tanımlıyor: {size} baytlık bir dosya için {total} sayfa"
+image_too_large = "{path} görüntüsü okunamıyor: {pixels} piksel, bir tarama için izin verilen {limit} sınırını aşıyor"
+image_size_changed = "{path} görüntüsü okunamıyor: görüntünün boyutu yüklenirken değişti"
+not_an_image = "{path} görüntüsü okunamıyor: {formats} görüntüsü değil"
+image_unreadable = "{path} görüntüsü okunamıyor: {reason}"
+no_page = "sayfa bulunamadı"
+label_unreadable = "etiket okunamıyor"
+scan_not_grey = "tarama 2 boyutlu, uint8 türünde gri tonlamalı bir görüntü olmalı; gelen: şekil {shape}, dtype {dtype}"
+scan_empty = "tarama boş"
+scan_too_small = "{width} x {height} piksellik tarama, sayfa biçiminin {page_width} x {page_height} boyutundan küçük"
+corners_coincide = "sayfa köşeleri bozuk (üst üste çakışıyor)"
+page_too_small = "taramada bulunan sayfa, artı işaretlerini bulmaya yetmeyecek kadar küçük"
+too_few_dots = "sayfada, öğrenmeye yetecek kadar bilinen nokta yok"
+page_size = "{width} x {height} piksellik sayfa, {paper} kâğıttaki {dots} nokta düzeninin {page_width} x {page_height} piksellik sayfası değil"
+page_clipped = "{width} x {height} piksellik sayfa, {paper} kâğıtta {margin} pt kenar boşluğundan azını bırakıyor ve yazıcı tarafından kırpılır"
+strip_needs_layout = "bir etiket şeridi için sayfasının düzeni gerekir"
+strip_too_large = "{width} x {height} boyutundaki etiket şeridi, {dots} nokta düzeninin etiket alanına sığmıyor"
+no_pages = "yazılacak sayfa yok"
+
+[err.invalid_format]
+version = "geçersiz sayfa biçimi: version 0 olmalı"
+fec_order = "geçersiz sayfa biçimi: fec_order 1 ile 5 arasında olmalı"
+xcrosses = "geçersiz sayfa biçimi: xcrosses >= 2 olmalı"
+ycrosses = "geçersiz sayfa biçimi: ycrosses >= 2 olmalı"
+chalf = "geçersiz sayfa biçimi: chalf >= 1 olmalı"
+cpitch = "geçersiz sayfa biçimi: cpitch, 2*chalf değerinden büyük olmalı"
+border = "geçersiz sayfa biçimi: border >= 1 olmalı"
+text_height = "geçersiz sayfa biçimi: text_height >= 1 olmalı"
+
+[err.no_corner]
+upper_left = "sol üst köşe bulunamıyor"
+upper_right = "sağ üst köşe bulunamıyor"
+lower_left = "sol alt köşe bulunamıyor"
+lower_right = "sağ alt köşe bulunamıyor"
+
+[count.page]
+other = "{n} sayfa"
+
+[count.byte]
+other = "{n} bayt"
+
+[count.block]
+other = "{n} blok"
+
+[count.dot]
+other = "{n} nokta"
+
+[count.scan]
+other = "{n} tarama"
+
+# --- The desktop window (src/optar_gui/text.py) ------------------------------------
+#
+# The window speaks of "protection", "repair" and the "fingerprint", never of parity,
+# codewords or headers. A "block" is one error-correction unit; blocks are "repaired"
+# or "lost". {pages} is a list of page numbers ("3", "2-4, 7 and 9"). An entry that
+# has it comes in two forms, chosen by whether the list names exactly one page
+# (single) or more (several); this is not a plural rule, so the "one" form of your
+# language (which may also serve 21, 31 and so on) plays no part in it.
+
+[gui]
+# The window, its tabs, buttons and dialogs.
+WINDOW_TITLE = "optar"
+READ_TAB = "Kâğıttan oku"
+ADD_SCANS = "+ Tarama ekle…"
+REMOVE_SCAN = "Kaldır"
+SAVE_FILE = "Dosyayı kaydet…"
+ADD_SCANS_TITLE = "Tarama ekle"
+SAVE_TITLE = "Kurtarılan dosyayı kaydet"
+CONFIRM_SAVE_TITLE = "Yine de kaydedilsin mi?"
+ERROR_TITLE = "Kaydedilemedi"
+# Titles of the sections of the list of scans.
+NOT_PART_OF_THIS_FILE = "Bu dosyaya ait değil"
+NOT_READABLE = "Okunamıyor"
+BEING_READ_SECTION = "Okunuyor"
+# The actions on the selected row and their dialogs.
+REPLACE_SCAN = "Taramayı değiştir…"
+USE_SPARE = "Bu taramayı kullan"
+SWITCH_DOCUMENT = "Bu belgeye geç"
+ASSIGN_PAGE = "Sayfaya ata…"
+START_BY_HAND = "Belgeyi elle oluştur…"
+REPLACE_REJECTED_TITLE = "Tarama kullanılmadı"
+ASSIGN_TITLE = "Sayfaya ata"
+PAGE_FIELD = "Sayfa:"
+START_BY_HAND_TITLE = "Belgeyi elle oluştur"
+START_BY_HAND_PROMPT = "Hiçbir tarama tanınamadı. Çıktının kâğıdını ve sayfa sayısını girin, ardından her taramayı kendi sayfasına atayın."
+TOTAL_FIELD = "Sayfa sayısı:"
+# Asked when the window is closed while a file is being written.
+STILL_WRITING_TITLE = "Dosya hâlâ yazılıyor"
+STILL_WRITING = "Bir dosya hâlâ yazılıyor. Bitene kadar beklensin mi? Şimdi kapatırsanız dosya yazılmamış olabilir."
+# Why a save cannot start (programming errors, never shown in a dialog).
+SAVE_RUNNING = "kaydetme zaten sürüyor"
+SAVE_AFTER_CLOSE = "pencere kapatıldı, bu yüzden artık hiçbir şey kaydedilemez"
+# The "Put on paper" tab.
+WRITE_TAB = "Kâğıda yaz"
+FILE_FIELD = "Dosya:"
+PAPER_FIELD = "Kâğıt:"
+NAME_FIELD = "Ad:"
+PRINTS_AS_FIELD = "Yazdırılacak ad:"
+DOTS_FIELD = "Nokta boyutu:"
+PROTECT_FIELD = "Koruma:"
+CHOOSE_FILE = "Seç…"
+CHOOSE_FILE_TITLE = "Kâğıda yazılacak dosyayı seç"
+CREATE_PDF = "PDF oluştur…"
+CREATE_TITLE = "PDF'yi kaydet"
+PDF_FILTER = "PDF (*.pdf);;Tüm dosyalar (*)"
+PREPARING = "Dosya okunuyor…"
+CREATING = "PDF oluşturuluyor…"
+COMPATIBLE = "optar 0.2 ve özgün optar ile uyumlu"
+# Why a PDF is not created over the file being put on paper.
+DEST_IS_SOURCE = "PDF, kâğıda yazılan dosyanın yerine geçerdi; başka bir ad seçin"
+# After the pages and size of a protected file that may lose no whole page.
+DAMAGE_REPAIRED = "sayfa içindeki hasar onarılır, ama bütün bir sayfa kaybolursa dosya da kaybolur"
+# What a document without a name is called.
+NO_NAME = "(adsız)"
+# A document whose file was recovered and matches its fingerprint.
+VERIFIED = "Dosya kurtarıldı ve doğrulandı"
+# The bottom bar while scans are being read and the document has nothing else to say.
+WORKING = "İşleniyor…"
+# The bar while a document is repaired and checked in the background.
+REPAIRING = "Onarılıyor ve parmak iziyle karşılaştırılıyor…"
+# Why a page whose data says it repairs itself gave no data to repair with.
+NO_PAGE_DATA = "Bu sayfanın verileri okunamadı"
+PREVIEW_LOADING = "Yükleniyor…"
+# A scan the ordinary reader could not read, while the slower reader tries it.
+READING_COARSE = "Düşük çözünürlüklü tarama yavaş yöntemle okunuyor; bu yaklaşık bir dakika sürer"
+# After "too coarse to read": the slower reader could not read the scan either.
+SLOW_TRIED = "Düşük çözünürlüklü taramalar için yavaş yöntem de denendi, ama o da taramayı okuyamadı."
+# A page read by the slower reader: in its detail (made a sentence by "sentence"
+# below), and in its row.
+READ_SLOWLY = "Düşük çözünürlüklü taramalar için yavaş yöntemle okundu"
+READ_SLOWLY_ROW = "Yavaş yöntemle okundu"
+# The step of a scan not started yet.
+WAITING = "Sırada"
+# The choice of language.
+LANGUAGE_MENU = "Dil"
+SYSTEM_LANGUAGE = "Sistem varsayılanı"
+# A phrase made a sentence, where the window shows it as a line of its own after
+# others (a detail panel, a reason after "was not used"): {words} with the full
+# stop of your language. A phrase that already ends with it is shown as it is.
+sentence = "{words}."
+
+# The terminal messages of optar-gui.
+[gui.cli]
+missing_qt = "optar-gui için PySide6 gerekir: kaynak kodun bir kopyasında pip install '.[gui]' komutunu çalıştırın ya da optar-gui programını projenin Releases sayfasından indirin."
+description = "Dosyaları kâğıtta saklar ve kâğıttan geri okur."
+version_help = "sürümü gösterip çık"
+
+[gui.button]
+ok = "Tamam"
+cancel = "İptal"
+save = "Kaydet"
+yes = "Evet"
+no = "Hayır"
+
+# Paper names, by the paper's name in optar.format.
+[gui.paper]
+a4 = "A4"
+letter = "US Letter"
+
+# Dot sizes as their selector names them, by their names in optar.format.
+[gui.dots]
+standard = "Standart"
+medium = "Orta"
+big = "Büyük"
+large = "İri"
+xlarge = "Çok iri"
+
+# A paper printed with a dot size other than the standard one.
+[gui.paper_dots]
+standard = "{paper}, standart noktalar"
+medium = "{paper}, orta noktalar"
+big = "{paper}, büyük noktalar"
+large = "{paper}, iri noktalar"
+xlarge = "{paper}, çok iri noktalar"
+
+[gui.protection]
+none = "Yok"
+standard = "Standart"
+high = "Yüksek"
+
+# The health of a page, in its row.
+[gui.health]
+good = "Sağlam"
+unreadable = "Okunamıyor"
+missing = "Eksik"
+waiting = "Sırada"
+working = "İşleniyor…"
+
+# {n} blocks repaired.
+[gui.health.repaired]
+other = "Onarıldı · {n}"
+
+# {n} blocks lost, which the document's protection repaired.
+[gui.health.restored]
+other = "Belgenin korumasıyla onarıldı · {n}"
+
+# {n} blocks lost.
+[gui.health.damaged]
+other = "Hasarlı · {n} kayıp"
+
+# Of a page read by the slower reader.
+[gui.health.dots_corrected]
+other = "{n} nokta düzeltildi"
+
+[gui.health.bytes_repaired]
+other = "{n} bayt belgenin korumasıyla onarıldı"
+
+# The document's state in the bottom bar. Phrases are joined with " · ".
+[gui.state]
+checking = "Parmak iziyle karşılaştırılıyor…"
+matches = "parmak iziyle eşleşiyor"
+mismatch = "Kâğıttaki parmak iziyle eşleşmiyor"
+no_tag = "doğrulanamaz (künye yok)"
+# {advice}: rescan advice (whole sentences); {repair}: what the repair did.
+advice_with_repair = "{advice} ({repair})"
+# {good}: the "good" phrase below; {repaired}: the "repaired" phrase below.
+good_with_repaired = "{good} ({repaired})"
+
+# {pages}: the missing pages; single when it names exactly one page, several when more.
+[gui.state.recoverable]
+single = "Kurtarılabilir: {pages}. sayfa eksik, diğerlerinden yeniden oluşturulabilir"
+several = "Kurtarılabilir: eksik sayfalar ({pages}) diğerlerinden yeniden oluşturulabilir"
+
+[gui.state.recovered]
+single = "Kurtarılabilir: {pages}. sayfa eksik, diğerlerinden yeniden oluşturuldu"
+several = "Kurtarılabilir: eksik sayfalar ({pages}) diğerlerinden yeniden oluşturuldu"
+
+# Every page of a document without a tag is read: one page, or none.
+[gui.state.read]
+other = "{n} sayfa okundu"
+
+# Every page of a document without a tag is read: more than one.
+[gui.state.all_read]
+other = "{n} sayfanın tümü okundu"
+
+# {good} of {n} pages are good.
+[gui.state.good]
+other = "{good}/{n} sayfa sağlam"
+
+# Of the good pages, {n} were repaired.
+[gui.state.repaired]
+other = "{n} onarıldı"
+
+# {n} pages.
+[gui.state.slow]
+other = "{n} yavaş yöntemle okundu"
+
+[gui.state.damaged]
+other = "{n} hasarlı"
+
+[gui.state.unreadable]
+other = "{n} okunamıyor"
+
+[gui.state.missing]
+other = "{n} eksik"
+
+# A run of pages with the same problem, in a save warning: one page, two pages,
+# or the range {first} to {last} (written with the same range mark as gui.list.range).
+# Runs are joined with "; ".
+[gui.run.missing]
+single = "{first}. sayfa eksik"
+pair = "{first}. ve {last}. sayfalar eksik"
+range = "{first}–{last}. sayfalar eksik"
+
+[gui.run.damaged]
+single = "{first}. sayfa hasarlı"
+pair = "{first}. ve {last}. sayfalar hasarlı"
+range = "{first}–{last}. sayfalar hasarlı"
+
+[gui.run.unreadable]
+single = "{first}. sayfa okunamıyor"
+pair = "{first}. ve {last}. sayfalar okunamıyor"
+range = "{first}–{last}. sayfalar okunamıyor"
+
+[gui.run.reading]
+single = "{first}. sayfa hâlâ okunuyor"
+pair = "{first}. ve {last}. sayfalar hâlâ okunuyor"
+range = "{first}–{last}. sayfalar hâlâ okunuyor"
+
+# What saving must confirm first.
+[gui.save]
+# {runs}: the runs above, then perhaps "more" below.
+incomplete = "Kaydedilen dosya eksik olacak: {runs}."
+# {advice}: rescan advice (whole sentences).
+unrepaired = "{advice} Şimdi kaydederseniz, kaydedilen dosya yalnızca kurtarılabilen kısımdan oluşur ve yanlış bölümler içerebilir."
+checking = "Parmak izi karşılaştırması hâlâ sürüyor; bu yüzden kurtarılan dosyanın özgün dosya olup olmadığı henüz bilinmiyor."
+empty = "Kaydedilecek bir şey yok."
+mismatch = "Kurtarılan dosya, kâğıda yazdırılmış parmak iziyle eşleşmiyor: bazı verilerin kodu yanlış çözüldü, yani bu özgün dosya değil."
+by_hand = "Bu belge elle oluşturuldu; bu yüzden dosya doğrulanamaz ve sıfırlarla tam bir sayfaya tamamlanacak."
+untagged = "Bu sayfalarda künye yok; bu yüzden dosya doğrulanamaz ve sıfırlarla tam bir sayfaya tamamlanacak."
+
+# After the runs a save warning names: the pages it does not name.
+[gui.save.more]
+other = "ve {n} sayfa daha eksik ya da hasarlı"
+
+# The standing caution over a document without a tag.
+[gui.caution]
+untagged = "Bu sayfalarda künye yok; bu yüzden sayfaların aynı çıktıya ait olduğu ya da dosyanın eksiksiz olduğu teyit edilemez. Kaydedilen dosya sıfırlarla tamamlanacak."
+by_hand = "Bu belge elle oluşturuldu; bu yüzden sayfaların aynı çıktıya ait olduğu ya da dosyanın eksiksiz olduğu teyit edilemez. Kaydedilen dosya sıfırlarla tamamlanacak."
+
+# Why a scan is unreadable, by the reason the program gives.
+[gui.reason]
+no_page = "Bu görüntüde optar sayfası bulunamadı"
+label_unreadable = "Sayfanın altındaki etiket okunamadı"
+page_number = "Etiketteki sayfa numarası bu belgeye uymuyor"
+page_count = "Etiketteki sayfa sayısı mümkün değil"
+size_mismatch = "Bu tarama, belgeninkinden farklı boyutta bir kâğıda ait"
+format_mismatch = "Bu taramanın kodu, belgeninkinden farklı bir kâğıt boyutu için çözüldü"
+# A scan assigned to a page by hand that decodes badly whichever way up it is read.
+not_decodable = "Taramanın kodu hiçbir yönde çözülemedi"
+
+# The detail panel of a page.
+[gui.detail]
+title = "Sayfa {page}/{total}"
+repairs = "Onarımlar: tek bitlik: {one}, iki bitlik: {two}, üç bitlik: {three}"
+missing = "Bu sayfanın taraması eklenmedi"
+waiting = "Okunmayı bekliyor"
+unreadable = "Bu tarama okunamadı"
+reading = "Okunuyor…"
+
+# After "{n} blocks": {n} of them repaired.
+[gui.detail.repaired]
+other = "onarılan: {n}"
+
+[gui.detail.lost]
+other = "kayıp: {n}"
+
+[gui.detail.restored]
+other = "belgenin korumasıyla onarılan: {n}"
+
+# Rows of the list of scans.
+[gui.row]
+page = "Sayfa {page}"
+spare = "Yedek"
+# After the title of a spare's detail.
+spare_tag = "yedek"
+spare_not_in_use = "Kullanılmıyor: sayfa başka bir tarama kullanıyor"
+
+# A group of scans of another printout.
+[gui.row.other_printout]
+other = "Başka bir çıktıya ait {n} tarama; bu dosyaya ait değil"
+
+# Why a scan chosen to replace page {page} was not used. {name} is its file name.
+[gui.rejected]
+unusable = "{name} adlı tarama {page}. sayfa için kullanılmadı: okunamadı, bu yüzden {page}. sayfa mevcut taramasını koruyor."
+unusable_reason = "{name} adlı tarama {page}. sayfa için kullanılmadı: okunamadı ({reason}), bu yüzden {page}. sayfa mevcut taramasını koruyor."
+other_page = "{name} adlı tarama {page}. sayfa için kullanılmadı: bu belgenin {other}. sayfası olduğu için orada listeleniyor."
+# {printout}: name · paper · pages.
+other_document = "{name} adlı tarama {page}. sayfa için kullanılmadı: başka bir çıktının {other}. sayfası ({printout})."
+# {why}: a sentence.
+not_used = "{name} adlı tarama {page}. sayfa için kullanılmadı. {why}"
+unread = "Tarama okunamadı."
+
+[gui.dialog]
+replace_title = "{page}. sayfanın taramasını seç"
+assign_prompt = "{name} adlı tarama bu belgenin kaçıncı sayfası?"
+# After the page number in the page field.
+of_pages = " / {total}"
+scan_filter = "Taramalar ({patterns});;Tüm dosyalar (*)"
+
+[gui.message]
+check_failed = "Parmak izi karşılaştırılamadı: {message}"
+save_failed = "Dosya kaydedilemedi: {message}"
+not_regular_file = "{path} okunamıyor: normal bir dosya değil (klasör, kanal ya da aygıt)"
+file_unreadable = "Dosya okunamadı: {message}"
+created = "Oluşturuldu: {name}"
+create_failed = "PDF oluşturulamadı: {message}"
+size_changed = "görüntünün boyutu yüklenirken değişti"
+preview_failed = "Bu tarama gösterilemiyor: {message}"
+repair_failed = "Sayfalar onarılamadı: {reason}"
+
+[gui.message.saved]
+other = "{n} bayt kaydedildi: {name}"
+
+[gui.message.too_many_pixels]
+other = "{n} piksel, bir tarama için izin verilen {limit} sınırını aşıyor"
+
+# Putting a file on paper.
+[gui.write]
+dot_size = "{dots} ({dpi} dpi ile tarayın)"
+
+# Of a protected printout of {total} pages.
+[gui.write.promise]
+other = "{total} sayfadan {n} sayfa kaybolsa da kurtarılabilir"
+
+# Why a file cannot be put on paper with the chosen dot size and protection.
+[gui.too_large]
+fits_unprotected = "Koruma olmadan sığar."
+
+[gui.too_large.protect]
+other = "Bu dosya, bu nokta boyutuyla korunamayacak kadar büyük: koruma eklenmiş bir çıktı en çok {n} sayfa olabilir."
+
+[gui.too_large.pages]
+other = "Bu dosya, bu seçeneklerle kâğıda yazılamayacak kadar büyük: bir çıktı en çok {n} sayfa olabilir."
+
+[gui.too_large.fits_dots]
+standard = "Standart noktalarla sığar."
+medium = "Orta noktalarla sığar."
+big = "Büyük noktalarla sığar."
+large = "İri noktalarla sığar."
+xlarge = "Çok iri noktalarla sığar."
+
+[gui.too_large.fits_either]
+standard = "Koruma olmadan ya da standart noktalarla sığar."
+medium = "Koruma olmadan ya da orta noktalarla sığar."
+big = "Koruma olmadan ya da büyük noktalarla sığar."
+large = "Koruma olmadan ya da iri noktalarla sığar."
+xlarge = "Koruma olmadan ya da çok iri noktalarla sığar."
+
+# Why the printed name differs from the name typed. Sentences.
+[gui.name]
+dropped = "Şu karakterler etiket yazı tipinde yok ve yazdırılmaz: {chars}."
+no_room = "Bu nokta boyutunun etiketinde ada yer yok; bu yüzden ad yazdırılmaz."
+cut = "Ad sayfa için çok uzun ve kısaltılır."
+stored = "Sayfaların buna ihtiyacı yok: tam ad dosyayla birlikte saklanır."
+printed = "Sayfaları daha sonra tanıtan, yazdırılan addır."
+
+# A scan made at too low a resolution; {measured} is rounded to the nearest 10.
+[gui.coarse]
+page = "Bu sayfa için çok düşük çözünürlükte taranmış: yaklaşık {measured} dpi. Sayfayı {needed} dpi ile tarayın."
+# The resolution each dot size needs, by its name in optar.format.
+unreadable = "Yaklaşık {measured} dpi ile taranmış; bu çözünürlük okumak için çok düşük. Standart noktalar için {standard} dpi, orta için {medium}, büyük için {big}, iri için {large}, çok iri için {xlarge} ile tarayın."
+
+# The detail of a page read by the slower reader.
+[gui.slow]
+corrected = "Sayfa içinde düzeltilen nokta: {dots}."
+# {share}: the share below.
+corrected_of = "Sayfa içinde düzeltilen nokta: {total} noktadan {dots} ({share})."
+# {share}: a percentage with one decimal, such as 8.3.
+share = "%{share}"
+share_small = "%0,1'den az"
+pending = "Bu yöntemin yanlış okuduklarını belgenin koruması onarır; bu sayfanın kaç baytının onarıldığı, belge doğrulandığında gösterilir."
+none_wrong = "Doğrulamadan sonra: bu sayfanın hiçbir baytı yanlış değildi."
+
+[gui.slow.repaired]
+other = "Doğrulamadan sonra: bu sayfanın {n} baytı yanlıştı ve belgenin korumasıyla onarıldı."
+
+# Each step of a scan's reading.
+[gui.step]
+open = "Dosya açılıyor"
+find = "Sayfa aranıyor"
+identify = "Sayfa tanınıyor"
+read = "Veriler okunuyor"
+slow-sample = "Yavaş yöntem: örnekleme"
+# The {current}th of {total} fits of the slower reader.
+slow-fit = "Yavaş yöntem: geçiş {current}/{total}"
+# A step with no words of its own.
+other = "İşleniyor"
+
+# {done} of {n} scans are read.
+[gui.scans_read]
+other = "{done}/{n} tarama okundu"
+
+# The bar while scans are being read and the document has nothing else to say.
+[gui.scans_read_working]
+other = "İşleniyor… {done}/{n} tarama okundu"
+
+# Lists of page numbers: "1, 3 and 5", "2-4 and 9".
+[gui.list]
+comma = ", "
+and = "{items} ve {last}"
+# Three or more pages in a row, from {first} to {last}: your language's range mark.
+range = "{first}–{last}"
+
+# The pages a list does not name.
+[gui.list.more]
+other = "{n} sayfa daha"
+
+# What repairing a document did.
+[gui.repair]
+unprotected = "Korumasız yazdırıldığı için hiçbir şey onarılamadı"
+too_much = "en kötü noktada {used}/{budget} gerekti: onarılamayacak kadar çok"
+
+[gui.repair.bytes]
+other = "{n} bayt onarıldı"
+
+# How close a repair came to failing: {percent}% of the repair capacity ({used}
+# of {budget}) used at the worst spot.
+[gui.margin]
+wide = "en kötü noktada onarım kapasitesi %{percent} oranında kullanıldı ({used}/{budget}): geniş bir pay"
+moderate = "en kötü noktada onarım kapasitesi %{percent} oranında kullanıldı ({used}/{budget}): orta bir pay"
+close = "en kötü noktada onarım kapasitesi %{percent} oranında kullanıldı ({used}/{budget}): sınıra yakın"
+
+# After a repair that could not give the file.
+[gui.rescan]
+nothing = "Dosya tam olarak onarılamadı. Sayfaları yeniden taramak sonucu yine de iyileştirebilir."
+# {what}: "add" and "rescan" below, or both.
+advice = "Dosya tam olarak onarılamadı. Sayfa eklemek ya da yeniden taramak sonucu yine de iyileştirebilir: {what}."
+both = "{add} ve {rescan}"
+
+# {pages}: single when it names exactly one page, several when more.
+[gui.rescan.add]
+single = "{pages}. sayfayı ekleyin"
+several = "sayfaları ({pages}) ekleyin"
+
+# {pages}: at most three pages, the most damaged first; single or several as above.
+[gui.rescan.worst]
+single = "en çok hasar gören {pages}. sayfayı yeniden tarayın"
+several = "en çok hasar gören sayfaları ({pages}) yeniden tarayın"
