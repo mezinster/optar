@@ -1175,7 +1175,7 @@ diritta.
 3. **Un'interruzione nella cornice.** Se una stampante ha tagliato un lato della
    pagina, il bordo ha un'interruzione, il bianco attorno alla pagina penetra
    tra i punti e la fase 2 trova solo un pezzo della pagina. Quando l'area
-   trovata è meno della metà di ciò che non è bianco attorno alla pagina così
+   trovata è meno della metà di ciò che non è il bianco attorno alla pagina così
    come l'ha trovato la fase 2, il
    bianco attorno alla pagina viene invece preso come ciò che si può
    raggiungere attraverso passaggi larghi almeno `2 * r + 1` pixel, con
