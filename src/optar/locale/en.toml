@@ -318,6 +318,12 @@ LANGUAGE_MENU = "Language"
 SYSTEM_LANGUAGE = "System default"
 LANGUAGE_RESTART = "The language changes the next time optar starts."
 
+# The terminal messages of optar-gui.
+[gui.cli]
+missing_qt = "optar-gui needs PySide6: run pip install '.[gui]' in a checkout of the source, or download optar-gui from the project's Releases page."
+description = "Store files on paper and read them back."
+version_help = "print the version and exit"
+
 [gui.button]
 ok = "OK"
 cancel = "Cancel"
@@ -370,12 +376,6 @@ one = "Repaired · {n} by the document's protection"
 other = "Repaired · {n} by the document's protection"
 
 # {n} blocks lost.
-# The terminal messages of optar-gui.
-[gui.cli]
-missing_qt = "optar-gui needs PySide6: run pip install '.[gui]' in a checkout of the source, or download optar-gui from the project's Releases page."
-description = "Store files on paper and read them back."
-version_help = "print the version and exit"
-
 [gui.health.damaged]
 one = "Damaged · {n} lost"
 other = "Damaged · {n} lost"
