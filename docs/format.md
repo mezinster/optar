@@ -1,11 +1,11 @@
 # The optar format
 
-optar stores a file on paper as pages of black and white dots. This document
-defines what a page is and what a document (a set of pages that carries one
-file) is, so that an encoder can be written whose pages this project reads,
-and a decoder that reads this project's pages.
+optar stores a file on paper as pages of black and white dots. This
+specification defines what a page is and what a document (a set of pages
+that carries one file) is, so that an encoder can be written whose pages
+this project reads, and a decoder that reads this project's pages.
 
-The document has eight parts:
+The specification has eight parts:
 
 1. Terms and conventions
 2. The page (version 0)
@@ -77,12 +77,12 @@ version-0 pages (part 2).
 | Kind | Written by | The stream is | The label carries |
 |---|---|---|---|
 | plain | the C program, optar 0.1.0, `--no-tag` | the file | free text only |
-| tagged | optar 0.2.0 and later ("compatible") | the file | the tag (part 3) |
+| tagged | optar 0.2.0, and later versions as their "compatible" printout | the file | the tag (part 3) |
 | self-identifying | optar 0.3.0 and later | the container (part 4) | free text only |
 
 ### 1.5 Constants
 
-The names in this table are used throughout the document.
+The names in this table are used throughout this specification.
 
 <!-- spec-table: constants -->
 | Name | Value | Meaning |
@@ -112,7 +112,7 @@ The names in this table are used throughout the document.
 | `PADDING_KEY` | "optar padding" | key of the padding stream, in ASCII |
 | `PADDING_BLOCK` | 32 | bytes of one block of the padding stream |
 | `PROTECTED_MAX_BYTES` | 268435456 | most page bytes of a document with parity |
-| `PROMISE_NUM` | 3 | numerator of the share of parity the tools promise on (4.9) |
+| `PROMISE_NUM` | 3 | numerator of the share of the parity on which the tools base their promise (4.9) |
 | `PROMISE_DEN` | 4 | denominator of that share |
 | `PRINTER_DPI` | 600 | printer dots per inch |
 | `PIXELS_PER_INCH` | 200 | standard data dots per inch |
@@ -445,7 +445,8 @@ Vectors: `tests/vectors/c/encoder_pages.json`.
 ### 2.8 The label
 
 The label band holds one line of text, for people and, in a tagged document,
-for the reader. It is drawn with a fixed font.
+for the reader. It is always drawn with the same font, which the font strip
+below defines.
 
 **The font strip** is an image of `LABEL_HEIGHT` rows and 1500 columns, each
 pixel black or white. Columns `0` to `TEXT_WIDTH * GLYPH_CELLS - 1` hold
@@ -693,10 +694,10 @@ rs_32_parity_of_one = 744034ae367e10c2a221219db0c5e10c3b37fde4942fb3b9188afd148e
 rs_32_parity_of_counting = 41841183b11fdb537421939696cda70e1db5c86684af222564b89cc6069f172e
 ```
 
-`rs_32_parity_of_one` is the parity, for parity 32, of the 223 data bytes
-that are all zero but for a last byte of 1; these are the coefficients of
-`g(x)` from `x^31` down to `x^0`. `rs_32_parity_of_counting` is the parity
-of the data bytes 0, 1, 2, ..., 222.
+`rs_32_parity_of_one` is, for parity 32, the parity bytes of the 223 data
+bytes that are all zero but for a last byte of 1; these are the coefficients
+of `g(x)` from `x^31` down to `x^0`. `rs_32_parity_of_counting` is, for
+parity 32, the parity bytes of the data bytes 0, 1, 2, ..., 222.
 
 Vectors: `tests/vectors/py/reed_solomon.json`.
 
@@ -741,9 +742,10 @@ The padding carries nothing. Two contents exist and both are valid:
 
 - optar 0.3.0 wrote zero bytes;
 - optar 0.3.1 and later write the **padding stream**: block `n` of it,
-  `n = 0, 1, 2, ...`, is the `PADDING_BLOCK` bytes of the SHA-256 of
-  `PADDING_KEY` followed by `n` as 8 bytes, big-endian; the stream is the
-  blocks joined. The padding of the data region is the stream from its byte
+  `n = 0, 1, 2, ...`, is the `PADDING_BLOCK` bytes of the SHA-256 of one
+  byte string: `PADDING_KEY` with `n` appended as an integer of 8 bytes,
+  big-endian; the stream is the blocks joined. The padding of the data
+  region is the stream from its byte
   0; the padding at the end of the body continues the stream where the data
   region's padding stopped. (Zero bytes print as white lines across every
   page; the stream prints like data.)
@@ -806,15 +808,18 @@ A lost page costs a codeword at most `ceil(page_body / m) + 1` bytes. This
 project tells its user that any `n` pages can be lost when
 `n * (ceil(page_body / m) + 1) <= PROMISE_NUM * parity // PROMISE_DEN`, which
 leaves a quarter of the parity for damage on the pages that remain. This is a
-promise of the tools, not a property a reader may rely on or must check.
+promise of the tools: it is neither a property that a reader may rely on nor
+one that a reader must check.
 
 ### 4.10 From the container to pages
 
 The stream is `T * net_bits // 8` bytes. Read as a bit string, the payload of
-page `p` (from 1) starts at bit `(p - 1) * net_bits`; all other bits are 0.
+page `p` (from 1) starts at bit `(p - 1) * net_bits`; every bit of the stream
+that lies in no payload is 0.
 When `net_bits` is a multiple of 8 the stream is simply the payloads joined.
 When it is not, each page has `net_bits mod 8` unused bits after its payload
-and the payloads of some pages do not start at a byte of the stream.
+and the payloads of some pages do not start at the first bit of a byte of
+the stream.
 
 The stream is printed as section 2.7 says, which gives exactly `T` pages. The
 label of a page is an ordinary label line whose free text is for people: it is
@@ -882,9 +887,9 @@ are ten. Papers are named `a4` and `letter`.
 "Page bytes" and "Body bytes" are `page_bytes` and `page_body` of section
 4.1. This project prints a plain or tagged document in a `standard` layout
 (or, when given a format string by hand, in that page format at the standard
-dot size and the offsets of the paper's `standard` layout, provided every
-margin is at least `MIN_MARGIN_PT`), and a self-identifying document in any
-of the ten layouts.
+dot size and the offsets of the paper's `standard` layout; it refuses such a
+format string unless every margin is then at least `MIN_MARGIN_PT`), and a
+self-identifying document in any of the ten layouts.
 
 Vectors: `tests/vectors/c/bit_placement.json`, `tests/vectors/py/container.json`.
 
@@ -914,15 +919,16 @@ least `MIN_MARGIN_PT` on every side, and each offset is half of the free
 length, rounded down to a whole printer dot. The tables, not this rule,
 define the layouts.
 
-The identity of a page does not depend on where it lies on the paper: a
+A page is the same page wherever it lies on the paper: a
 reader finds the page by its border. The placement matters for printing
 only: a page printed at another scale has dots of another size, and one
 printed closer to the edge may be clipped.
 
 ### 5.3 The PDF this project writes
 
-Each page of the document is one PDF page whose media box is the paper,
-`[0 0 width height]` in points. The page image is one image of 1 bit per
+Each page of the document is one PDF page whose media box is the paper:
+`[0 0 width height]`, with the width and height of the paper in points. The
+page image is one image of 1 bit per
 pixel (1 is white), `width` by `height` page pixels, without interpolation,
 drawn with its lower left corner at the layout's offsets and scaled so that
 one page pixel is one data dot:
@@ -946,7 +952,8 @@ page pixel; the vectors identify a page by the SHA-256 of its binary PGM
 ### 5.4 The label strip
 
 A label is drawn in page pixels (section 2.8), so on a page with larger dots
-it holds fewer characters: too few for its own format string on the largest.
+it holds fewer characters: with the largest dots, too few for its own format
+string.
 In a PDF, a page of a layout whose dot size is not `standard` therefore has
 its label replaced by a **label strip**, a second image drawn in standard
 data dots:
@@ -991,8 +998,8 @@ If the label has the form of section 2.8, carries the format string of the
 layout, a page count of at most `MAX_PAGES`, a page number from 1 to the page
 count (or 1 with the page count 0), and its free text starts with a tag that
 is valid for that page number and count (section 3.2), the page is a page of
-a tagged document. It must be treated as one even if its data holds a valid
-header.
+a tagged document. It must be treated as one even if its data holds an
+acceptable header (section 6.2).
 
 The reason: the stream of a self-identifying document, as an old program
 returns it, can be printed again as a tagged document. Those pages hold old
@@ -1023,7 +1030,7 @@ parity):
 
 A reader must not use a header that is not acceptable. Rules 4 and 5 tie the
 page count to the size, so that a header cannot claim many pages for a small
-file or a large file in few.
+file or few pages for a large file.
 
 A reader must keep its memory and its time in proportion to the pages it was
 given, not to what a header claims: one page that claims a document of 9999
@@ -1038,9 +1045,10 @@ of another document must not be used.
 - **Self-identifying document.** A payload byte is an erasure when one of
   its bits lies in a symbol the page code could not correct; every byte of a
   page that was not supplied is an erasure. The file is the first `size`
-  bytes of the data region, and it is recovered only if every codeword that
-  holds one of those bytes was read or repaired (with parity 0: has no
-  erasure). The file is **verified** when it is recovered and the first
+  bytes of the data region, and it is recovered when, and only when, every
+  codeword that holds one of those bytes was read or repaired (with parity
+  0, where nothing is repaired: when every such codeword has no erasure).
+  The file is **verified** when it is recovered and the first
   `FINGERPRINT_SIZE` bytes of its SHA-256 equal the header's fingerprint.
 - **Tagged document.** The file is the first `SIZE` bytes of the stream. It
   is **verified** when it has `SIZE` bytes and the first `FINGERPRINT_DIGITS`
@@ -1096,9 +1104,10 @@ linear_light_of_200 = 149
 The decoder is given the page format. It works on the upright image.
 
 1. **Grey levels.** The cut level starts at the mean grey value. Up to 32
-   times: `black` is the cut minus the root mean square distance of the
-   pixels below the cut from it, `white` the cut plus that of the pixels
-   above; the new cut is `sync_white_cut * white + (1 - sync_white_cut) *
+   times: `black` is the cut minus the root mean square (the square root of
+   the mean of the squares) of the distances from the cut of the pixels
+   below it, `white` the cut plus the same for the pixels above it; the new
+   cut is `sync_white_cut * white + (1 - sync_white_cut) *
    black`, rounded; it stops when the cut no longer changes. A second level,
    the fill cut, is halfway between `black` and `white`.
 2. **Isolating the page.** The white around the page is every pixel at or
@@ -1109,7 +1118,8 @@ The decoder is given the page format. It works on the upright image.
 3. **A gap in the frame.** If a printer clipped an edge of the page, the
    border has a gap, the white around the page runs in between the dots and
    step 2 finds only a piece of the page. When the area found is less than
-   half of what is not white border, the white around the page is taken
+   half of what is not the white around the page as step 2 found it, the
+   white around the page is taken
    instead as what can be reached through passages at least `2 * r + 1`
    pixels wide, with `r = max(5, longest side // 250) // 2`; the white
    between dots is narrower than that. This result is used only if it gives
@@ -1132,8 +1142,9 @@ left corner. Every other cross is expected one pitch to the right of its left
 neighbour, and the first of a row one pitch below the one above it, so each
 search starts from a cross already found. For each cross:
 
-1. a coarse search over whole scan pixels, up to half a cross half in every
-   direction, for the place where the image correlates best with the cross
+1. a coarse search over whole scan pixels, up to half of `chalf` (half of
+   half the side of a cross) in every direction, for the place where the
+   image correlates best with the cross
    pattern (dark, light, light, dark);
 2. a fine search within half a scan pixel in steps of a quarter pixel, on a
    cross made smaller by `cross_trim` page pixels on every side;
@@ -1194,11 +1205,13 @@ the format.
 
 ### 7.6 The slower reader
 
-When the steps of 7.5 identify nothing but the outline of a page was found,
-or accept a page from an untagged label alone on a scan with fewer than 2.5
-scan pixels to a data pixel while 1% or more of the page's symbols are beyond
-correction, this project tries a second, slower reader (`src/optar/decoder/soft.py`),
-meant for a scan too coarse for its dot size. For each candidate layout and
+This project tries a second, slower reader (`src/optar/decoder/soft.py`),
+meant for a scan too coarse for its dot size, in two cases. First: the steps
+of 7.5 identify nothing, although the outline of a page was found. Second:
+all three of these hold: the steps of 7.5 accept a page from an untagged
+label alone; a data pixel of that scan is less than 2.5 scan pixels wide; and
+1% or more of the page's symbols are uncorrectable. For each candidate
+layout and
 rotation, in the order of 7.5, it:
 
 1. enlarges the scan so that a data pixel is about four scan pixels wide,
@@ -1209,8 +1222,8 @@ rotation, in the order of 7.5, it:
    pixel and fits, by least squares, a filter from those samples to the known
    bits, one filter for each of 16 by 22 regions of the page;
 4. applies the filters to every data pixel, which gives a signed confidence
-   for each bit, and chooses for each Golay symbol the codeword that fits its
-   24 confidences best;
+   for each bit, and chooses, for each symbol of the page, the Golay symbol
+   (section 2.5) that fits its 24 confidences best;
 5. takes the more confident 60% of the symbols as known and repeats from
    step 3, five fits in all.
 
@@ -1229,7 +1242,8 @@ Vectors: `tests/vectors/c/decoder.json`, `tests/vectors/c/decoder_internals.json
 ## 8. History
 
 The page of part 2 is the format of Twibright Optar, a C program written by
-Karel Kulhavy in 2007 and maintained from 2012 at `colindean/optar`. Its
+Karel Kulhavy in 2007; it was later maintained, from 2012, at
+`colindean/optar`. Its
 sources are kept unchanged in the folder `lega-c` of this project, as they
 were at commit `9c8379c25466bf142459a26b0f34521bdde2af12` of that repository.
 The vectors in `tests/vectors/c` were recorded from that program; those in
@@ -1259,8 +1273,8 @@ string as an argument but uses only the last field.
 
 One difference from the C program remains in the label: the C program cut
 the label line by bytes, this format cuts it by characters. The two give
-the same page unless the line is cut and holds characters outside ASCII
-before the cut.
+the same page unless both are true: the line is cut, and it holds characters
+outside ASCII before the cut.
 
 Decoder behaviour inherited from the C program that is not part of the
 format (part 7): the seven constants of section 7.4, the double use of one
