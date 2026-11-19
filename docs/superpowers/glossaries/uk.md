@@ -314,7 +314,7 @@ form for that number.
 | Prints as: | Друкується як: | `gui.PRINTS_AS_FIELD` |
 | Dot size: / Protection: / Paper: / Name: | Розмір точок: / Захист: / Папір: / Назва: | `gui.*_FIELD` |
 | Create PDF… | Створити PDF… | `gui.CREATE_PDF` |
-| Compatible with optar 0.2 and the original optar | Сумісність з optar 0.2 і оригінальною програмою optar | `gui.COMPATIBLE` |
+| Compatible with optar 0.2 and the original optar | Сумісність з optar 0.2 і оригінальним optar | `gui.COMPATIBLE` |
 | Standard, Medium, Big, Large, Extra large (dots) | Стандартні, Середні, Великі, Крупні, Дуже крупні | `gui.dots.*` |
 | None, Standard, High (protection) | Немає, Стандартний, Високий | `gui.protection.*` |
 | can lose N page(s) of T | можна втратити N сторінку / сторінки / сторінок з T | `gui.write.promise` |
