@@ -87,7 +87,7 @@ oluşur.
 | Tür | Yazan | Akış | Etiketin taşıdığı |
 |---|---|---|---|
 | yalın | C programı, optar 0.1.0, `--no-tag` | dosya | yalnızca serbest metin |
-| künyeli | optar 0.2.0 ve sonraki sürümler, “uyumlu” çıktı olarak | dosya | künye (kısım 3) |
+| künyeli | optar 0.2.0; sonraki sürümler ise “uyumlu” çıktıları olarak | dosya | künye (kısım 3) |
 | kendini tanıtan | optar 0.3.0 ve sonrası | kapsayıcı (kısım 4) | yalnızca serbest metin |
 
 ### 1.5 Sabitler { #15-constants }
