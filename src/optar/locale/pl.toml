@@ -669,7 +669,7 @@ dropped = "Tych znaków nie ma w czcionce napisu i nie zostaną wydrukowane: {ch
 no_room = "Napis przy tym rozmiarze kropek nie ma miejsca na nazwę, więc nie zostanie ona wydrukowana."
 cut = "Nazwa jest za długa dla strony i zostanie skrócona."
 stored = "Strony jej nie potrzebują: pełna nazwa jest przechowywana razem z plikiem."
-printed = "Strony będą później identyfikowane po wydrukowanej nazwie."
+printed = "Później to po wydrukowanej nazwie będzie można rozpoznać strony."
 
 # A scan made at too low a resolution; {measured} is rounded to the nearest 10.
 [gui.coarse]
@@ -713,9 +713,9 @@ many = "odczytano {done} z {n} skanów"
 
 # The bar while scans are being read and the document has nothing else to say.
 [gui.scans_read_working]
-one = "Przetwarzanie… odczytano {done} z {n} skanu"
-few = "Przetwarzanie… odczytano {done} z {n} skanów"
-many = "Przetwarzanie… odczytano {done} z {n} skanów"
+one = "Przetwarzanie… Odczytano {done} z {n} skanu"
+few = "Przetwarzanie… Odczytano {done} z {n} skanów"
+many = "Przetwarzanie… Odczytano {done} z {n} skanów"
 
 # Lists of page numbers: "1, 3 and 5", "2-4 and 9".
 [gui.list]
@@ -732,7 +732,7 @@ many = "jeszcze {n}"
 
 # What repairing a document did.
 [gui.repair]
-unprotected = "Wydrukowano bez ochrony, więc nic nie dało się naprawić"
+unprotected = "wydrukowano bez ochrony, więc nic nie dało się naprawić"
 too_much = "najgorsze miejsce wymagało {used} z {budget}: za dużo, by naprawić"
 
 [gui.repair.bytes]

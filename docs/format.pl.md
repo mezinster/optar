@@ -1151,7 +1151,7 @@ Dekoder otrzymuje format strony. Pracuje na obrazie we właściwym położeniu.
 3. **Przerwa w ramce.** Jeśli drukarka przycięła krawędź strony, ramka ma
    przerwę, biel wokół strony wnika między kropki, a krok 2 znajduje tylko
    kawałek strony. Gdy znaleziony obszar jest mniejszy niż połowa tego, co nie
-   jest białym obrzeżem, za biel wokół strony przyjmuje się zamiast tego to,
+   jest bielą wokół strony, za biel wokół strony przyjmuje się zamiast tego to,
    do czego można dotrzeć przejściami o szerokości co najmniej `2 * r + 1`
    pikseli, gdzie `r = max(5, longest side // 250) // 2`; biel między
    kropkami jest węższa. Ten wynik jest używany tylko wtedy, gdy daje całą
@@ -1280,7 +1280,7 @@ Wektory: `tests/vectors/c/decoder.json`, `tests/vectors/c/decoder_internals.json
 ## 8. Historia { #8-history }
 
 Strona z części 2 to format Twibright Optar, programu w C, który w 2007 roku
-napisał Karel Kulhavy i który od 2012 roku jest utrzymywany w
+napisał Karel Kulhavy i który od 2012 roku był utrzymywany w
 `colindean/optar`. Jego źródła są przechowywane bez zmian w folderze `lega-c`
 tego projektu, w stanie z commita `9c8379c25466bf142459a26b0f34521bdde2af12`
 tamtego repozytorium. Wektory w `tests/vectors/c` zostały zarejestrowane za pomocą

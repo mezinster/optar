@@ -81,7 +81,7 @@ Znacznik pozwala aplikacji:
   przejść kontrolę);
 - przyciąć odzyskany plik do prawdziwego rozmiaru, tak by nie miał dopełnienia
   zerami;
-- porównać odzyskany plik z odciskiem, co jest ostatecznym sprawdzeniem, że
+- porównać odzyskany plik z odciskiem, co jest ostateczną weryfikacją tego, że
   plik jest oryginałem.
 
 Aby drukować bez znacznika, użyj `optar encode --no-tag`. Strony, które

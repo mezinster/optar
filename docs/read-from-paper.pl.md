@@ -38,9 +38,9 @@ trzeba niczego ustawiać.
 ![Skany w trakcie odczytu, każdy z paskiem postępu i swoim etapem](img/being-read.png)
 
 Lista pokazuje jeden wiersz na stronę wraz z jej stanem. Wybranie wiersza
-pokazuje skan z zaznaczonymi uszkodzonymi miejscami: kółko myszy powiększa,
-przeciąganie przesuwa obraz, dwukrotne kliknięcie dopasowuje widok do całej
-strony.
+pokazuje skan z zaznaczonymi uszkodzonymi miejscami: kółko myszy przybliża
+i oddala, przeciąganie przesuwa obraz, dwukrotne kliknięcie dopasowuje widok
+do całej strony.
 
 Gdy pasek u dołu poda, że plik jest zweryfikowany, „Zapisz plik…” zapisuje go.
 
@@ -100,7 +100,7 @@ Pasek pokazuje stan całego dokumentu.
 | Nie zgadza się z odciskiem na papierze | Wszystkie strony zostały odczytane, ale plik nie jest oryginałem, bo część danych zdekodowano błędnie. Zeskanuj strony ponownie, zaczynając od oznaczonych jako „Naprawiona”. |
 | Do odzyskania: brak strony 3, można ją odtworzyć z pozostałych | Dokument z ochroną: brakuje stron, ale odczytane strony powinny wystarczyć, by je odtworzyć. |
 | Do odzyskania: brak strony 3, odtworzona z pozostałych · zgadza się z odciskiem | Odtworzenie zostało wykonane i sprawdzone. Dalej podany jest rozmiar i to, co zrobiła naprawa. |
-| Przetwarzanie… odczytano 3 z 6 skanów | Skany są jeszcze odczytywane. Jeśli dokument ma już stan do pokazania, licznik pojawia się po nim: „Plik odzyskany i zweryfikowany · N bajtów · odczytano 3 z 6 skanów”. |
+| Przetwarzanie… Odczytano 3 z 6 skanów | Skany są jeszcze odczytywane. Jeśli dokument ma już stan do pokazania, licznik pojawia się po nim: „Plik odzyskany i zweryfikowany · N bajtów · odczytano 3 z 6 skanów”. |
 | Sprawdzanie odcisku… | Sprawdzanie trwa w tle. |
 | Odczytano wszystkie strony: N · nie można zweryfikować (brak znacznika) | Strony pochodzą ze starego programu i nie mają odcisku. |
 | 4 z 6 stron w porządku · 1 uszkodzona · 1 brakująca | W pozostałych przypadkach – zestawienie liczbowe. |
@@ -115,7 +115,7 @@ podaje strony, które trzeba dodać lub zeskanować ponownie.
 !!! info "Co znaczy „zweryfikowany”"
     „Zweryfikowany” zawsze oznacza, że odcisk odzyskanego pliku był zgodny
     z odciskiem na papierze. Nigdy nie oznacza tylko tego, że naprawa nie
-    zgłosiła błędu.
+    zgłosiła niepowodzenia.
 
 ## Zapisywanie { #saving }
 
