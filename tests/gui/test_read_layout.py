@@ -3,10 +3,10 @@
 not scrolled, each row's full text as a plain-text tooltip, the step of a scan being
 read, off-screen.
 
-Every test runs under the default font and under wider ones (the application font
-at 1.5 and 2 times its size), and no bound is a pixel count measured with one font:
-Windows and macOS draw wider than the Linux font the tests were first run with (the
-Windows job measured text about 1.9 times as wide, buttons about 1.5 times).
+Every test runs under the platform's own font and under a "wide" one of a fixed
+width in pixels (what the Windows job measured), and no bound is a pixel count
+measured with one font. ``OPTAR_TEST_FONT_SCALE`` (tests/gui/conftest.py) widens the
+platform's font first: the rehearsal on Linux of a platform whose font is wider.
 """
 
 import threading
@@ -41,15 +41,40 @@ SMALL_SCREEN = (1366, 768)
 SHARE = (0.36, 0.40)
 
 
-@pytest.fixture(params=[1.0, 1.5, 2.0], ids=["font-1x", "font-1.5x", "font-2x"])
+# The Windows job's log (tests/gui/test_read_layout.py at 2a73506) measured this
+# string, 41 characters, at 492 px in the list's font: 12 px a character, about 1.9
+# times the Linux off-screen font. The "wide" variant is that width, and no wider.
+REFERENCE = "Slower reader: pass 4 of 5Slower reader: "
+WIDE_CHARACTER = 492 / len(REFERENCE)  # px
+
+
+def character_width(font: QFont) -> float:
+    """The average width of a character of REFERENCE in ``font``, in pixels."""
+    return QFontMetrics(font).horizontalAdvance(REFERENCE) / len(REFERENCE)
+
+
+def font_of_width(font: QFont, target: float) -> QFont:
+    """``font`` at the largest size whose characters are no wider than ``target``;
+    ``font`` itself when it is already that wide or wider (never shrunk)."""
+    if character_width(font) >= target:
+        return font
+    wider = QFont(font)
+    for _ in range(6):  # the width does not follow the size exactly (hinting)
+        wider.setPointSizeF(wider.pointSizeF() * target / character_width(wider))
+    while character_width(wider) > target:
+        wider.setPointSizeF(wider.pointSizeF() - 0.05)
+    return wider if character_width(wider) > character_width(font) else font
+
+
+@pytest.fixture(params=["own", "wide"], ids=["font-own", "font-wide"])
 def font_scale(request, qapp):
-    """The application font at its size, and wider (the guard for Windows and macOS)."""
+    """The platform's own font, and a font with characters WIDE_CHARACTER px wide (the
+    guard for Windows and macOS); on a platform whose font is that wide already the
+    two are the same."""
     font = QFont(qapp.font())
-    if request.param != 1.0:
-        wider = QFont(font)
-        wider.setPointSizeF(font.pointSizeF() * request.param)
-        qapp.setFont(wider)
-    yield request.param
+    if request.param == "wide":
+        qapp.setFont(font_of_width(font, WIDE_CHARACTER))
+    yield character_width(qapp.font())
     qapp.setFont(font)
 
 
@@ -427,18 +452,24 @@ def test_a_step_wraps_and_its_row_grows_when_the_list_is_made_narrow(qtbot, make
     progress = longest_progress()
     step = text.step_text(progress)
     total = sum(tab.splitter.sizes())
-    # A font in which the step takes 60% of a list of 70% of the splitter: one line in
-    # that wide list, more in the narrowest.
-    big = QFont(tab.page_list.font())
-    advance = QFontMetrics(big).horizontalAdvance(step)
-    big.setPointSizeF(big.pointSizeF() * 0.6 * 0.7 * total / advance)
-    tab.page_list.setFont(big)
     shows = ShowsOneStep(progress)
     tab.controller._process = shows
     tab.controller.add_paths(["/scans/page.png"])
     qtbot.waitUntil(lambda: any(r.endswith(step) for r in tab.rows()), timeout=TIMEOUT)
     row = next(i for i, r in enumerate(tab.rows()) if r.endswith(step))
-    tab.splitter.setSizes([total * 7 // 10, total - total * 7 // 10])  # a wide list
+    # The step's width in the narrowest list and in a list of 70% of the splitter, and a
+    # list font in which the step is halfway between: one line wide, more narrow.
+    tab.splitter.setSizes([1, total - 1])
+    qtbot.wait(20)
+    narrow_width = step_room(tab, row, step)[0].width()
+    tab.splitter.setSizes([total * 7 // 10, total - total * 7 // 10])
+    qtbot.wait(20)
+    wide_width = step_room(tab, row, step)[0].width()
+    assert narrow_width < wide_width
+    big = QFont(tab.page_list.font())
+    advance = QFontMetrics(big).horizontalAdvance(step)
+    big.setPointSizeF(big.pointSizeF() * (narrow_width + wide_width) / 2 / advance)
+    tab.page_list.setFont(big)
     qtbot.wait(20)
     wide = step_room(tab, row, step)
     line = QFontMetrics(big).height()

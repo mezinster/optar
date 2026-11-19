@@ -1161,6 +1161,43 @@ def test_system_language_asks_windows_only_on_windows(monkeypatch):
     assert cli.system_language() == "ka_GE"
 
 
+def test_only_the_low_16_bits_of_the_windows_answer_are_the_language(monkeypatch):
+    """GetUserDefaultUILanguage returns a 16-bit LANGID through a C int whose upper
+    bits are not promised to be zero."""
+    import types
+
+    from optar import cli
+
+    kernel32 = types.SimpleNamespace(GetUserDefaultUILanguage=lambda: 0x7ABC0419)
+    fake = types.SimpleNamespace(windll=types.SimpleNamespace(kernel32=kernel32))
+    monkeypatch.setitem(sys.modules, "ctypes", fake)
+    monkeypatch.setattr(sys, "platform", "win32")
+    assert cli._user_ui_language() == 0x0419
+    assert cli.system_language() == "ru_RU"
+
+
+def test_an_unreadable_catalogue_of_the_chosen_language_gives_english(monkeypatch, capsys):
+    from optar import i18n
+    from optar.cli import choose_language
+
+    real = i18n._read
+
+    def unreadable_ru(code):
+        if code == "ru":
+            raise PermissionError(13, "Permission denied", "ru.toml")
+        return real(code)
+
+    monkeypatch.setattr(i18n, "_cache", {})
+    monkeypatch.setattr(i18n, "_read", unreadable_ru)
+    assert choose_language({"LANG": "ru_RU"}) == "en"
+    monkeypatch.setenv("OPTAR_LANG", "ru")
+    monkeypatch.setenv("COLUMNS", "100")
+    with pytest.raises(SystemExit) as e:
+        main(["--help"])
+    assert e.value.code == 0
+    assert capsys.readouterr().out == ENGLISH_HELP[""]
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="ctypes.windll exists on Windows")
 def test_system_language_survives_a_missing_windll(monkeypatch):
     from optar import cli

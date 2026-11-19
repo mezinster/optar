@@ -92,6 +92,8 @@ def choose_language(
         return "en"
     except ValueError:  # a malformed catalogue (TOMLDecodeError, UnicodeDecodeError)
         return "en"
+    except OSError:  # an unreadable one (PermissionError, say)
+        return "en"
     return code if fits else "en"
 
 
@@ -112,7 +114,9 @@ def system_language() -> str | None:
 def _user_ui_language() -> int:
     import ctypes  # windll exists on Windows only
 
-    return ctypes.windll.kernel32.GetUserDefaultUILanguage()
+    # A LANGID is 16 bits, returned as ctypes' default C int: the upper bits of the
+    # register are not promised to be zero, so only the low 16 are the language.
+    return ctypes.windll.kernel32.GetUserDefaultUILanguage() & 0xFFFF
 
 
 def windows_language(

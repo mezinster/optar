@@ -91,3 +91,21 @@ def test_terminal_messages_follow_the_system_language(monkeypatch, capsys):
     monkeypatch.setitem(sys.modules, "PySide6", None)
     assert entry.main([]) == 2
     assert capsys.readouterr().err == i18n.catalogue("ru")["gui.cli.missing_qt"] + "\n"
+
+
+def test_an_unreadable_catalogue_gives_english_terminal_messages(monkeypatch, capsys):
+    from optar import i18n
+
+    real = i18n._read
+
+    def unreadable_ru(code):
+        if code == "ru":
+            raise PermissionError(13, "Permission denied", "ru.toml")
+        return real(code)
+
+    monkeypatch.setattr(i18n, "_cache", {})
+    monkeypatch.setattr(i18n, "_read", unreadable_ru)
+    monkeypatch.setenv("OPTAR_LANG", "ru")
+    monkeypatch.setitem(sys.modules, "PySide6", None)
+    assert entry.main([]) == 2
+    assert capsys.readouterr().err.startswith("optar-gui needs PySide6: ")

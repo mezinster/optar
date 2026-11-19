@@ -109,6 +109,27 @@ def scan_files(tmp_path):
 
 
 @pytest.fixture(autouse=True)
+def platform_font(request):
+    """With OPTAR_TEST_FONT_SCALE=1.9 the application font is made that many times as
+    large before each test: it stands in for a platform whose own font is wider than
+    the Linux off-screen one (the Windows job measured 1.6 to 1.9 times), so that the
+    layout tests can be rehearsed for it here. Unset, nothing changes."""
+    scale = float(os.environ.get("OPTAR_TEST_FONT_SCALE") or 1)
+    if scale == 1 or not _HAVE_QT:
+        yield
+        return
+    from PySide6.QtGui import QFont
+
+    qapp = request.getfixturevalue("qapp")
+    font = QFont(qapp.font())
+    wider = QFont(font)
+    wider.setPointSizeF(font.pointSizeF() * scale)
+    qapp.setFont(wider)
+    yield
+    qapp.setFont(font)
+
+
+@pytest.fixture(autouse=True)
 def private_settings(tmp_path, monkeypatch):
     """The window's settings live under tmp_path, never in the user's own; each test
     starts in English and leaves it so."""
