@@ -34,3 +34,18 @@ def test_the_entry_point_does_not_import_qt():
     result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == ""
+
+
+def test_main_survives_a_windowed_build_with_no_stderr(catalogues, monkeypatch, capsys):
+    """A windowed build has sys.stderr None: main must still run, and the language
+    is the environment's (the encoding is taken as UTF-8)."""
+    catalogues.add(
+        "ru", {"language": {"name": "Русский"}, "gui": {"cli": {"missing_qt": "Нужен PySide6."}}}
+    )
+    monkeypatch.setenv("OPTAR_LANG", "ru")
+    monkeypatch.setitem(sys.modules, "PySide6", None)
+    monkeypatch.setattr(sys, "stderr", None)
+    assert entry.main(["--version"]) == 0
+    assert entry.main([]) == 2  # print(file=None) goes to stdout, harmlessly
+    out = capsys.readouterr().out
+    assert out == f"optar-gui {__version__}\nНужен PySide6.\n"
