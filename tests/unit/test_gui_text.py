@@ -762,7 +762,7 @@ def test_a_slow_page_once_verified_says_how_many_bytes_the_protection_repaired()
         "After verification: 6,912 of this page's bytes were wrong and were repaired "
         "by the document's protection.",
     )
-    assert text.BY_PROTECTION in text.health_label(p, True, 1)
+    assert "by the document's protection" in text.health_label(p, True, 1)
     assert text.health_label(p, True, 1).endswith("1 byte repaired by the document's protection")
     assert text.detail_text(p, None, 3, repaired_bytes=1)[-1] == (
         "After verification: 1 of this page's bytes was wrong and was repaired by the "
@@ -931,7 +931,6 @@ ENGLISH_CONSTANTS = {
     'ASSIGN_PAGE': 'Assign to page…',
     'ASSIGN_TITLE': 'Assign to a page',
     'BEING_READ_SECTION': 'Being read',
-    'BY_PROTECTION': "by the document's protection",
     'CHOOSE_FILE': 'Choose…',
     'CHOOSE_FILE_TITLE': 'Choose a file to put on paper',
     'COMPATIBLE': 'Compatible with optar 0.2 and the original optar',
@@ -959,7 +958,6 @@ ENGLISH_CONSTANTS = {
     'READING_COARSE': 'Reading a coarse scan with the slower reader; this takes about a minute',
     'READ_SLOWLY': 'Read by the slower reader for coarse scans',
     'READ_SLOWLY_ROW': 'Read by the slower reader',
-    'READ_SLOWLY_SHORT': 'read by the slower reader',
     'READ_TAB': 'Read from paper',
     'REMOVE_SCAN': 'Remove',
     'REPAIRING': 'Repairing and checking the fingerprint…',
@@ -1144,3 +1142,61 @@ def test_text_source_holds_no_wording():
         and node.value not in JOINERS | CODES
     ]
     assert wording == []
+
+
+# --- Templates other grammars can fill -------------------------------------------
+
+
+def test_a_page_list_chooses_single_or_several_by_how_many_it_names(catalogues):
+    """Not by the plural rule: in Russian the form for 1 also serves 21."""
+    from optar import i18n
+
+    catalogues.add("ru", {
+        "language": {"name": "Русский"}, "format": {"group": " "},
+        "gui": {
+            "state": {"recoverable": {"single": "ОДНА {pages}", "several": "НЕСК {pages}"}},
+            "rescan": {"add": {"single": "одна {pages}", "several": "неск {pages}"},
+                       "advice": "{what}"},
+        },
+    })  # fmt: skip
+    i18n.set_language("ru")
+    try:
+        assert text.summary_line(v1_summary(D.RECOVERABLE, None, (3,))) == "ОДНА 3"
+        twenty_one = tuple(range(1, 43, 2))  # 21 pages, none in a row
+        line = text.summary_line(v1_summary(D.RECOVERABLE, None, twenty_one))
+        assert line.startswith("НЕСК 1, 3, ")
+        assert text.rescan_advice(unwrapped(data=None, missing=twenty_one)).startswith("неск ")
+        assert text.rescan_advice(unwrapped(data=None, missing=(21,))) == "одна 21"
+    finally:
+        i18n.set_language("en")
+
+
+def test_a_range_of_pages_is_written_by_the_catalogue(catalogues):
+    from optar import i18n
+
+    assert plain(text.rescan_advice(unwrapped(data=None, missing=(2, 3, 4, 9)))).endswith(
+        "add pages 2-4 and 9."
+    )
+    catalogues.add("ru", {"gui": {"list": {"range": "{first}–{last}"}}})
+    i18n.set_language("ru")
+    try:
+        advice = text.rescan_advice(unwrapped(data=None, missing=(2, 3, 4, 9)))
+        assert "2–4 and 9" in advice
+    finally:
+        i18n.set_language("en")
+
+
+def test_a_sentence_ends_with_the_languages_full_stop(catalogues):
+    from optar import i18n
+
+    scan = ScanView(4, "/x/coarse.png", "working", None, None, "")
+    catalogues.add("ka", {"gui": {"sentence": "{words}!", "rejected": {"unread": "Nope!"}}})
+    i18n.set_language("ka")
+    try:
+        assert text.being_read_detail(scan, None) == ("coarse.png", "Waiting!")
+        detail = text.being_read_detail(scan, Progress("slow-sample", 0, 1, 0.1))
+        assert detail[-1].endswith("about a minute!")
+        rejected = text.replace_rejected(2, Fit.UNREADABLE, scan)
+        assert rejected.endswith("page 2. Nope!")  # already a sentence: not stopped twice
+    finally:
+        i18n.set_language("en")

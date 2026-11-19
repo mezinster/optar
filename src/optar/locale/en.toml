@@ -86,17 +86,22 @@ other = "repaired {count} bytes"
 one = "{count} block could not be repaired"
 other = "{count} blocks could not be repaired"
 
+# {list} is a list of page numbers ("3", "2, 5, 7"). The two forms are chosen by
+# whether the list names exactly one page (single) or more (several), not by a
+# plural rule: in some languages the "one" form also serves 21, 31 and so on.
 [cli.summary.missing]
-one = "missing page {list}"
-other = "missing pages {list}"
+single = "missing page {list}"
+several = "missing pages {list}"
 
 [cli.too_few.read]
 one = "optar: the file could not be repaired and was not saved: only {read} of {count} page read."
 other = "optar: the file could not be repaired and was not saved: only {read} of {count} pages read."
 
+# {list}: the missing pages; single when it names exactly one page, several when more.
+# {fraction}: a number (2: "one page in 2").
 [cli.too_few.rescan]
-one = "Scan page {list} and decode again; --force saves nothing from fewer than one page in {fraction}."
-other = "Scan pages {list} and decode again; --force saves nothing from fewer than one page in {fraction}."
+single = "Scan page {list} and decode again; --force saves nothing from fewer than one page in {fraction}."
+several = "Scan pages {list} and decode again; --force saves nothing from fewer than one page in {fraction}."
 
 [cli.verified]
 one = "optar: file verified ({count} byte)"
@@ -110,9 +115,11 @@ mismatch = "optar: the file does not match its fingerprint: it did not verify an
 unrepaired = "optar: the file could not be repaired and was not saved. {advice}"
 mismatch = "optar: the file does not match its fingerprint and was not saved. {advice}"
 
+# {list}: pages to rescan; single when it names exactly one page, several when more.
+# {force}: the sentence cli.force_advice.
 [cli.rescan_advice]
-one = "Rescan page {list} and decode again; {force}"
-other = "Rescan pages {list} and decode again; {force}"
+single = "Rescan page {list} and decode again; {force}"
+several = "Rescan pages {list} and decode again; {force}"
 
 [cli.list_more]
 one = "({count} more)"
@@ -235,8 +242,10 @@ other = "{n} scans"
 #
 # The window speaks of "protection", "repair" and the "fingerprint", never of parity,
 # codewords or headers. A "block" is one error-correction unit; blocks are "repaired"
-# or "lost". {pages} is a list of page numbers ("3", "2-4, 7 and 9"); the plural form
-# of an entry that has it is chosen by how many pages the list names.
+# or "lost". {pages} is a list of page numbers ("3", "2-4, 7 and 9"). An entry that
+# has it comes in two forms, chosen by whether the list names exactly one page
+# (single) or more (several); this is not a plural rule, so the "one" form of your
+# language (which may also serve 21, 31 and so on) plays no part in it.
 
 [gui]
 # The window, its tabs, buttons and dialogs.
@@ -295,7 +304,6 @@ DAMAGE_REPAIRED = "damage within pages is repaired, but losing a whole page lose
 NO_NAME = "(no name)"
 # A document whose file was recovered and matches its fingerprint.
 VERIFIED = "File recovered and verified"
-BY_PROTECTION = "by the document's protection"
 # The bottom bar while scans are being read and the document has nothing else to say.
 WORKING = "Working…"
 # The bar while a document is repaired and checked in the background.
@@ -307,15 +315,19 @@ PREVIEW_LOADING = "Loading…"
 READING_COARSE = "Reading a coarse scan with the slower reader; this takes about a minute"
 # After "too coarse to read": the slower reader could not read the scan either.
 SLOW_TRIED = "The slower reader for coarse scans was tried too, and could not read it."
-# A page read by the slower reader: in its detail, in its row, and lower case.
+# A page read by the slower reader: in its detail (made a sentence by "sentence"
+# below), and in its row.
 READ_SLOWLY = "Read by the slower reader for coarse scans"
 READ_SLOWLY_ROW = "Read by the slower reader"
-READ_SLOWLY_SHORT = "read by the slower reader"
 # The step of a scan not started yet.
 WAITING = "Waiting"
 # The choice of language.
 LANGUAGE_MENU = "Language"
 SYSTEM_LANGUAGE = "System default"
+# A phrase made a sentence, where the window shows it as a line of its own after
+# others (a detail panel, a reason after "was not used"): {words} with the full
+# stop of your language. A phrase that already ends with it is shown as it is.
+sentence = "{words}."
 
 # The terminal messages of optar-gui.
 [gui.cli]
@@ -399,13 +411,14 @@ advice_with_repair = "{advice} ({repair})"
 # {good}: the "good" phrase below; {repaired}: the "repaired" phrase below.
 good_with_repaired = "{good} ({repaired})"
 
+# {pages}: the missing pages; single when it names exactly one page, several when more.
 [gui.state.recoverable]
-one = "Recoverable: page {pages} missing, can be repaired from the others"
-other = "Recoverable: pages {pages} missing, can be repaired from the others"
+single = "Recoverable: page {pages} missing, can be repaired from the others"
+several = "Recoverable: pages {pages} missing, can be repaired from the others"
 
 [gui.state.recovered]
-one = "Recoverable: page {pages} missing, repaired from the others"
-other = "Recoverable: pages {pages} missing, repaired from the others"
+single = "Recoverable: page {pages} missing, repaired from the others"
+several = "Recoverable: pages {pages} missing, repaired from the others"
 
 # Every page of a document without a tag is read: one page, or none.
 [gui.state.read]
@@ -445,7 +458,8 @@ one = "{n} missing"
 other = "{n} missing"
 
 # A run of pages with the same problem, in a save warning: one page, two pages,
-# or the range {first} to {last}. Runs are joined with "; ".
+# or the range {first} to {last} (written with the same range mark as gui.list.range).
+# Runs are joined with "; ".
 [gui.run.missing]
 single = "page {first} is missing"
 pair = "pages {first} and {last} are missing"
@@ -657,10 +671,12 @@ other = "{done} of {n} scans read"
 one = "Working… {done} of {n} scan read"
 other = "Working… {done} of {n} scans read"
 
-# Lists of page numbers: "1, 3 and 5".
+# Lists of page numbers: "1, 3 and 5", "2-4 and 9".
 [gui.list]
 comma = ", "
 and = "{items} and {last}"
+# Three or more pages in a row, from {first} to {last}: your language's range mark.
+range = "{first}-{last}"
 
 # The pages a list does not name.
 [gui.list.more]
@@ -690,10 +706,12 @@ nothing = "The file could not be fully repaired. Rescanning the pages may still 
 advice = "The file could not be fully repaired. Adding or rescanning pages can still improve it: {what}."
 both = "{add} and {rescan}"
 
+# {pages}: single when it names exactly one page, several when more.
 [gui.rescan.add]
-one = "add page {pages}"
-other = "add pages {pages}"
+single = "add page {pages}"
+several = "add pages {pages}"
 
+# {pages}: at most three pages, the most damaged first; single or several as above.
 [gui.rescan.worst]
-one = "rescan page {pages}, which has the most damage"
-other = "rescan pages {pages}, which have the most damage"
+single = "rescan page {pages}, which has the most damage"
+several = "rescan pages {pages}, which have the most damage"

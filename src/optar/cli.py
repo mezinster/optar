@@ -51,6 +51,19 @@ _t = i18n.t
 _n = i18n.n
 
 
+def _listing(key: str, count: int, /, **values: object) -> str:
+    """An entry about a list of ``count`` pages: its ``single`` form when the list
+    names exactly one page, else its ``several`` form (not a plural rule, whose
+    form for 1 may also serve 21)."""
+    return _t(f"{key}.{'single' if count == 1 else 'several'}", **values)
+
+
+def _help(key: str) -> str:
+    """A help text for argparse, which expands ``%`` in it: a translation may
+    hold a bare ``%`` ("100%"), so it is escaped."""
+    return _t(key).replace("%", "%%")
+
+
 def __getattr__(name: str) -> str:
     """The wording the window shares with the command line, in the chosen language."""
     if name == "ACTUAL_SIZE":
@@ -106,7 +119,7 @@ class _Parser(argparse.ArgumentParser):
             "--help",
             action="help",
             default=argparse.SUPPRESS,
-            help=_t("cli.argparse.help"),
+            help=_help("cli.argparse.help"),
         )
 
     def error(self, message: str):
@@ -120,7 +133,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--version",
         action="version",
         version=f"optar {__version__}",
-        help=_t("cli.argparse.version"),
+        help=_help("cli.argparse.version"),
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -130,27 +143,31 @@ def _build_parser() -> argparse.ArgumentParser:
             type=str.lower,
             choices=list(PAPERS),
             default="a4",
-            help=_t("cli.help.paper"),
+            help=_help("cli.help.paper"),
         )
-        p.add_argument("--format", metavar="STRING", help=_t("cli.help.format"))
+        p.add_argument("--format", metavar="STRING", help=_help("cli.help.format"))
 
-    enc = sub.add_parser("encode", help=_t("cli.help.encode"))
-    enc.add_argument("input", metavar="INPUT", help=_t("cli.help.input"))
-    enc.add_argument("-o", dest="output", metavar="BASE", help=_t("cli.help.output"))
-    enc.add_argument("--to", choices=["pdf", "png", "pgm"], default="pdf", help=_t("cli.help.to"))
-    enc.add_argument("--label", help=_t("cli.help.label"))
-    enc.add_argument("--no-tag", action="store_true", help=_t("cli.help.no_tag"))
-    enc.add_argument("--dots", type=str.lower, choices=list(DOT_SIZES), help=_t("cli.help.dots"))
-    enc.add_argument("--protect", type=str.lower, choices=list(PARITY), help=_t("cli.help.protect"))
-    enc.add_argument("--compatible", action="store_true", help=_t("cli.help.compatible"))
+    enc = sub.add_parser("encode", help=_help("cli.help.encode"))
+    enc.add_argument("input", metavar="INPUT", help=_help("cli.help.input"))
+    enc.add_argument("-o", dest="output", metavar="BASE", help=_help("cli.help.output"))
+    enc.add_argument(
+        "--to", choices=["pdf", "png", "pgm"], default="pdf", help=_help("cli.help.to")
+    )
+    enc.add_argument("--label", help=_help("cli.help.label"))
+    enc.add_argument("--no-tag", action="store_true", help=_help("cli.help.no_tag"))
+    enc.add_argument("--dots", type=str.lower, choices=list(DOT_SIZES), help=_help("cli.help.dots"))
+    enc.add_argument(
+        "--protect", type=str.lower, choices=list(PARITY), help=_help("cli.help.protect")
+    )
+    enc.add_argument("--compatible", action="store_true", help=_help("cli.help.compatible"))
     common(enc)
 
-    dec = sub.add_parser("decode", help=_t("cli.help.decode"))
-    dec.add_argument("base", metavar="BASE", help=_t("cli.help.base"))
-    dec.add_argument("-o", dest="output", metavar="OUTPUT", help=_t("cli.help.decode_output"))
-    dec.add_argument("--debug-images", action="store_true", help=_t("cli.help.debug_images"))
-    dec.add_argument("--force", action="store_true", help=_t("cli.help.force"))
-    dec.add_argument("--no-slow-reader", action="store_true", help=_t("cli.help.no_slow_reader"))
+    dec = sub.add_parser("decode", help=_help("cli.help.decode"))
+    dec.add_argument("base", metavar="BASE", help=_help("cli.help.base"))
+    dec.add_argument("-o", dest="output", metavar="OUTPUT", help=_help("cli.help.decode_output"))
+    dec.add_argument("--debug-images", action="store_true", help=_help("cli.help.debug_images"))
+    dec.add_argument("--force", action="store_true", help=_help("cli.help.force"))
+    dec.add_argument("--no-slow-reader", action="store_true", help=_help("cli.help.no_slow_reader"))
     common(dec)
     return parser
 
@@ -422,7 +439,7 @@ def _decode_version1(
         else:
             summary.append(_t("cli.summary.worst", used=result.worst_used, budget=result.budget))
     summary.append(
-        _n("cli.summary.missing", len(result.missing), list=_listed(result.missing))
+        _listing("cli.summary.missing", len(result.missing), list=_listed(result.missing))
         if result.missing
         else _t("cli.summary.none_missing")
     )
@@ -436,7 +453,7 @@ def _decode_version1(
             _t(
                 "cli.sentences",
                 first=_n("cli.too_few.read", header.total, read=read),
-                second=_n(
+                second=_listing(
                     "cli.too_few.rescan",
                     len(result.missing),
                     list=_listed(result.missing),
@@ -469,7 +486,9 @@ def _decode_version1(
     rescan = sorted(set(result.missing) | set(damaged))
     force = _t("cli.force_advice")
     advice = (
-        _n("cli.rescan_advice", len(rescan), list=_listed(rescan), force=force) if rescan else force
+        _listing("cli.rescan_advice", len(rescan), list=_listed(rescan), force=force)
+        if rescan
+        else force
     )
     _eprint(
         _t("cli.not_saved.unrepaired", advice=advice)

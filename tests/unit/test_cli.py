@@ -1143,3 +1143,34 @@ def test_cli_source_holds_no_wording():
             args += node.args
         found += [ast.unparse(a) for a in args if wording(a)]
     assert not found, found
+
+
+def test_a_bare_percent_in_a_translated_help_does_not_break_help(capsys, monkeypatch, catalogues):
+    catalogues.add(
+        "ru",
+        {"language": {"name": "Русский"},
+         "cli": {"help": {"to": "печать 100%"}, "argparse": {"help": "справка (100%)"}}},
+    )
+    monkeypatch.setenv("OPTAR_LANG", "ru")
+    with pytest.raises(SystemExit) as e:
+        main(["encode", "--help"])
+    assert e.value.code == 0
+    out = capsys.readouterr().out
+    assert "печать 100%" in out and "справка (100%)" in out
+
+
+def test_a_page_list_chooses_single_or_several_by_how_many_it_names(catalogues):
+    """Not by the plural rule: in Russian the form for 1 also serves 21."""
+    from optar import cli, i18n
+
+    catalogues.add(
+        "ru",
+        {"language": {"name": "Русский"},
+         "cli": {"summary": {"missing": {"single": "одна {list}", "several": "неск {list}"}}}},
+    )  # fmt: skip
+    i18n.set_language("ru")
+    assert cli._listing("cli.summary.missing", 1, list="21") == "одна 21"
+    assert cli._listing("cli.summary.missing", 21, list="1, 2") == "неск 1, 2"
+    i18n.set_language("en")
+    assert cli._listing("cli.summary.missing", 1, list="3") == "missing page 3"
+    assert cli._listing("cli.summary.missing", 2, list="3, 4") == "missing pages 3, 4"

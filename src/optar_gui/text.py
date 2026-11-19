@@ -63,6 +63,14 @@ def _n(key: str, count: int, /, **values: object) -> str:
     return i18n.n(key, count, **values)
 
 
+def _listing(key: str, count: int, /, **values: object) -> str:
+    """An entry about a list of ``count`` pages: its ``single`` form when the list
+    names exactly one page, else its ``several`` form. Not a plural rule: in some
+    languages the plural form for 1 also serves 21, which a list of 21 pages must
+    not take."""
+    return _t(f"{key}.{'single' if count == 1 else 'several'}", **values)
+
+
 def _num(value: int) -> str:
     """An integer with the language's thousands separator."""
     from optar import i18n
@@ -356,9 +364,9 @@ def _state_line(s: Summary) -> str:
     if s.state == DocState.RECOVERABLE:
         many, missing = _page_list(s.missing_pages)
         if repair is None:
-            return _n("gui.state.recoverable", many, pages=missing)
+            return _listing("gui.state.recoverable", many, pages=missing)
         return " · ".join((
-            _n("gui.state.recovered", many, pages=missing),
+            _listing("gui.state.recovered", many, pages=missing),
             _t("gui.state.matches"),
             count(s.size, "byte"),
             repair_line(repair),
@@ -592,8 +600,11 @@ def replace_title(page: int) -> str:
 
 
 def _sentence(words: str) -> str:
+    """``words`` as a sentence of its own: with the language's full stop
+    (``gui.sentence``), unless it already ends with it."""
     words = words.rstrip()
-    return words if words.endswith(".") else f"{words}."
+    stop = _t("gui.sentence", words="\0").rpartition("\0")[2]
+    return words if stop and words.endswith(stop) else _t("gui.sentence", words=words)
 
 
 def replace_rejected(
@@ -844,7 +855,7 @@ def slow_reader_detail(page: PageView, repaired_bytes: int | None = None) -> tup
         after = _t("gui.slow.none_wrong")
     else:
         after = _n("gui.slow.repaired", repaired_bytes)
-    return (f"{_t('gui.READ_SLOWLY')}.", corrected, after)
+    return (_sentence(_t("gui.READ_SLOWLY")), corrected, after)
 
 
 # --- Scans being read --------------------------------------------------------------
@@ -885,8 +896,8 @@ def being_read_row(name: str, progress: Progress | None) -> str:
 def being_read_detail(scan: ScanView, progress: Progress | None) -> tuple[str, ...]:
     """The detail of a scan being read; one the slower reader reads says that it
     takes about a minute."""
-    lines = (os.path.basename(scan.path), f"{step_text(progress)}.")
-    return (*lines, f"{_t('gui.READING_COARSE')}.") if reading_slowly(progress) else lines
+    lines = (os.path.basename(scan.path), _sentence(step_text(progress)))
+    return (*lines, _sentence(_t("gui.READING_COARSE"))) if reading_slowly(progress) else lines
 
 
 def scans_read(reading: int, batch: int) -> str:
@@ -909,9 +920,9 @@ def _and(items: list[str]) -> str:
 
 def _page_list(numbers: tuple[int, ...] | list[int], in_order: bool = True) -> tuple[int, str]:
     """How many pages ``numbers`` names, and the list of them: ``3``, ``3 and 7``,
-    ``2-4 and 9``. ``in_order`` sorts the numbers and joins runs; else they are
-    named in the order given. At most ``MAX_RUNS`` items are named, then the
-    pages left are counted."""
+    ``2-4 and 9`` (the range as ``gui.list.range`` writes it). ``in_order`` sorts
+    the numbers and joins runs; else they are named in the order given. At most
+    ``MAX_RUNS`` items are named, then the pages left are counted."""
     numbers = list(dict.fromkeys(numbers))
     spans: list[tuple[int, int]] = []  # (first, last) of each item named
     if in_order:
@@ -924,7 +935,10 @@ def _page_list(numbers: tuple[int, ...] | list[int], in_order: bool = True) -> t
         spans = [s for a, b in spans for s in ([(a, a), (b, b)] if b == a + 1 else [(a, b)])]
     else:
         spans = [(n, n) for n in numbers]
-    items = [_num(a) if a == b else f"{_num(a)}-{_num(b)}" for a, b in spans[:MAX_RUNS]]
+    items = [
+        _num(a) if a == b else _t("gui.list.range", first=_num(a), last=_num(b))
+        for a, b in spans[:MAX_RUNS]
+    ]
     rest = sum(b - a + 1 for a, b in spans[MAX_RUNS:])
     if rest:
         items.append(_n("gui.list.more", rest))
@@ -967,10 +981,10 @@ def rescan_advice(u: Unwrapped) -> str:
     add = rescan = None
     if missing:
         many, pages = _page_list(sorted(missing))
-        add = _n("gui.rescan.add", many, pages=pages)
+        add = _listing("gui.rescan.add", many, pages=pages)
     if worst:
         many, pages = _page_list(worst, in_order=False)
-        rescan = _n("gui.rescan.worst", many, pages=pages)
+        rescan = _listing("gui.rescan.worst", many, pages=pages)
     if add is None and rescan is None:
         return _t("gui.rescan.nothing")
     if add is not None and rescan is not None:
@@ -999,5 +1013,6 @@ def cli_description() -> str:
 
 
 def cli_version_help() -> str:
-    """The help line of optar-gui's ``--version``."""
-    return _t("gui.cli.version_help")
+    """The help line of optar-gui's ``--version``, for argparse, which expands
+    ``%`` in it: a bare ``%`` of a translation is escaped."""
+    return _t("gui.cli.version_help").replace("%", "%%")
