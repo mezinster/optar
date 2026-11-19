@@ -107,7 +107,9 @@ def value_problems(catalogue: dict) -> list[str]:
     for key, entry in sorted(catalogue.items()):
         for category, form in _forms(entry).items():
             where = f"{key}.{category}" if category else key
-            if not isinstance(form, str) or not form.strip():
+            # The thousands separator may be a space (name_and_separator_problems checks it).
+            blank_ok = key == "format.group" and form in GROUPS and form != ""
+            if not isinstance(form, str) or not (form.strip() or blank_ok):
                 problems.append(f"{where}: empty or not a string")
                 continue
             try:
@@ -517,6 +519,8 @@ def test_empty_values_and_braces_are_reported():
     assert value_problems({"a": "{0} positional"})
     assert value_problems({"a": {"one": "{n}", "other": ""}})
     assert not value_problems({"a": "fine {name}", "b": {"one": "{n} x", "other": "{n} y"}})
+    assert not value_problems({"format.group": " "})  # a space is a separator
+    assert value_problems({"format.group": ""}) and value_problems({"other": " "})
 
 
 def test_language_name_and_separator_are_checked():

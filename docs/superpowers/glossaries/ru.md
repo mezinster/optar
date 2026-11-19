@@ -171,6 +171,40 @@ words were rejected and why); the morphology notes are Russian-only.
 | promise (of the tools) | обещание | |
 | plain, tagged, self-identifying document | простой документ, документ с меткой, самоопознающийся документ | |
 
+### Terms added with the catalogue and the pages
+
+Terms the page translators used beyond the list above, and terms the catalogue
+needed. They are binding in the same way.
+
+| English | Russian | Notes |
+|---|---|---|
+| desktop application | настольное приложение | |
+| version tag (git) | тег версии | Only for git tags; «метка» stays the label tag. |
+| sheet-fed scanner | протяжной сканер | |
+| simulated, simulator | имитированный, имитатор | |
+| withheld (page) | изъята | |
+| dot impression (a dot as it looks on the scan) | собственное изображение на скане | |
+| Karel "Clock" Kulhavy, Colin Dean | Карел «Clock» Кулгави, Колин Дин | |
+| point (pt), paper margin | пункт (short «пт»), поле | |
+| offset | смещение | |
+| free text | произвольный текст | |
+| check (plain sense, not the fingerprint) | контролировать | Keeps «провер-» reserved. |
+| threshold, fill threshold | порог, порог заливки | |
+| sample, sampling | отсчёт, снятие отсчётов | The slower reader's step is «выборка» in the window. |
+| linear brightness scale | линейная шкала яркости | |
+| slice | отрезок | |
+| facet, neighbouring facets | грань, соседние грани | |
+| confidence | уверенность | |
+| media box | media box | Kept as the PDF term. |
+| Language (menu), System default | Язык, Как в системе | |
+| protection level `{level}` on the command line | Уровень защиты {level} | The option value stays English and reads as a name: «Уровень защиты standard: …». |
+| pixels (in error messages with a number before the noun) | пикс. | Abbreviation, so it needs no agreement: «скан 100 × 141 пикс.». |
+| rows of pixels | в строках пикселей | Said after the numbers: «{height} вместо {rows} (в строках пикселей)». |
+| decode again | повторите декодирование | The command name `decode` is not used as a verb. |
+| … the slower reader is started | запускается медленный метод | Command line, while a coarse scan is tried. |
+| sentence end added by the window (`gui.sentence`) | «{words}.» | Russian full stop, as in English. |
+| page range | 2–4 | En dash without spaces, in `gui.list.range` and every `gui.run.*.range`. |
+
 ## Strength of claims
 
 - **Verified** — «проверен», with the reserved root (above). Never softened
@@ -271,8 +305,18 @@ titles exactly as written) and `site_description`.
 ## Templates to watch
 
 English templates in `en.toml` that cannot be said in Russian as given, or
-only with care. Nothing here changes `en.toml`; it is what the translator
-does and what the coordinator may want to fix in code.
+only with care. Written before the catalogue; what became of each item when
+`ru.toml` was written:
+
+- Item 1 (and the list part of 2) is fixed in code: those seven entries now
+  have the forms `single` (the list names exactly one page) and `several`,
+  chosen by the count of pages, not by the plural rule. So «страницу {pages}»
+  and «её» are right in `single`.
+- Item 9 is fixed: `[format].decimal` gives «8,3», so `share_small` is
+  «менее 0,1%».
+- Item 10 is fixed: the range is `gui.list.range` («{first}–{last}»).
+- Items 3 to 8 and 11 to 16 were solved in Russian as described, without a
+  change to the templates.
 
 1. **List-keyed plurals**: `gui.state.recoverable`, `gui.state.recovered`,
    `gui.rescan.add`, `gui.rescan.worst`, `cli.summary.missing`,
