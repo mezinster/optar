@@ -851,8 +851,8 @@ Strumień drukuje się tak, jak opisuje sekcja 2.7, co daje dokładnie `T` stron
 Napis strony to zwykły wiersz napisu, którego tekst dowolny jest przeznaczony
 dla ludzi: jest to napis podany przez użytkownika albo, gdy go nie podano,
 nazwa, którą wybiera narzędzie (okno używa nazwy pliku, wiersz poleceń – nazwy
-podanej w `-o`, która może być pusta), taka sama na każdej stronie, i nie
-zawiera on znacznika. (Ważny
+podanej w `-o`, która może być pusta). Tekst ten jest taki sam na każdej
+stronie i nie zawiera znacznika. (Ważny
 znacznik sprawiłby, że program odczytujący uznałby stronę za stronę dokumentu
 ze znacznikiem, sekcja 6.1).
 
