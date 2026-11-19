@@ -1,5 +1,5 @@
 ---
-source_hash: 90182c569913da957ad8b2b3c51203f66726cc36
+source_hash: 116c27601de6c43ed57c443b775aafdc63d50d6c
 ---
 
 # Format optar { #the-optar-format }
@@ -89,7 +89,7 @@ samych stron w wersji 0 (część 2).
 | Rodzaj | Zapisywany przez | Strumień to | Napis niesie |
 |---|---|---|---|
 | prosty | program w C, optar 0.1.0, `--no-tag` | plik | tylko tekst dowolny |
-| ze znacznikiem | optar 0.2.0 i nowsze („zgodny”) | plik | znacznik (część 3) |
+| ze znacznikiem | optar 0.2.0, a nowsze wersje jako swój wydruk „zgodny” | plik | znacznik (część 3) |
 | samoidentyfikujący | optar 0.3.0 i nowsze | kontener (część 4) | tylko tekst dowolny |
 
 ### 1.5 Stałe { #15-constants }
@@ -464,7 +464,8 @@ Wektory: `tests/vectors/c/encoder_pages.json`.
 ### 2.8 Napis { #28-the-label }
 
 Pas napisu zawiera jeden wiersz tekstu, dla ludzi oraz, w dokumencie ze
-znacznikiem, dla programu odczytującego. Rysuje się go ustaloną czcionką.
+znacznikiem, dla programu odczytującego. Zawsze rysuje się go tą samą
+czcionką, którą definiuje opisany niżej pasek czcionki.
 
 **Pasek czcionki** to obraz o `LABEL_HEIGHT` wierszach i 1500 kolumnach,
 w którym każdy piksel jest czarny lub biały. Kolumny od `0` do
@@ -716,10 +717,10 @@ rs_32_parity_of_one = 744034ae367e10c2a221219db0c5e10c3b37fde4942fb3b9188afd148e
 rs_32_parity_of_counting = 41841183b11fdb537421939696cda70e1db5c86684af222564b89cc6069f172e
 ```
 
-`rs_32_parity_of_one` to parzystość, dla parzystości 32, 223 bajtów danych,
-które wszystkie są zerowe z wyjątkiem ostatniego bajtu równego 1; są to
-współczynniki `g(x)` od `x^31` w dół do `x^0`. `rs_32_parity_of_counting` to
-parzystość bajtów danych 0, 1, 2, ..., 222.
+`rs_32_parity_of_one` to, dla parzystości 32, bajty parzystości 223 bajtów
+danych, które wszystkie są zerowe z wyjątkiem ostatniego bajtu równego 1; są
+to współczynniki `g(x)` od `x^31` w dół do `x^0`. `rs_32_parity_of_counting`
+to, dla parzystości 32, bajty parzystości bajtów danych 0, 1, 2, ..., 222.
 
 Wektory: `tests/vectors/py/reed_solomon.json`.
 
@@ -834,22 +835,24 @@ bajtów. Ten projekt mówi swojemu użytkownikowi, że można utracić dowolne `
 stron, gdy
 `n * (ceil(page_body / m) + 1) <= PROMISE_NUM * parity // PROMISE_DEN`, co
 pozostawia ćwierć parzystości na uszkodzenia na stronach, które pozostały.
-Jest to obietnica narzędzi, a nie właściwość, na której program odczytujący
-może polegać lub którą musi sprawdzać.
+Jest to obietnica narzędzi: nie jest to ani właściwość, na której program
+odczytujący może polegać, ani taka, którą program odczytujący musi sprawdzać.
 
 ### 4.10 Od kontenera do stron { #410-from-the-container-to-pages }
 
 Strumień ma `T * net_bits // 8` bajtów. Gdy czyta się go jako ciąg bitów,
-ładunek strony `p` (od 1) zaczyna się od bitu `(p - 1) * net_bits`; wszystkie
-pozostałe bity mają wartość 0. Gdy `net_bits` jest wielokrotnością 8, strumień
+ładunek strony `p` (od 1) zaczyna się od bitu `(p - 1) * net_bits`; każdy bit
+strumienia, który nie leży w żadnym ładunku, ma wartość 0. Gdy `net_bits` jest wielokrotnością 8, strumień
 to po prostu połączone ładunki. Gdy nie jest, każda strona ma `net_bits mod 8`
 niewykorzystanych bitów po swoim ładunku, a ładunki niektórych stron nie
 zaczynają się na początku bajtu strumienia.
 
 Strumień drukuje się tak, jak opisuje sekcja 2.7, co daje dokładnie `T` stron.
 Napis strony to zwykły wiersz napisu, którego tekst dowolny jest przeznaczony
-dla ludzi: jest to nazwa pliku (napis podany przez użytkownika albo nazwa
-pliku), taka sama na każdej stronie, i nie zawiera on znacznika. (Ważny
+dla ludzi: jest to napis podany przez użytkownika albo, gdy go nie podano,
+nazwa, którą wybiera narzędzie (okno używa nazwy pliku, wiersz poleceń – nazwy
+podanej w `-o`, która może być pusta), taka sama na każdej stronie, i nie
+zawiera on znacznika. (Ważny
 znacznik sprawiłby, że program odczytujący uznałby stronę za stronę dokumentu
 ze znacznikiem, sekcja 6.1).
 
@@ -913,8 +916,9 @@ dziesięć. Papiery mają nazwy `a4` i `letter`.
 „Bajty strony” i „Bajty treści” to `page_bytes` i `page_body` z sekcji 4.1.
 Ten projekt drukuje dokument prosty lub ze znacznikiem w układzie `standard`
 (albo, gdy ręcznie podano ciąg formatu, w tym formacie strony ze standardowym
-rozmiarem kropek i z przesunięciami układu `standard` danego papieru, pod
-warunkiem że każdy margines wynosi co najmniej `MIN_MARGIN_PT`), a dokument
+rozmiarem kropek i z przesunięciami układu `standard` danego papieru; taki
+ciąg formatu ten projekt odrzuca, chyba że każdy margines wynosi wtedy co
+najmniej `MIN_MARGIN_PT`), a dokument
 samoidentyfikujący – w dowolnym z dziesięciu układów.
 
 Wektory: `tests/vectors/c/bit_placement.json`, `tests/vectors/py/container.json`.
@@ -945,7 +949,7 @@ kropek, pozostawia co najmniej `MIN_MARGIN_PT` z każdego boku, a każde
 przesunięcie to połowa wolnej długości, zaokrąglona w dół do całkowitej
 liczby kropek drukarki. Układy definiują tabele, a nie ta reguła.
 
-Tożsamość strony nie zależy od tego, gdzie strona leży na papierze: program
+Strona jest tą samą stroną niezależnie od tego, gdzie leży na papierze: program
 odczytujący znajduje stronę po jej ramce. Umieszczenie ma znaczenie tylko dla
 drukowania: strona wydrukowana w innej skali ma kropki innego rozmiaru,
 a strona wydrukowana bliżej krawędzi może zostać przycięta.
@@ -953,7 +957,8 @@ a strona wydrukowana bliżej krawędzi może zostać przycięta.
 ### 5.3 PDF zapisywany przez ten projekt { #53-the-pdf-this-project-writes }
 
 Każda strona dokumentu to jedna strona PDF, której pole nośnika (media box)
-to papier, `[0 0 width height]` w punktach. Obraz strony to jeden obraz
+to papier: `[0 0 width height]`, gdzie szerokość i wysokość papieru podano
+w punktach. Obraz strony to jeden obraz
 o 1 bicie na piksel (1 to biały), `width` na `height` pikseli strony, bez
 interpolacji, narysowany tak, aby jego lewy dolny róg leżał w miejscu
 przesunięć układu, i przeskalowany tak, aby jeden piksel strony był jedną
@@ -1025,7 +1030,8 @@ układu, liczbę stron wynoszącą co najwyżej `MAX_PAGES`, numer strony od 1 d
 liczby stron (albo 1 przy liczbie stron 0), a jego tekst dowolny zaczyna się
 od znacznika, który jest ważny dla tego numeru i tej liczby stron (sekcja
 3.2), to strona jest stroną dokumentu ze znacznikiem. Musi być traktowana jako
-taka strona nawet wtedy, gdy jej dane zawierają ważny nagłówek.
+taka strona nawet wtedy, gdy jej dane zawierają dopuszczalny nagłówek
+(sekcja 6.2).
 
 Powód: strumień dokumentu samoidentyfikującego, w postaci, w jakiej zwraca go
 stary program, można wydrukować ponownie jako dokument ze znacznikiem. Te
@@ -1073,9 +1079,10 @@ strony. Stron innego dokumentu nie wolno używać.
 - **Dokument samoidentyfikujący.** Bajt ładunku jest wymazaniem, gdy jeden
   z jego bitów leży w symbolu, którego kod strony nie zdołał skorygować; każdy
   bajt strony, która nie została dostarczona, jest wymazaniem. Plik to
-  pierwsze `size` bajtów strefy danych i jest on odzyskany tylko wtedy, gdy
-  każde słowo kodowe, które zawiera jeden z tych bajtów, zostało odczytane lub
-  naprawione (przy parzystości 0: nie ma wymazania). Plik jest
+  pierwsze `size` bajtów strefy danych i jest on odzyskany wtedy i tylko
+  wtedy, gdy każde słowo kodowe, które zawiera jeden z tych bajtów, zostało
+  odczytane lub naprawione (przy parzystości 0, gdy nic nie jest naprawiane:
+  gdy żadne takie słowo kodowe nie ma wymazania). Plik jest
   **zweryfikowany**, gdy jest odzyskany, a pierwsze `FINGERPRINT_SIZE` bajtów
   jego skrótu SHA-256 jest równe odciskowi z nagłówka.
 - **Dokument ze znacznikiem.** Plik to pierwsze `SIZE` bajtów strumienia. Jest
@@ -1136,9 +1143,10 @@ linear_light_of_200 = 149
 Dekoder otrzymuje format strony. Pracuje na obrazie we właściwym położeniu.
 
 1. **Poziomy szarości.** Próg ma początkowo wartość średniej szarości.
-   Co najwyżej 32 razy: `black` to próg minus średnia kwadratowa odległości
-   od progu pikseli leżących poniżej progu, `white` – próg plus ta sama
-   wielkość dla pikseli powyżej; nowy próg to
+   Co najwyżej 32 razy: `black` to próg minus średnia kwadratowa
+   (pierwiastek kwadratowy ze średniej kwadratów) odległości od progu pikseli
+   leżących poniżej niego, `white` – próg plus ta sama wielkość dla pikseli
+   leżących powyżej niego; nowy próg to
    `sync_white_cut * white + (1 - sync_white_cut) * black`, zaokrąglony;
    procedura kończy się, gdy próg przestaje się zmieniać. Drugi poziom, próg
    wypełnienia, leży w połowie między `black` i `white`.
@@ -1151,7 +1159,7 @@ Dekoder otrzymuje format strony. Pracuje na obrazie we właściwym położeniu.
 3. **Przerwa w ramce.** Jeśli drukarka przycięła krawędź strony, ramka ma
    przerwę, biel wokół strony wnika między kropki, a krok 2 znajduje tylko
    kawałek strony. Gdy znaleziony obszar jest mniejszy niż połowa tego, co nie
-   jest bielą wokół strony, za biel wokół strony przyjmuje się zamiast tego to,
+   jest bielą wokół strony w postaci, w jakiej znalazł ją krok 2, za biel wokół strony przyjmuje się zamiast tego to,
    do czego można dotrzeć przejściami o szerokości co najmniej `2 * r + 1`
    pikseli, gdzie `r = max(5, longest side // 250) // 2`; biel między
    kropkami jest węższa. Ten wynik jest używany tylko wtedy, gdy daje całą
@@ -1177,7 +1185,7 @@ odstęp krzyżyków poniżej krzyżyka nad nim, więc każde wyszukiwanie zaczyn
 od już znalezionego krzyżyka. Dla każdego krzyżyka:
 
 1. wyszukiwanie zgrubne po całych pikselach skanu, w każdym kierunku do
-   połowy połowy boku krzyżyka, miejsca, w którym obraz najlepiej koreluje ze
+   połowy `chalf` (połowy połowy boku krzyżyka), miejsca, w którym obraz najlepiej koreluje ze
    wzorem krzyżyka (ciemny, jasny, jasny, ciemny);
 2. wyszukiwanie dokładne w obrębie pół piksela skanu krokami co ćwierć
    piksela, na krzyżyku pomniejszonym o `cross_trim` pikseli strony z każdego
@@ -1241,13 +1249,14 @@ programu odczytującego, a nie do formatu.
 
 ### 7.6 Wolniejsza metoda odczytu { #76-the-slower-reader }
 
-Gdy kroki z 7.5 niczego nie identyfikują, ale obrys strony został znaleziony,
-albo gdy przyjmują stronę wyłącznie na podstawie napisu bez znacznika na
-skanie, na którym na piksel danych przypada mniej niż 2.5 piksela skanu,
-a jednocześnie 1% lub więcej symboli strony jest nie do skorygowania, ten
-projekt próbuje drugiej, wolniejszej metody odczytu (`src/optar/decoder/soft.py`),
-przeznaczonej dla skanu o zbyt niskiej rozdzielczości dla jego rozmiaru
-kropek. Dla każdego rozważanego układu i obrotu, w kolejności z 7.5,
+Ten projekt próbuje drugiej, wolniejszej metody odczytu
+(`src/optar/decoder/soft.py`), przeznaczonej dla skanu o zbyt niskiej
+rozdzielczości dla jego rozmiaru kropek, w dwóch przypadkach. Pierwszy: kroki
+z 7.5 niczego nie identyfikują, choć obrys strony został znaleziony. Drugi:
+spełnione są wszystkie trzy następujące warunki: kroki z 7.5 przyjmują stronę
+wyłącznie na podstawie napisu bez znacznika; piksel danych tego skanu ma
+szerokość mniejszą niż 2.5 piksela skanu; 1% lub więcej symboli strony jest
+nie do skorygowania. Dla każdego rozważanego układu i obrotu, w kolejności z 7.5,
 metoda ta:
 
 1. powiększa skan tak, aby piksel danych miał szerokość około czterech
@@ -1259,8 +1268,8 @@ metoda ta:
    filtr przekształcający te próbki w znane bity, osobny filtr dla każdego
    z 16 na 22 obszarów strony;
 4. stosuje filtry do każdego piksela danych, co daje dla każdego bitu pewność
-   ze znakiem, i wybiera dla każdego symbolu Golaya słowo kodowe, które
-   najlepiej pasuje do jego 24 wartości pewności;
+   ze znakiem, i wybiera dla każdego symbolu strony ten symbol kodu Golaya
+   (sekcja 2.5), który najlepiej pasuje do jego 24 wartości pewności;
 5. przyjmuje za znane 60% symboli o największej pewności i powtarza od kroku
    3, łącznie pięć dopasowań.
 
@@ -1280,7 +1289,7 @@ Wektory: `tests/vectors/c/decoder.json`, `tests/vectors/c/decoder_internals.json
 ## 8. Historia { #8-history }
 
 Strona z części 2 to format Twibright Optar, programu w C, który w 2007 roku
-napisał Karel Kulhavy i który od 2012 roku był utrzymywany w
+napisał Karel Kulhavy; później, od 2012 roku, był on utrzymywany w
 `colindean/optar`. Jego źródła są przechowywane bez zmian w folderze `lega-c`
 tego projektu, w stanie z commita `9c8379c25466bf142459a26b0f34521bdde2af12`
 tamtego repozytorium. Wektory w `tests/vectors/c` zostały zarejestrowane za pomocą
