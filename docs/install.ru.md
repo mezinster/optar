@@ -8,7 +8,7 @@ source_hash: e2c7112db6c41d20df8b36d2d29c2ab43a5ecb4a
 
 Скачайте файл для своей системы из
 [раздела Releases на GitHub](https://github.com/mezinster/optar/releases/latest).
-`<tag>` ниже — это номер версии, например `v0.5.0`.
+`<tag>` ниже — это номер версии, например `v0.5.0`.
 
 | Система | Настольное приложение | Командная строка |
 |---|---|---|
@@ -16,7 +16,7 @@ source_hash: e2c7112db6c41d20df8b36d2d29c2ab43a5ecb4a
 | macOS (Apple silicon) | `optar-gui-<tag>-macos-arm64.zip` | `optar-<tag>-macos-arm64` |
 | Windows | `optar-gui-<tag>-windows-x86_64.exe` | `optar-<tag>-windows-x86_64.exe` |
 
-Каждая программа — это один файл, и больше ничего устанавливать не нужно.
+Каждая программа — это один файл, и больше ничего устанавливать не нужно.
 
 - **Linux:** сначала выполните для файла `chmod +x`.
 - **macOS:** выполните `chmod +x` для программы командной строки. Распакуйте

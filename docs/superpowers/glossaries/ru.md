@@ -83,7 +83,7 @@ words were rejected and why); the morphology notes are Russian-only.
 | assign (a scan) to a page | указать страницу | Button «Указать страницу…»; prose «указать для скана страницу вручную». Rejected: «назначить» (bureaucratic), «привязать». |
 | start a document by hand, put together by hand | собрать документ вручную, собран вручную | One verb for both, so the button and the later caution match. |
 | replace (scan) | заменить | |
-| use this scan | использовать этот скан | |
+| use this scan | взять этот скан | Button «Взять этот скан»: shorter than «Использовать этот скан», which was the longest button. |
 | switch to this document | перейти к этому документу | |
 | add scans | добавить сканы | |
 | remove | убрать | Removes a scan from the list, does not delete the file. «Удалить» would suggest deleting the file from disk. |
@@ -96,7 +96,7 @@ words were rejected and why); the morphology notes are Russian-only.
 | read from paper | прочитать с бумаги | Tab «Прочитать с бумаги». |
 | printed name, prints as | печатается как | Field «Печатается как:». |
 | name (of the file, on the label) | имя | Field «Имя:», «(без имени)». |
-| compatible (printout) | совместимая (распечатка) | Checkbox «Совместима с optar 0.2 и первоначальной программой optar». |
+| compatible (printout) | совместимая (распечатка) | Checkbox «Совместимость с optar 0.2 и первоначальной программой optar»: a noun, because a short adjective on a checkbox has no visible subject. |
 | original optar, the C program | первоначальная программа optar на C | Rejected: «оригинальная» (in Russian also "unusual"), «исходная» (clashes with «исходный код»). |
 | dot size names: Standard, Medium, Big, Large, Extra large | Стандартные, Средние, Большие, Крупные, Очень крупные | Plural adjectives agreeing with «точки». Big / Large / Extra large map to Большие / Крупные / Очень крупные, so the last two keep the English pair "Large" / "Extra large". Capitalised only as a selector entry or at the start; in running text lower-case («стандартные точки», «со стандартными точками», «для крупных точек»). |
 | protection levels: None, Standard, High | Нет, Стандартная, Высокая | Feminine, agreeing with «защита». In prose «стандартная защита», «высокая защита», «без защиты». |
@@ -156,7 +156,7 @@ words were rejected and why); the morphology notes are Russian-only.
 | check (of a tag), check digits | контрольное значение, контрольные цифры | Rejected: «контрольная сумма» (a checksum of the data, which this is not). |
 | header, header copy | заголовок, копия заголовка | |
 | magic | сигнатура | Field name `magic` stays in code font. |
-| well-formed, acceptable, valid | корректный, допустимый, действительный | A well-formed header copy, an acceptable header, a valid tag. |
+| well-formed, acceptable, valid | корректный, допустимый, действительный | A well-formed header copy, an acceptable header, a valid tag. "Valid" is «действительный» everywhere in `format.ru.md` (a valid page, tag, document, header, codeword; "invalid" «недействительный»), never «корректный» or «допустимый»: those two are the defined terms of 6.2, and using them for "valid" would narrow a rule. |
 | untrusted | не заслуживает доверия; ему нельзя доверять | Heading «Заголовку нельзя доверять». Rejected: «недоверенный» (calque). |
 | container | контейнер | |
 | stream | поток | |
@@ -206,6 +206,10 @@ needed. They are binding in the same way.
 | … the slower reader is started | запускается медленный метод | Command line, while a coarse scan is tried. |
 | sentence end added by the window (`gui.sentence`) | «{words}.» | Russian full stop, as in English. |
 | page range | 2–4 | En dash without spaces, in `gui.list.range` and every `gui.run.*.range`. |
+| real (scan, document, printout) | реальный | Not «настоящий»: «настоящий документ» is the official phrase for "the present document". («до настоящего размера», "to its true size", stays.) |
+| window titles of file dialogs | infinitive | «Выбрать файл для записи на бумагу», «Выбрать скан страницы {page}», like «Добавить сканы», «Сохранить PDF», «Указать страницу». |
+| could not be decoded in any orientation (`gui.reason.not_decodable`) | Не удалось декодировать скан ни в одной ориентации | A full sentence with a subject and a capital letter, as the other reasons: the window shows it as a sentence of its own. |
+| scanned upright | отсканирована в прямом положении (не повёрнута) | Not «не перевёрнута», which covers only upside down, not a page turned by 90°. |
 
 ## Strength of claims
 
