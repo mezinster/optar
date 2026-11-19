@@ -1,5 +1,5 @@
 ---
-source_hash: 90182c569913da957ad8b2b3c51203f66726cc36
+source_hash: 116c27601de6c43ed57c443b775aafdc63d50d6c
 ---
 
 # El formato optar { #the-optar-format }
@@ -12,7 +12,7 @@ que lleva un archivo), de modo que se pueda escribir un codificador cuyas
 páginas lea este proyecto y un decodificador que lea las páginas de este
 proyecto.
 
-El texto tiene ocho partes:
+La especificación tiene ocho partes:
 
 1. Términos y convenciones
 2. La página (versión 0)
@@ -87,12 +87,12 @@ las mismas páginas de versión 0 (parte 2).
 | Tipo | Lo escribe | El flujo es | El rótulo lleva |
 |---|---|---|---|
 | simple | el programa en C, optar 0.1.0, `--no-tag` | el archivo | solo texto libre |
-| con etiqueta | optar 0.2.0 y posteriores («compatible») | el archivo | la etiqueta (parte 3) |
+| con etiqueta | optar 0.2.0, y las versiones posteriores en su impresión «compatible» | el archivo | la etiqueta (parte 3) |
 | autoidentificable | optar 0.3.0 y posteriores | el contenedor (parte 4) | solo texto libre |
 
 ### 1.5 Constantes { #15-constants }
 
-Los nombres de esta tabla se usan en todo el texto.
+Los nombres de esta tabla se usan en toda esta especificación.
 
 <!-- spec-table: constants -->
 | Nombre | Valor | Significado |
@@ -122,7 +122,7 @@ Los nombres de esta tabla se usan en todo el texto.
 | `PADDING_KEY` | "optar padding" | clave del flujo de relleno, en ASCII |
 | `PADDING_BLOCK` | 32 | bytes de un bloque del flujo de relleno |
 | `PROTECTED_MAX_BYTES` | 268435456 | máximo de bytes de página de un documento con paridad |
-| `PROMISE_NUM` | 3 | numerador de la fracción de la paridad sobre la que prometen las herramientas (4.9) |
+| `PROMISE_NUM` | 3 | numerador de la fracción de la paridad sobre la que las herramientas basan su promesa (4.9) |
 | `PROMISE_DEN` | 4 | denominador de esa fracción |
 | `PRINTER_DPI` | 600 | puntos de impresora por pulgada |
 | `PIXELS_PER_INCH` | 200 | puntos de datos estándar por pulgada |
@@ -465,7 +465,8 @@ Vectores: `tests/vectors/c/encoder_pages.json`.
 ### 2.8 El rótulo { #28-the-label }
 
 La banda del rótulo contiene una línea de texto, para las personas y, en un
-documento con etiqueta, para el lector. Se dibuja con una fuente fija.
+documento con etiqueta, para el lector. Se dibuja siempre con la misma fuente, la que define la tira de la fuente
+que se describe a continuación.
 
 **La tira de la fuente** es una imagen de `LABEL_HEIGHT` filas y 1500
 columnas, con cada píxel negro o blanco. Las columnas de `0` a
@@ -723,10 +724,10 @@ rs_32_parity_of_one = 744034ae367e10c2a221219db0c5e10c3b37fde4942fb3b9188afd148e
 rs_32_parity_of_counting = 41841183b11fdb537421939696cda70e1db5c86684af222564b89cc6069f172e
 ```
 
-`rs_32_parity_of_one` es la paridad, para la paridad 32, de los 223 bytes de
-datos que son todos cero salvo un último byte de 1; estos son los coeficientes
-de `g(x)` desde `x^31` hasta `x^0`. `rs_32_parity_of_counting` es la paridad
-de los bytes de datos 0, 1, 2, ..., 222.
+`rs_32_parity_of_one` son, para la paridad 32, los bytes de paridad de los 223
+bytes de datos que son todos cero salvo un último byte de 1; estos son los coeficientes
+de `g(x)` desde `x^31` hasta `x^0`. `rs_32_parity_of_counting` son, para la
+paridad 32, los bytes de paridad de los bytes de datos 0, 1, 2, ..., 222.
 
 Vectores: `tests/vectors/py/reed_solomon.json`.
 
@@ -773,8 +774,8 @@ El relleno no lleva nada. Existen dos contenidos, y los dos son válidos:
 - optar 0.3.0 escribía bytes cero;
 - optar 0.3.1 y posteriores escriben el **flujo de relleno**: su bloque `n`,
   `n = 0, 1, 2, ...`, son los `PADDING_BLOCK` bytes del SHA-256 de
-  la concatenación de `PADDING_KEY` y `n` como 8 bytes, big-endian; el flujo son los
-  bloques unidos. El relleno de la región de datos es el flujo desde su byte 0;
+  una sola cadena de bytes: `PADDING_KEY` con `n` añadido al final como un entero
+  de 8 bytes, big-endian; el flujo son los bloques unidos. El relleno de la región de datos es el flujo desde su byte 0;
   el relleno del final del cuerpo continúa el flujo donde se detuvo el relleno
   de la región de datos. (Los bytes cero se imprimen como líneas blancas que
   atraviesan cada página; el flujo se imprime como si fueran datos.)
@@ -845,17 +846,18 @@ confiar ni que deba comprobar.
 ### 4.10 Del contenedor a las páginas { #410-from-the-container-to-pages }
 
 El flujo tiene `T * net_bits // 8` bytes. Leído como cadena de bits, la carga
-útil de la página `p` (desde 1) empieza en el bit `(p - 1) * net_bits`; todos
-los demás bits son 0. Cuando `net_bits` es múltiplo de 8, el flujo son
+útil de la página `p` (desde 1) empieza en el bit `(p - 1) * net_bits`; todo
+bit del flujo que no está en ninguna carga útil es 0. Cuando `net_bits` es múltiplo de 8, el flujo son
 simplemente las cargas útiles unidas. Cuando no lo es, cada página tiene
 `net_bits mod 8` bits sin usar después de su carga útil, y las cargas útiles
 de algunas páginas no empiezan al principio de un byte del flujo.
 
 El flujo se imprime como dice la sección 2.7, lo que da exactamente `T`
 páginas. El rótulo de una página es una línea de rótulo ordinaria cuyo texto
-libre es para las personas: es el nombre del archivo (el rótulo que dio el
-usuario, o el nombre del archivo), el mismo en todas las páginas, y no lleva
-etiqueta. (Una etiqueta válida haría que un lector tomara la página por una
+libre es para las personas: es el rótulo que dio el usuario o, si no dio
+ninguno, un nombre que elige la herramienta (la ventana usa el nombre del
+archivo; la línea de comandos, el nombre dado con `-o`, que puede estar vacío),
+el mismo en todas las páginas, y no lleva etiqueta. (Una etiqueta válida haría que un lector tomara la página por una
 página de un documento con etiqueta, sección 6.1.)
 
 Con el código de Golay, `net_bits mod 8` es 0 o 4 y la última carga útil
@@ -920,8 +922,8 @@ Un **diseño** es un papel, un tamaño de punto y el formato de página impreso 
 sección 4.1. Este proyecto imprime un documento simple o con etiqueta en un
 diseño `standard` (o, cuando se le da a mano una cadena de formato, en ese
 formato de página con el tamaño de punto estándar y los desplazamientos del
-diseño `standard` del papel, siempre que cada margen sea de al menos
-`MIN_MARGIN_PT`), y un documento autoidentificable en cualquiera de los diez
+diseño `standard` del papel; rechaza una cadena de formato así salvo que cada
+margen sea entonces de al menos `MIN_MARGIN_PT`), y un documento autoidentificable en cualquiera de los diez
 diseños.
 
 Vectores: `tests/vectors/c/bit_placement.json`, `tests/vectors/py/container.json`.
@@ -953,7 +955,7 @@ cada lado, y cada desplazamiento es la mitad de la longitud libre, redondeada
 hacia abajo a un punto de impresora entero. Son las tablas, no esta regla, las
 que definen los diseños.
 
-La identidad de una página no depende de dónde esté en el papel: un lector
+Una página es la misma página esté donde esté en el papel: un lector
 encuentra la página por su borde. La colocación solo importa para la
 impresión: una página impresa a otra escala tiene puntos de otro tamaño, y una
 impresa más cerca del lado del papel puede quedar recortada.
@@ -961,7 +963,8 @@ impresa más cerca del lado del papel puede quedar recortada.
 ### 5.3 El PDF que escribe este proyecto { #53-the-pdf-this-project-writes }
 
 Cada página del documento es una página PDF cuya caja de medios (media box) es
-el papel, `[0 0 width height]` en puntos tipográficos. La imagen de la página
+el papel: `[0 0 width height]`, con el ancho y el alto del papel en puntos
+tipográficos. La imagen de la página
 es una sola imagen de 1 bit por píxel (1 es blanco), de `width` por `height`
 píxeles de página, sin interpolación, dibujada con su esquina inferior
 izquierda en los desplazamientos del diseño y escalada de modo que un píxel de
@@ -1034,7 +1037,8 @@ formato del diseño, un total de páginas de `MAX_PAGES` como máximo, un númer
 de página de 1 al total de páginas (o 1 con el total de páginas 0), y su texto
 libre empieza con una etiqueta que es válida para ese número de página y ese
 total (sección 3.2), la página es una página de un documento con etiqueta.
-Debe tratarse como tal aunque sus datos contengan una cabecera válida.
+Debe tratarse como tal aunque sus datos contengan una cabecera aceptable
+(sección 6.2).
 
 El motivo: el flujo de un documento autoidentificable, tal como lo devuelve un
 programa antiguo, se puede volver a imprimir como documento con etiqueta. Esas
@@ -1082,9 +1086,10 @@ de página. No se deben usar páginas de otro documento.
 - **Documento autoidentificable.** Un byte de la carga útil es un borrado
   cuando uno de sus bits está en un símbolo que el código de página no pudo
   corregir; cada byte de una página que no se proporcionó es un borrado. El
-  archivo son los primeros `size` bytes de la región de datos, y solo se
-  recupera si cada palabra de código que contiene uno de esos bytes se leyó o
-  se reparó (con paridad 0: no tiene ningún borrado). El archivo está
+  archivo son los primeros `size` bytes de la región de datos, y se
+  recupera cuando, y solo cuando, cada palabra de código que contiene uno de
+  esos bytes se leyó o se reparó (con paridad 0, en la que no se repara nada:
+  cuando ninguna de esas palabras de código tiene ningún borrado). El archivo está
   **verificado** cuando se ha recuperado y los primeros `FINGERPRINT_SIZE`
   bytes de su SHA-256 son iguales a la huella de la cabecera.
 - **Documento con etiqueta.** El archivo son los primeros `SIZE` bytes del
@@ -1146,9 +1151,10 @@ linear_light_of_200 = 149
 Al decodificador se le da el formato de página. Trabaja con la imagen derecha.
 
 1. **Niveles de gris.** El nivel de corte empieza en el valor de gris medio.
-   Hasta 32 veces: `black` es el corte menos la media cuadrática (RMS) de las
-   distancias al corte de los píxeles que están por debajo de él, y `white` el
-   corte más la de los píxeles que están por encima; el nuevo corte es
+   Hasta 32 veces: `black` es el corte menos la media cuadrática (RMS: la raíz
+   cuadrada de la media de los cuadrados) de las distancias al corte de los
+   píxeles que están por debajo de él, y `white` el corte más lo mismo para los
+   píxeles que están por encima de él; el nuevo corte es
    `sync_white_cut * white + (1 - sync_white_cut) * black`, redondeado; el
    proceso se detiene cuando el corte ya no cambia. Un segundo nivel, el corte
    de llenado, está a medio camino entre `black` y `white`.
@@ -1161,9 +1167,9 @@ Al decodificador se le da el formato de página. Trabaja con la imagen derecha.
 3. **Un hueco en el marco.** Si una impresora recortó un lado de la página, el
    borde tiene un hueco, el blanco alrededor de la página se cuela entre los
    puntos y el paso 2 encuentra solo un trozo de la página. Cuando el área
-   encontrada es menor que la mitad de lo que no es blanco alrededor de la
-   página, se toma en su lugar como blanco alrededor de la página lo que se puede alcanzar a
-   través de pasajes de al menos `2 * r + 1` píxeles de ancho, con
+   encontrada es menor que la mitad de lo que no es el blanco alrededor de la
+   página tal como lo encontró el paso 2, se toma en su lugar como blanco
+   alrededor de la página lo que se puede alcanzar a través de pasajes de al menos `2 * r + 1` píxeles de ancho, con
    `r = max(5, longest side // 250) // 2`; el blanco entre los puntos es más
    estrecho que eso. Este resultado solo se usa si da una página entera. Es una
    tolerancia de este decodificador, no una propiedad del formato: una página
@@ -1189,7 +1195,7 @@ de la que tiene encima, de modo que cada búsqueda parte de una cruz ya
 encontrada. Para cada cruz:
 
 1. una búsqueda gruesa sobre píxeles de escaneo enteros, hasta la mitad de
-   media cruz (`chalf`) en cada dirección, del lugar donde la imagen mejor se
+   `chalf` (la mitad de la mitad del lado de una cruz) en cada dirección, del lugar donde la imagen mejor se
    correlaciona con el patrón de la cruz (oscuro, claro, claro, oscuro);
 2. una búsqueda fina dentro de medio píxel de escaneo, en incrementos de un
    cuarto de píxel, sobre una cruz reducida en `cross_trim` píxeles de página
@@ -1255,12 +1261,13 @@ lector, no al formato.
 
 ### 7.6 El lector lento { #76-the-slower-reader }
 
-Cuando los pasos de 7.5 no identifican nada pero se encontró el contorno de
-una página, o aceptan una página solo por un rótulo sin etiqueta en un escaneo
-con menos de 2.5 píxeles de escaneo por píxel de datos mientras el 1% o más de
-los símbolos de la página son no corregibles, este proyecto prueba un segundo
-lector, más lento (`src/optar/decoder/soft.py`), pensado para un escaneo de
-resolución demasiado baja para su tamaño de punto. Para cada diseño y cada
+Este proyecto prueba un segundo lector, más lento (`src/optar/decoder/soft.py`),
+pensado para un escaneo de resolución demasiado baja para su tamaño de punto,
+en dos casos. Primero: los pasos de 7.5 no identifican nada, aunque se encontró
+el contorno de una página. Segundo: se cumplen a la vez estas tres condiciones:
+los pasos de 7.5 aceptan una página solo por un rótulo sin etiqueta; un píxel
+de datos de ese escaneo mide menos de 2.5 píxeles de escaneo de ancho; y el 1%
+o más de los símbolos de la página son no corregibles. Para cada diseño y cada
 rotación candidatos, en el orden de 7.5:
 
 1. amplía el escaneo de modo que un píxel de datos mida unos cuatro píxeles de
@@ -1272,8 +1279,8 @@ rotación candidatos, en el orden de 7.5:
    que lleva de esas muestras a los bits conocidos, un filtro para cada una de
    las 16 por 22 regiones de la página;
 4. aplica los filtros a cada píxel de datos, lo que da una confianza con signo
-   para cada bit, y elige para cada símbolo de Golay la palabra de código que
-   mejor se ajusta a sus 24 confianzas;
+   para cada bit, y elige, para cada símbolo de la página, el símbolo de Golay
+   (sección 2.5) que mejor se ajusta a sus 24 confianzas;
 5. toma como conocido el 60% de los símbolos con más confianza y repite desde el
    paso 3, cinco ajustes en total.
 
@@ -1292,7 +1299,8 @@ formato).
 ## 8. Historia { #8-history }
 
 La página de la parte 2 es el formato de Twibright Optar, un programa en C
-escrito por Karel Kulhavy en 2007 y mantenido desde 2012 en `colindean/optar`.
+escrito por Karel Kulhavy en 2007; más tarde se mantuvo, a partir de 2012, en
+`colindean/optar`.
 Su código fuente se conserva sin cambios en la carpeta `lega-c` de este
 proyecto, tal como estaba en el commit `9c8379c25466bf142459a26b0f34521bdde2af12` de ese
 repositorio. Los vectores de `tests/vectors/c` se registraron con ese programa;
