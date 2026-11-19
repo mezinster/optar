@@ -1,5 +1,5 @@
 ---
-source_hash: 90182c569913da957ad8b2b3c51203f66726cc36
+source_hash: 116c27601de6c43ed57c443b775aafdc63d50d6c
 ---
 
 # optar biçimi { #the-optar-format }
@@ -11,7 +11,7 @@ olarak saklar. Bu belirtim, bir sayfanın ve bir belgenin (tek bir dosyayı taş
 sayfalar kümesi) ne olduğunu tanımlar; böylece sayfalarını bu projenin okuduğu
 bir kodlayıcı ve bu projenin sayfalarını okuyan bir kod çözücü yazılabilir.
 
-Metin sekiz kısımdan oluşur:
+Belirtim sekiz kısımdan oluşur:
 
 1. Terimler ve kurallar
 2. Sayfa (sürüm 0)
@@ -87,12 +87,12 @@ oluşur.
 | Tür | Yazan | Akış | Etiketin taşıdığı |
 |---|---|---|---|
 | yalın | C programı, optar 0.1.0, `--no-tag` | dosya | yalnızca serbest metin |
-| künyeli | optar 0.2.0 ve sonrası (“uyumlu”) | dosya | künye (kısım 3) |
+| künyeli | optar 0.2.0 ve sonraki sürümler, “uyumlu” çıktı olarak | dosya | künye (kısım 3) |
 | kendini tanıtan | optar 0.3.0 ve sonrası | kapsayıcı (kısım 4) | yalnızca serbest metin |
 
 ### 1.5 Sabitler { #15-constants }
 
-Bu tablodaki adlar metin boyunca kullanılır.
+Bu tablodaki adlar bu belirtim boyunca kullanılır.
 
 <!-- spec-table: constants -->
 | Ad | Değer | Anlamı |
@@ -464,7 +464,8 @@ Vektörler: `tests/vectors/c/encoder_pages.json`.
 ### 2.8 Etiket { #28-the-label }
 
 Etiket alanı, insanlar için ve künyeli bir belgede okuyucu program için tek
-satırlık bir metin taşır. Sabit bir yazı tipiyle çizilir.
+satırlık bir metin taşır. Her zaman aynı yazı tipiyle çizilir; bu yazı tipini
+aşağıdaki yazı tipi şeridi tanımlar.
 
 **Yazı tipi şeridi**, `LABEL_HEIGHT` satır ve 1500 sütundan oluşan, her pikseli
 siyah ya da beyaz olan bir görüntüdür. `0` ile `TEXT_WIDTH * GLYPH_CELLS - 1`
@@ -720,10 +721,11 @@ rs_32_parity_of_one = 744034ae367e10c2a221219db0c5e10c3b37fde4942fb3b9188afd148e
 rs_32_parity_of_counting = 41841183b11fdb537421939696cda70e1db5c86684af222564b89cc6069f172e
 ```
 
-`rs_32_parity_of_one`, son baytı 1 olan ve geri kalanı sıfır olan 223 veri
-baytının, eşlik 32 için eşliğidir; bunlar `g(x)` polinomunun `x^31` teriminden
-`x^0` terimine kadar inen katsayılarıdır. `rs_32_parity_of_counting`, 0, 1, 2,
-..., 222 veri baytlarının eşliğidir.
+`rs_32_parity_of_one`, eşlik 32 için, son baytı 1 olan ve geri kalanı sıfır
+olan 223 veri baytının eşlik baytlarıdır; bunlar `g(x)` polinomunun `x^31`
+teriminden `x^0` terimine kadar inen katsayılarıdır.
+`rs_32_parity_of_counting`, eşlik 32 için, 0, 1, 2, ..., 222 veri baytlarının
+eşlik baytlarıdır.
 
 Vektörler: `tests/vectors/py/reed_solomon.json`.
 
@@ -836,22 +838,24 @@ Kaybolan bir sayfa, bir kod sözcüğüne en fazla `ceil(page_body / m) + 1` bay
 mal olur. Bu proje, `n * (ceil(page_body / m) + 1) <= PROMISE_NUM * parity // PROMISE_DEN`
 olduğunda kullanıcısına herhangi `n` sayfanın kaybolabileceğini söyler; bu,
 eşliğin dörtte birini kalan sayfalardaki hasar için bırakır. Bu, araçların
-verdiği bir sözdür; bir okuyucu programın güvenebileceği ya da denetlemesi
-gereken bir özellik değildir.
+verdiği bir sözdür: ne bir okuyucu programın güvenebileceği bir özelliktir ne
+de bir okuyucu programın denetlemesi gereken bir özellik.
 
 ### 4.10 Kapsayıcıdan sayfalara { #410-from-the-container-to-pages }
 
 Akış `T * net_bits // 8` bayttır. Bir bit dizisi olarak okunduğunda, `p`
 sayfasının (1'den başlayarak) yükü `(p - 1) * net_bits` numaralı bitte başlar;
-öteki tüm bitler 0'dır. `net_bits` 8'in katı olduğunda akış, yüklerin
+akışın hiçbir yükün içinde olmayan her biti 0'dır. `net_bits` 8'in katı olduğunda akış, yüklerin
 birleştirilmesinden ibarettir. Değilse her sayfada yükünden sonra
 `net_bits mod 8` kullanılmayan bit bulunur ve bazı sayfaların yükü akışın bir
 baytının başında başlamaz.
 
 Akış 2.7 bölümünde anlatıldığı gibi yazdırılır; bu, tam olarak `T` sayfa
 verir. Bir sayfanın etiketi, serbest metni insanlar için olan sıradan bir
-etiket satırıdır: serbest metin dosyanın adıdır (kullanıcının verdiği etiket
-ya da dosyanın adı), her sayfada aynıdır ve künye taşımaz. (Geçerli bir künye,
+etiket satırıdır: serbest metin, kullanıcının verdiği etikettir ya da, etiket
+verilmemişse, aracın seçtiği bir addır (pencere dosyanın adını, komut satırı
+ise `-o` ile verilen adı kullanır; bu ad boş olabilir); her sayfada aynıdır ve
+künye taşımaz. (Geçerli bir künye,
 okuyucu programın sayfayı künyeli bir belgenin sayfası sanmasına yol açardı,
 bölüm 6.1.)
 
@@ -914,10 +918,11 @@ biçimidir. On düzen vardır. Kâğıtlar `a4` ve `letter` olarak adlandırıl�
 
 “Sayfa baytı” ve “Gövde baytı”, 4.1 bölümündeki `page_bytes` ve `page_body`
 değerleridir. Bu proje yalın ya da künyeli bir belgeyi bir `standard` düzende
-(ya da kendisine elle bir biçim dizesi verildiğinde, her kenar boşluğunun en
-az `MIN_MARGIN_PT` olması koşuluyla, o sayfa biçiminde, standart nokta
-boyutunda ve kâğıdın `standard` düzeninin kaydırmalarıyla), kendini tanıtan
-bir belgeyi ise on düzenden herhangi birinde yazdırır.
+(ya da kendisine elle bir biçim dizesi verildiğinde, o sayfa biçiminde,
+standart nokta boyutunda ve kâğıdın `standard` düzeninin kaydırmalarıyla; böyle
+bir biçim dizesini, her kenar boşluğu o zaman en az `MIN_MARGIN_PT` olmadıkça
+reddeder), kendini tanıtan bir belgeyi ise on düzenden herhangi birinde
+yazdırır.
 
 Vektörler: `tests/vectors/c/bit_placement.json`, `tests/vectors/py/container.json`.
 
@@ -947,15 +952,15 @@ nokta boyutunda her kenarda en az `MIN_MARGIN_PT` bıraktığı en büyük
 tam bir yazıcı noktasına aşağı yuvarlanmış hâlidir. Düzenleri bu kural değil,
 tablolar tanımlar.
 
-Bir sayfanın kimliği, sayfanın kâğıt üzerinde nerede durduğuna bağlı değildir:
-okuyucu program sayfayı çerçevesinden bulur. Yerleşim yalnızca yazdırma için
+Bir sayfa, kâğıt üzerinde nerede durursa dursun aynı sayfadır: okuyucu program sayfayı çerçevesinden bulur. Yerleşim yalnızca yazdırma için
 önemlidir: başka bir ölçekte yazdırılan bir sayfanın noktaları başka
 boyuttadır, kenara daha yakın yazdırılan bir sayfa ise kırpılabilir.
 
 ### 5.3 Bu projenin yazdığı PDF { #53-the-pdf-this-project-writes }
 
 Belgenin her sayfası bir PDF sayfasıdır; bu PDF sayfasının medya kutusu
-kâğıttır: punto cinsinden `[0 0 width height]`. Sayfa görüntüsü, piksel başına
+kâğıttır: `[0 0 width height]`; buradaki genişlik ve yükseklik, kâğıdın punto
+cinsinden genişliği ve yüksekliğidir. Sayfa görüntüsü, piksel başına
 1 bitlik (1 beyazdır), `width` genişliğinde ve `height` yüksekliğinde sayfa
 pikselinden oluşan tek bir görüntüdür; ara değerleme olmadan, sol alt köşesi
 düzenin kaydırmalarında olacak şekilde çizilir ve bir sayfa pikseli bir veri
@@ -1028,8 +1033,8 @@ bakmalıdır. Etiket 2.8 bölümündeki biçimdeyse, düzenin biçim dizesini, e
 fazla `MAX_PAGES` olan bir sayfa sayısını, 1 ile sayfa sayısı arasında bir
 sayfa numarasını (ya da sayfa sayısı 0 ile birlikte 1) taşıyorsa ve serbest
 metni bu sayfa numarası ve sayısı için geçerli olan bir künyeyle başlıyorsa
-(bölüm 3.2), sayfa künyeli bir belgenin sayfasıdır. Sayfa, verisi geçerli bir
-başlık taşısa bile böyle ele alınmalıdır.
+(bölüm 3.2), sayfa künyeli bir belgenin sayfasıdır. Sayfa, verisi kabul edilebilir
+bir başlık (bölüm 6.2) taşısa bile böyle ele alınmalıdır.
 
 Nedeni: kendini tanıtan bir belgenin akışı, eski bir programın geri verdiği
 hâliyle, künyeli bir belge olarak yeniden yazdırılabilir. Bu sayfaların
@@ -1076,8 +1081,9 @@ sayfaları kullanılmamalıdır.
 - **Kendini tanıtan belge.** Bir yük baytı, bitlerinden biri sayfa kodunun
   düzeltemediği bir sembolde bulunuyorsa bir silintidir; verilmemiş bir
   sayfanın her baytı bir silintidir. Dosya, veri bölgesinin ilk `size`
-  baytıdır ve ancak bu baytlardan birini taşıyan her kod sözcüğü okunduysa ya
-  da onarıldıysa (eşlik 0 ile: hiç silintisi yoksa) kurtarılmıştır. Dosya
+  baytıdır ve ancak ve ancak bu baytlardan birini taşıyan her kod sözcüğü
+  okunduysa ya da onarıldıysa (hiçbir şeyin onarılmadığı eşlik 0 ile: bu tür
+  her kod sözcüğünün hiç silintisi yoksa) kurtarılmıştır. Dosya
   kurtarılmışsa ve SHA-256 değerinin ilk `FINGERPRINT_SIZE` baytı başlıktaki
   parmak izine eşitse **doğrulanmıştır**.
 - **Künyeli belge.** Dosya, akışın ilk `SIZE` baytıdır. Dosya `SIZE` bayt
@@ -1136,8 +1142,8 @@ Kod çözücüye sayfa biçimi verilir. Kod çözücü dik konumdaki görüntü 
 
 1. **Gri düzeyleri.** Eşik düzeyi ortalama gri değerden başlar. En fazla 32
    kez: `black`, eşik eksi eşiğin altındaki piksellerin eşiğe olan
-   uzaklıklarının karesel ortalamasıdır; `white`, eşik artı eşiğin üstündeki
-   piksellerin aynı değeridir; yeni eşik
+   uzaklıklarının karesel ortalamasıdır (karelerinin ortalamasının karekökü);
+   `white`, eşik artı eşiğin üstündeki pikseller için aynı değerdir; yeni eşik
    `sync_white_cut * white + (1 - sync_white_cut) * black` olur ve yuvarlanır;
    eşik artık değişmediğinde işlem durur. İkinci bir düzey olan doldurma
    eşiği, `black` ile `white` arasının tam ortasındadır.
@@ -1149,7 +1155,7 @@ Kod çözücüye sayfa biçimi verilir. Kod çözücü dik konumdaki görüntü 
 3. **Çerçevede bir boşluk.** Bir yazıcı sayfanın bir kenarını kırptıysa,
    çerçevede bir boşluk olur; sayfanın çevresindeki beyaz da noktaların
    arasına sızar ve 2. adım sayfanın yalnızca bir parçasını bulur. Bulunan alan,
-   sayfanın çevresindeki beyaz olmayan kısmın yarısından azsa, sayfanın çevresindeki beyaz
+   2. adımda sayfanın çevresindeki beyaz olarak bulunmayan kısmın yarısından azsa, sayfanın çevresindeki beyaz
    bunun yerine en az `2 * r + 1` piksel genişliğindeki geçitlerden
    ulaşılabilen kısım olarak alınır; burada
    `r = max(5, longest side // 250) // 2`; noktaların arasındaki beyaz bundan
@@ -1175,8 +1181,9 @@ bir satırın ilki ise üstündekinin bir aralık altında beklenir; böylece he
 arama daha önce bulunmuş bir artı işaretinden başlar. Her artı işareti için:
 
 1. görüntünün artı işareti deseniyle (koyu, açık, açık, koyu) en iyi
-   korelasyonu verdiği yeri bulmak için, her yönde bir artı işareti
-   yarısının yarısına kadar, tam tarama pikselleri üzerinde kaba bir arama;
+   korelasyonu verdiği yeri bulmak için, her yönde `chalf` değerinin yarısına
+   (bir artı işareti kenarının yarısının yarısına) kadar, tam tarama pikselleri
+   üzerinde kaba bir arama;
 2. her kenarından `cross_trim` sayfa pikseli küçültülmüş bir artı işareti
    üzerinde, yarım tarama pikseli içinde, çeyrek piksellik adımlarla ince bir
    arama;
@@ -1238,12 +1245,14 @@ Yanlış okunmuş bir künye, denetimden yaklaşık 256 denemede bir geçer; kü
 
 ### 7.6 Yavaş okuma yöntemi { #76-the-slower-reader }
 
-7.5'teki adımlar hiçbir şey tanımadığında ama bir sayfanın dış hatları
-bulunduğunda, ya da veri pikseli başına 2.5'ten az tarama pikseli düşen bir
-taramada, sayfanın sembollerinin %1'i veya daha fazlası düzeltilemezken bir
-sayfa yalnızca künyesiz bir etiketle kabul edildiğinde, bu proje ikinci, daha
-yavaş bir okuma yöntemi (`src/optar/decoder/soft.py`) dener; bu yöntem,
-nokta boyutuna göre çözünürlüğü çok düşük bir tarama için tasarlanmıştır.
+Bu proje, nokta boyutuna göre çözünürlüğü çok düşük bir tarama için
+tasarlanmış ikinci, daha yavaş bir okuma yöntemini
+(`src/optar/decoder/soft.py`) iki durumda dener. Birincisi: bir sayfanın dış
+hatları bulunmuş olsa da 7.5'teki adımlar hiçbir şey tanımaz. İkincisi: şu üç
+koşulun üçü birden sağlanır: 7.5'teki adımlar bir sayfayı yalnızca künyesiz
+bir etiketle kabul eder; o taramada bir veri pikselinin genişliği 2.5 tarama
+pikselinden azdır; ve sayfanın sembollerinin %1'i veya daha fazlası
+düzeltilemez.
 Yöntem, 7.5'teki sırayla, her aday düzen ve döndürme için:
 
 1. taramayı bir veri pikseli yaklaşık dört tarama pikseli genişliğinde olacak
@@ -1255,8 +1264,8 @@ Yöntem, 7.5'teki sırayla, her aday düzen ve döndürme için:
    giden bir filtreyi en küçük kareler yöntemiyle uydurur; sayfanın 16'ya
    22'lik bölgelerinin her biri için bir filtre;
 4. filtreleri her veri pikseline uygular; bu, her bit için işaretli bir güven
-   değeri verir; her Golay sembolü için 24 güven değerine en iyi uyan kod
-   sözcüğünü seçer;
+   değeri verir; sayfanın her sembolü için, 24 güven değerine en iyi uyan
+   Golay sembolünü (bölüm 2.5) seçer;
 5. sembollerin güveni daha yüksek olan %60'ını bilinen olarak alır ve 3.
    adımdan itibaren yineler; toplam beş uydurma.
 
@@ -1275,9 +1284,9 @@ sabitler).
 
 ## 8. Tarihçe { #8-history }
 
-Kısım 2'deki sayfa, Karel Kulhavy'nin 2007'de yazdığı ve 2012'den itibaren
-`colindean/optar` adresinde bakımı yapılmış C programı Twibright Optar'ın
-biçimidir. Programın kaynak kodu, bu projenin `lega-c` klasöründe, o deponun
+Kısım 2'deki sayfa, Karel Kulhavy'nin 2007'de yazdığı C programı Twibright
+Optar'ın biçimidir; programın bakımı daha sonra, 2012'den başlayarak,
+`colindean/optar` adresinde yapıldı. Programın kaynak kodu, bu projenin `lega-c` klasöründe, o deponun
 `9c8379c25466bf142459a26b0f34521bdde2af12` işlemesindeki hâliyle,
 değiştirilmeden saklanır. `tests/vectors/c` içindeki vektörler o programdan,
 `tests/vectors/py` içindekiler ise bu projeden kaydedilmiştir.
