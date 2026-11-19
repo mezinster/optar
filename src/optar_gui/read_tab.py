@@ -63,14 +63,25 @@ own reading.
 from __future__ import annotations
 
 import dataclasses
+import html
 import os
 import threading
 import time
 from collections.abc import Callable, Iterable, Iterator
 from functools import partial
 
-from PySide6.QtCore import QAbstractListModel, QModelIndex, QObject, QRect, Qt, QTimer, Signal
+from PySide6.QtCore import (
+    QAbstractListModel,
+    QModelIndex,
+    QObject,
+    QRect,
+    QSize,
+    Qt,
+    QTimer,
+    Signal,
+)
 from PySide6.QtGui import QFont, QFontMetrics, QPainter, QPalette
+from PySide6.QtGui import Qt as GuiQt  # Qt.mightBeRichText lives in this one
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -697,8 +708,19 @@ class ReadController(QObject):
 # A row of the list: (kind, key, text, bar). ``bar`` is (fraction, name, step) for
 # a scan being read, else None.
 _Line = tuple[str, object, str, "tuple[float, str, str] | None"]
+# The list's share of the tab's width at first, in percent; the user may move the splitter.
+LIST_SHARE = 38
 # The model's role for a being-read row's (name, step), which the delegate draws.
 _PARTS_ROLE = Qt.ItemDataRole.UserRole + 2
+
+
+def _plain_tooltip(label: str) -> str:
+    """The row's full text as a tooltip that Qt shows as plain text: Qt shows a
+    tooltip as rich text when it looks like it (``<b>x</b>.png``), and file names and
+    label text are untrusted, so such a text is escaped and marked as rich text."""
+    if GuiQt.mightBeRichText(label):
+        return "<qt>" + html.escape(label, quote=False).replace("\n", "<br>") + "</qt>"
+    return label
 
 
 class _RowModel(QAbstractListModel):
@@ -729,6 +751,8 @@ class _RowModel(QAbstractListModel):
         kind, _key, label, bar = self._rows[index.row()]
         if role == Qt.ItemDataRole.DisplayRole:
             return label
+        if role == Qt.ItemDataRole.ToolTipRole:
+            return _plain_tooltip(label)
         if role == Qt.ItemDataRole.FontRole and kind in ("title", "section"):
             return self._bold
         if role == FRACTION_ROLE and bar is not None:
@@ -789,6 +813,7 @@ class _RowDelegate(QStyledItemDelegate):
     # this share of the row; a longer name is elided in the middle.
     NAME_SHARE = 0.45
     GAP = 8
+    LINE_GAP = 2  # between the two lines of a scan being read
     # Room added to a name's measured width, so that text measured to fit is not
     # elided for a fraction of a pixel.
     _SLACK = 2
@@ -807,6 +832,33 @@ class _RowDelegate(QStyledItemDelegate):
             self._widest = (key, widest + self._SLACK)
         return self._widest[1]
 
+    def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex) -> QSize:  # noqa: N802
+        """The width is the list's own (a long row is elided, never scrolled); a scan
+        being read is two lines high: its name and bar, then its step."""
+        size = super().sizeHint(option, index)
+        size.setWidth(0)
+        if index.data(FRACTION_ROLE) is not None:
+            size.setHeight(2 * QFontMetrics(option.font).height() + self.LINE_GAP + 2)
+        return size
+
+    def layout(self, area: QRect, metrics, name: str, column: int) -> tuple[QRect, QRect, QRect]:
+        """The rectangles of the name, the bar and the step of a scan being read in
+        ``area``: the name and the bar share the first line, the step has the whole
+        width of the second."""
+        line = metrics.height()
+        top = area.top() + max(0, (area.height() - 2 * line - self.LINE_GAP) // 2)
+        width = area.width()
+        column = max(column, metrics.horizontalAdvance(name) + self._SLACK)
+        name_width = max(0, min(column, int(width * self.NAME_SHARE)))
+        bar_width = max(0, min(self.BAR_WIDTH, int(width * self.BAR_SHARE)))
+        name_rect = QRect(area.left(), top, name_width, line)
+        bar_height = max(4, line - 4)
+        bar_rect = QRect(
+            name_rect.right() + 1 + self.GAP, top + (line - bar_height) // 2, bar_width, bar_height
+        )
+        step_rect = QRect(area.left(), top + line + self.LINE_GAP, width, line)
+        return name_rect, bar_rect, step_rect
+
     def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex) -> None:
         fraction = index.data(FRACTION_ROLE)
         parts = index.data(_PARTS_ROLE)
@@ -823,11 +875,9 @@ class _RowDelegate(QStyledItemDelegate):
         area = style.subElementRect(QStyle.SubElement.SE_ItemViewItemText, opt, widget)
         area = area.adjusted(2, 0, -2, 0)
         metrics = QFontMetrics(opt.font)
-        width = area.width()
-        column = max(self._name_column(index, metrics, opt.font),
-                     metrics.horizontalAdvance(name) + self._SLACK)  # fmt: skip
-        name_width = max(0, min(column, int(width * self.NAME_SHARE)))
-        bar_width = max(0, min(self.BAR_WIDTH, int(width * self.BAR_SHARE)))
+        name_rect, bar_rect, step_rect = self.layout(
+            area, metrics, name, self._name_column(index, metrics, opt.font)
+        )
         selected = bool(opt.state & QStyle.StateFlag.State_Selected)
         role = QPalette.ColorRole.HighlightedText if selected else QPalette.ColorRole.Text
         group = (
@@ -840,12 +890,11 @@ class _RowDelegate(QStyledItemDelegate):
             painter.setFont(opt.font)
             painter.setPen(opt.palette.color(group, role))
             align = Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft
-            name_rect = QRect(area.left(), area.top(), name_width, area.height())
             painter.drawText(
-                name_rect, align, metrics.elidedText(name, Qt.TextElideMode.ElideMiddle, name_width)
+                name_rect,
+                align,
+                metrics.elidedText(name, Qt.TextElideMode.ElideMiddle, name_rect.width()),
             )
-            left = name_rect.right() + 1 + self.GAP
-            height = max(4, min(area.height() - 6, metrics.height()))
             bar = QStyleOptionProgressBar()
             if widget is not None:
                 bar.initFrom(widget)
@@ -853,13 +902,11 @@ class _RowDelegate(QStyledItemDelegate):
             bar.state = enabled | QStyle.StateFlag.State_Horizontal
             bar.palette = opt.palette
             bar.direction = opt.direction
-            bar.rect = QRect(left, area.top() + (area.height() - height) // 2, bar_width, height)
+            bar.rect = bar_rect
             bar.minimum, bar.maximum = 0, 1000
             bar.progress = round(min(max(float(fraction), 0.0), 1.0) * 1000)
             bar.textVisible = False
             style.drawControl(QStyle.ControlElement.CE_ProgressBar, bar, painter, widget)
-            left += bar_width + self.GAP
-            step_rect = QRect(left, area.top(), max(0, area.right() + 1 - left), area.height())
             painter.drawText(
                 step_rect,
                 align,
@@ -890,7 +937,10 @@ class ReadTab(QWidget):
         self.page_list = QListView(objectName="pageList")
         self.page_list.setModel(self._model)
         self.page_list.setItemDelegate(_RowDelegate(self.page_list))
-        self.page_list.setUniformItemSizes(True)
+        self.page_list.setUniformItemSizes(False)  # a scan being read is two lines high
+        self.page_list.setTextElideMode(Qt.TextElideMode.ElideMiddle)
+        self.page_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.page_list.setMouseTracking(True)
         self.page_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.page_list.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.page_list.selectionModel().selectionChanged.connect(self._on_selection)
@@ -946,7 +996,11 @@ class ReadTab(QWidget):
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(left)
         splitter.addWidget(right)
-        splitter.setStretchFactor(1, 1)
+        splitter.setChildrenCollapsible(False)
+        splitter.setStretchFactor(0, LIST_SHARE)
+        splitter.setStretchFactor(1, 100 - LIST_SHARE)
+        self.splitter = splitter
+        self._shared = False  # whether the list has been given its share yet
         bar = QHBoxLayout()
         bar.addWidget(self.summary, 1)
         bar.addWidget(self.save_button)
@@ -960,6 +1014,17 @@ class ReadTab(QWidget):
         self.controller.save_failed.connect(self._on_save_failed)
         self.controller.replace_rejected.connect(self._on_replace_rejected)
         self.retranslate()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        """The first time the tab has a size the list gets its share of the width (a
+        splitter otherwise starts from its panes' size hints, which favour the
+        preview, and grows both by their stretch); after that the splitter is the user's."""
+        super().resizeEvent(event)
+        width = self.splitter.width()
+        if not self._shared and self.isVisible() and width > 1:
+            self._shared = True
+            first = width * LIST_SHARE // 100
+            self.splitter.setSizes([first, width - first])
 
     def retranslate(self) -> None:
         """Sets all of the tab's wording in the current language: its buttons, then,

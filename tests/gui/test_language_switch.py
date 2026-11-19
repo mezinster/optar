@@ -31,30 +31,11 @@ from optar_gui.document import DocState, PageOutcome, Progress, Row, ScanInfo
 from optar_gui.main_window import MainWindow
 from optar_gui.read_tab import ReadController, ReadTab
 from optar_gui.work import ScanWork, prepare_file, process_scan
+from tests.gui.conftest import MARK
 
 TIMEOUT = 60_000  # ms
-MARK = "¤"
-STUB = "it"  # a code the program knows; the real catalogue is replaced by the stub
-STUB_NAME = "Stub"
 A_FMT = PageFormat.for_paper(PAPERS["a4"]).to_string()
 SIZE = (100, 141)
-
-
-def _marked(node):
-    if isinstance(node, dict):
-        return {key: _marked(value) for key, value in node.items()}
-    return MARK + node if isinstance(node, str) else node
-
-
-@pytest.fixture
-def stub(catalogues):
-    """The marked stand-in language, under the code ``STUB``."""
-    english = catalogues._real("en")
-    data = {k: _marked(v) for k, v in english.items() if k not in ("language", "format")}
-    data["language"] = {"name": STUB_NAME}
-    data["format"] = english["format"]
-    catalogues.add(STUB, data)
-    return STUB
 
 
 @pytest.fixture

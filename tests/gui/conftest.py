@@ -125,3 +125,26 @@ def private_settings(tmp_path, monkeypatch):
     monkeypatch.setattr(QLocale, "system", staticmethod(lambda: QLocale("en_US")))
     yield
     i18n.set_language("en")
+
+
+MARK = "¤"
+STUB = "it"  # a code the program knows; the real catalogue is replaced by the stub
+STUB_NAME = "Stub"
+
+
+def _marked(node):
+    if isinstance(node, dict):
+        return {key: _marked(value) for key, value in node.items()}
+    return MARK + node if isinstance(node, str) else node
+
+
+@pytest.fixture
+def stub(catalogues):
+    """The marked stand-in language, under the code ``STUB``: English with ``MARK``
+    before every string."""
+    english = catalogues._real("en")
+    data = {k: _marked(v) for k, v in english.items() if k not in ("language", "format")}
+    data["language"] = {"name": STUB_NAME}
+    data["format"] = english["format"]
+    catalogues.add(STUB, data)
+    return STUB
