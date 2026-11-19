@@ -143,7 +143,8 @@ are eleven pages. Rules:
   below).
 - **Admonitions** (`!!! note "..."`): keep the type word (`note`, `warning`),
   translate the title and body.
-- Names, numbers, versions, option names and file names are not translated.
+- Names, versions, option names and file names are not translated. A number
+  keeps its value; only its separators follow the language, as said above.
 - Keep the English page's order and paragraph breaks, so a reviewer can read
   the two side by side.
 
