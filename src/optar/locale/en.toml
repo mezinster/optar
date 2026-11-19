@@ -1,0 +1,25 @@
+[language]
+name = "English"
+
+[format]
+group = ","
+
+[count.page]
+one = "{n} page"
+other = "{n} pages"
+
+[count.byte]
+one = "{n} byte"
+other = "{n} bytes"
+
+[count.block]
+one = "{n} block"
+other = "{n} blocks"
+
+[count.dot]
+one = "{n} dot"
+other = "{n} dots"
+
+[count.scan]
+one = "{n} scan"
+other = "{n} scans"
