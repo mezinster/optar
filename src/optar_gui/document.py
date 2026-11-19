@@ -298,6 +298,12 @@ OUT_OF_RANGE = "page number out of range"
 COUNT_OUT_OF_RANGE = "page count out of range"
 SIZE_MISMATCH = "page size does not match this document"
 FORMAT_MISMATCH = "decoded for another page format"
+# The reason given when a page assigned by hand decodes badly in every rotation.
+NOT_DECODABLE = "could not be decoded in any orientation"
+# The reasons of optar.identify (NO_PAGE, LABEL_UNREADABLE), repeated here because
+# importing optar at run time loads numpy; text.py words all these codes.
+NO_PAGE = "no page found"
+LABEL_UNREADABLE = "label unreadable"
 # The encoder's page limit (optar.encoder.MAX_PAGES), repeated here because
 # importing optar at run time loads numpy.
 MAX_TOTAL_PAGES = 9999

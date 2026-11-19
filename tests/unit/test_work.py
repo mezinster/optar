@@ -33,9 +33,8 @@ from optar.layout import channel_xy
 from optar.pdf import write_pdf
 from optar.tag import make_tag, tagged_label
 from optar_gui import text
-from optar_gui.document import PageOutcome, ScanInfo
+from optar_gui.document import NOT_DECODABLE, PageOutcome, ScanInfo
 from optar_gui.work import (
-    NOT_DECODABLE,
     Cancelled,
     ScanWork,
     encode_to_pdf,

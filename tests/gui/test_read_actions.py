@@ -23,6 +23,7 @@ from optar_gui import text
 from optar_gui.dialogs import AssignPageDialog, StartByHandDialog
 from optar_gui.document import (
     MAX_TOTAL_PAGES,
+    NOT_DECODABLE,
     DocState,
     Health,
     PageOutcome,
@@ -32,7 +33,6 @@ from optar_gui.document import (
 )
 from optar_gui.read_tab import ReadController, ReadTab
 from optar_gui.work import (
-    NOT_DECODABLE,
     STEP_FIND,
     Cancelled,
     Progress,

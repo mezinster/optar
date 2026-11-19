@@ -69,10 +69,9 @@ from optar.layout import channel_xy
 from optar.pdf import write_pdf
 from optar.tag import FINGERPRINT_DIGITS, Tag, make_tag, tagged_label
 from optar_gui import text
-from optar_gui.document import PageOutcome, Progress, ScanInfo
+from optar_gui.document import NOT_DECODABLE, PageOutcome, Progress, ScanInfo
 
 __all__ = [
-    "NOT_DECODABLE",
     "LARGE_SCAN_PIXELS",
     "Cancelled",
     "FileFacts",
@@ -102,10 +101,6 @@ __all__ = [
     "same_file",
     "too_coarse",
 ]
-
-# The reason given when a page assigned by hand decodes badly in every rotation.
-NOT_DECODABLE = "could not be decoded in any orientation"
-
 
 # Scans with more pixels than this are identified and decoded one at a time.
 # Measured peaks: 513 MB for one 600 dpi A4 scan (about 35 megapixels) and

@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 import optar_gui.document as document_module
+import optar_gui.read_tab as read_tab_module
 from optar import PAPERS, PageFormat, i18n
 from optar.errors import OptarError, error
 from optar.identify import LABEL_UNREADABLE, STEP_FIND
@@ -212,16 +213,17 @@ def read_tab_texts(tab):
 
 
 def test_rows_details_and_summary_follow_the_language(qtbot, stub, make_window, tmp_path):
-    fifo = tmp_path / "pipe.png"
-    os.mkfifo(fifo)
+    folder = tmp_path / "folder.png"
+    folder.mkdir()  # not a regular file, on every system
     fakes = Fakes({
         "p1.png": identified(2, 1, None, b"a" * 4),
         "coarse.png": coarse(),
-        "pipe.png": process_scan,  # the real reading: not a regular file
+        "pipe.png": lambda path: process_scan(str(folder)),  # the real reading
     })  # fmt: skip
     window = make_window(fakes.process)
     tab = window.read_tab
-    tab.controller.add_paths([str(tmp_path / "p1.png"), str(tmp_path / "coarse.png"), str(fifo)])
+    names = ("p1.png", "coarse.png", "pipe.png")
+    tab.controller.add_paths([str(tmp_path / name) for name in names])
     idle(qtbot, tab.controller)
     assert tab.controller.summary.state == DocState.INCOMPLETE  # page 2 is missing
     for key in ((Row.UNREADABLE, 2), (Row.UNREADABLE, 3), (Row.PAGE, 1)):
@@ -278,6 +280,45 @@ def test_saved_note_and_check_failure_follow_the_language(
     choose(other, stub)
     assert other.read_tab.summary.text() == text.check_failed("RuntimeError: boom")
     assert other.read_tab.summary.text().startswith(MARK)
+
+
+def test_switch_while_a_file_is_being_saved(
+    qtbot, stub, make_window, tmp_path, monkeypatch
+):
+    fakes = Fakes({"p1.png": identified(1, 1, None, b"a" * 4)})
+    window = make_window(fakes.process)
+    tab = window.read_tab
+    tab.controller.add_paths([str(tmp_path / "p1.png")])
+    idle(qtbot, tab.controller)
+    writes = []
+    write_chunks = read_tab_module._write_chunks
+
+    def counted(*args):
+        writes.append(args[0])
+        return write_chunks(*args)
+
+    monkeypatch.setattr(read_tab_module, "_write_chunks", counted)
+    gate, started = threading.Event(), threading.Event()
+
+    def held():
+        started.set()
+        gate.wait(TIMEOUT / 1000)
+        yield b"a" * 4
+
+    finished = []
+    tab.controller.save_finished.connect(lambda path, size: finished.append((path, size)))
+    target = str(tmp_path / "doc.bin")
+    tab.controller.save(target, held())
+    qtbot.waitUntil(started.is_set, timeout=TIMEOUT)
+    choose(window, stub)
+    assert tab.controller.saving
+    gate.set()
+    qtbot.waitUntil(lambda: not tab.controller.saving, timeout=TIMEOUT)
+    assert writes == [target] and finished == [(target, 4)]
+    note = text.saved_message(target, 4)
+    assert note.startswith(MARK) and tab.summary.text().endswith(" — " + note)
+    with open(target, "rb") as f:
+        assert f.read() == b"a" * 4
 
 
 def test_switch_while_a_scan_is_being_read(qtbot, stub, make_window, tmp_path):
@@ -375,10 +416,32 @@ def test_a_kept_library_error_words_itself_in_the_language(stub):
 
 
 def test_a_scan_that_is_not_a_regular_file_words_its_reason_when_shown(stub, tmp_path):
-    fifo = tmp_path / "pipe.png"
-    os.mkfifo(fifo)
-    work = process_scan(str(fifo))
+    folder = tmp_path / "folder.png"
+    folder.mkdir()  # not a regular file, on every system
+    work = process_scan(str(folder))
     english = text.unreadable_reason(work.reason)
-    assert english == text.not_regular_file(str(fifo))
+    assert english == text.not_regular_file(str(folder))
     i18n.set_language(stub)
     assert text.unreadable_reason(work.reason) == MARK + english
+
+
+def test_the_reason_codes_are_the_library_constants_and_each_is_worded():
+    import optar.identify
+
+    assert document_module.NO_PAGE == optar.identify.NO_PAGE
+    assert document_module.LABEL_UNREADABLE == optar.identify.LABEL_UNREADABLE
+    for code in (
+        document_module.NO_PAGE,
+        document_module.LABEL_UNREADABLE,
+        document_module.NOT_DECODABLE,
+        document_module.SIZE_MISMATCH,
+    ):
+        assert text._reason_key(code) is not None
+
+
+def test_kept_words_are_not_hashed_and_a_kept_error_names_itself():
+    words = text.Words(text.not_regular_file, "x")
+    with pytest.raises(TypeError):
+        hash(words)
+    kept = text._KeptError(error(OptarError, "err.no_pages", "no pages to write"))
+    assert repr(kept) == "_KeptError('OptarError', 'err.no_pages', 'no pages to write')"

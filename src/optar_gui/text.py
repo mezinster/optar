@@ -23,6 +23,9 @@ from typing import TYPE_CHECKING
 from optar_gui.document import (
     COUNT_OUT_OF_RANGE,
     FORMAT_MISMATCH,
+    LABEL_UNREADABLE,
+    NO_PAGE,
+    NOT_DECODABLE,
     OUT_OF_RANGE,
     SCAN_EXTENSIONS,
     SIZE_MISMATCH,
@@ -139,6 +142,11 @@ class _KeptError:
 
     __hash__ = None  # type: ignore[assignment]
 
+    def __repr__(self) -> str:
+        """Its kind, key and English text (or ``Words``): for the log."""
+        what = self.words if self.words is not None else self.english
+        return f"{type(self).__name__}{(self.kind, self.key, what)!r}"
+
 
 def _error_message(kept: _KeptError) -> str:
     return error_text(kept)
@@ -165,10 +173,11 @@ class Words:
     finished sentences, wherever it shows something again later, so that a change
     of language re-words it; a Qt signal that carries one must be ``Signal(object)``.
 
-    Two are equal when they say the same thing. Read as a string (equal to one,
-    ``in``, ``startswith`` and the other methods of ``str``), it is the string it
-    says now; that is for tests and for code that only reads what is shown: the
-    program never compares one with a worded sentence to decide anything.
+    Two are equal when they say the same thing. It cannot be hashed: what it says
+    changes with the language, so it is no key of a dict or a set. Read as a string
+    (equal to one, ``in``, ``startswith`` and the other methods of ``str``), it is
+    the string it says now; that is for tests and for code that only reads what is
+    shown: the program never compares one with a worded sentence to decide anything.
     """
 
     __slots__ = ("fn", "args")
@@ -206,8 +215,7 @@ class Words:
             return str(self) == other
         return NotImplemented
 
-    def __hash__(self) -> int:
-        return hash(str(self))  # equal to the string it says
+    __hash__ = None  # type: ignore[assignment]
 
     def __contains__(self, part: str) -> bool:
         return part in str(self)
@@ -454,9 +462,6 @@ def _reason_key(reason: str | Words) -> str | None:
     a code (the library's English constants, never shown as they are)."""
     if not isinstance(reason, str):
         return None  # a reason that words itself
-    from optar.identify import LABEL_UNREADABLE, NO_PAGE
-    from optar_gui.work import NOT_DECODABLE
-
     return {
         NO_PAGE: "no_page",
         LABEL_UNREADABLE: "label_unreadable",
