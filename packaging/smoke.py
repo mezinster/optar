@@ -8,7 +8,6 @@ the catalogue files as data).
 """
 
 import hashlib
-import locale
 import os
 import re
 import subprocess
@@ -69,33 +68,45 @@ def run_ok(exe, *args, env=None):
     return result
 
 
-def output_encoding():
-    """The encoding the executable's output pipe will have.
+# The catalogue tables the command line prints (optar.cli.TERMINAL_TABLES; a test
+# keeps the two equal, as it keeps ORDER equal to optar.i18n.ORDER).
+TERMINAL_TABLES = ("cli", "err", "count", "alternatives", "format", "gui.cli", "language")
+# The encodings the executable's output pipe may plausibly have: UTF-8, and the
+# ANSI code page of a Western Windows machine. The pipe's real encoding is not
+# guessed; a language that fits all of these must be shown whatever it is.
+PLAUSIBLE_ENCODINGS = ("utf-8", "cp1252")
+# Tried first: their terminal words fit every plausible encoding.
+FIRST = ("it", "es")
 
-    A frozen build does not reliably honour PYTHONIOENCODING or PYTHONUTF8, so none is
-    forced: PYTHONIOENCODING counts only when the caller set it (an unfrozen test of
-    this script), otherwise a pipe has the preferred (ANSI) encoding of the machine.
-    """
-    named = os.environ.get("PYTHONIOENCODING", "").split(":")[0]
-    return named or locale.getpreferredencoding(False)
 
-
-def encodable(code, encoding):
-    """What ``optar.i18n.encodable`` says, read from the catalogue file (optar is not imported)."""
+def terminal_strings(code):
+    """The strings of the catalogue's terminal tables, read from the source file
+    (optar is not imported). A missing or unreadable catalogue fails the check."""
     path = LOCALE / f"{code}.toml"
     try:
         catalogue = tomllib.loads(path.read_text(encoding="utf-8"))
-        strings = []
-        stack = [catalogue]
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+        fail(f"cannot read the catalogue {path}: {exc}")
+    strings = []
+    for table in TERMINAL_TABLES:
+        item = catalogue
+        for part in table.split("."):
+            item = item.get(part, {}) if isinstance(item, dict) else {}
+        stack = [item]
         while stack:
             item = stack.pop()
             if isinstance(item, dict):
                 stack.extend(item.values())
             elif isinstance(item, str):
                 strings.append(item)
+    return strings
+
+
+def fits(strings, encoding):
+    try:
         for string in strings:
             string.encode(encoding)
-    except (UnicodeEncodeError, LookupError, OSError):
+    except UnicodeEncodeError:
         return False
     return True
 
@@ -107,32 +118,41 @@ def help_in(exe, code):
     return result.stdout.decode(errors="replace") + result.stderr.decode(errors="replace")
 
 
+def is_georgian(text):
+    return any("\u10a0" <= ch <= "\u10ff" for ch in text)
+
+
 def check_catalogues(exe):
     """The build carries the catalogues.
 
     The command line answers in English when its output encoding cannot hold the
-    language, so a language is required to differ from English only when the output
-    encoding can encode it. The first such language proves the catalogues are in the
-    build; Georgian is checked as well when it can be encoded, else noted.
+    language, and the pipe's encoding is not guessed: the languages are tried, those
+    that fit every plausible encoding first, and the first whose --help differs from
+    the English help proves the catalogues are in the build. The check fails when
+    none differs although one fits every plausible encoding. Georgian is an
+    informative line: shown in Georgian, or not (an encoding that cannot hold it).
     """
-    encoding = output_encoding()
+    terminal_strings("en")  # every source catalogue must be readable
     english = help_in(exe, "en")
-    for code in ORDER:
-        if code != "en" and encodable(code, encoding):
-            if help_in(exe, code) == english:
-                fail(f"--help with OPTAR_LANG={code} is the English help: "
-                     "the catalogues are not in the build")
+    order = [*FIRST, *(code for code in ORDER if code not in ("en", *FIRST))]
+    sure = [code for code in order
+            if all(fits(terminal_strings(code), e) for e in PLAUSIBLE_ENCODINGS)]  # fmt: skip
+    for code in order:
+        if help_in(exe, code) != english:
             print(f"ok: --help in {code} differs from English")
             break
     else:
-        print(f"note: no language fits the output encoding {encoding}; catalogues not checked")
-    if encodable("ka", encoding):
-        georgian = help_in(exe, "ka")
-        if georgian == english or not any("\u10a0" <= ch <= "\u10ff" for ch in georgian):
-            fail("--help with OPTAR_LANG=ka is not Georgian")
-        print("ok: --help in Georgian differs from English")
+        if sure:
+            fail(f"--help is the English help in every language, though {', '.join(sure)} "
+                 f"fit{'s' if len(sure) == 1 else ''} every plausible output encoding "
+                 f"({', '.join(PLAUSIBLE_ENCODINGS)}): the catalogues are not in the build")
+        print("note: no language fits every plausible output encoding; catalogues not checked")
+    georgian = help_in(exe, "ka")
+    if is_georgian(georgian) and not is_georgian(english):
+        print("ok: --help in Georgian shows Georgian letters")
     else:
-        print(f"note: output encoding {encoding} cannot hold Georgian; not required here")
+        print("note: --help with OPTAR_LANG=ka is not in Georgian here "
+              "(the output encoding cannot hold it); not required")
 
 
 def main(argv):
