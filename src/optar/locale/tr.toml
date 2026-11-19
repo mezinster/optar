@@ -96,7 +96,7 @@ other = "optar: dosya onarılamadı ve kaydedilmedi: {count} sayfadan yalnızca 
 # {fraction}: a number (2: "one page in 2").
 [cli.too_few.rescan]
 single = "{list}. sayfayı tarayın ve kod çözmeyi yineleyin; --force, her {fraction} sayfadan en az biri okunmadıkça hiçbir şey kaydetmez."
-several = "Eksik sayfaları ({list}) tarayın ve kod çözmeyi yineleyin; --force, her {fraction} sayfadan en az biri okunmadıkça hiçbir şey kaydetmez."
+several = "Sayfaları ({list}) tarayın ve kod çözmeyi yineleyin; --force, her {fraction} sayfadan en az biri okunmadıkça hiçbir şey kaydetmez."
 
 [cli.verified]
 other = "optar: dosya doğrulandı ({count} bayt)"
@@ -116,7 +116,7 @@ single = "{list}. sayfayı yeniden tarayın ve kod çözmeyi yineleyin; {force}"
 several = "Sayfaları ({list}) yeniden tarayın ve kod çözmeyi yineleyin; {force}"
 
 [cli.list_more]
-other = "({count} tane daha)"
+other = "({count} sayfa daha)"
 
 [cli.stat_symbols]
 other = "{count} sembol"
@@ -147,8 +147,8 @@ output = "çıktı dosyalarının temel adı (varsayılan: optar_out)"
 to = "çıktı türü: tek bir PDF (varsayılan) ya da PNG veya PGM sayfa dosyaları"
 label = "her sayfaya yazdırılan metin (varsayılan: -o ile verilen dosya adı)"
 no_tag = "sayfa etiketlerine boyut, parmak izi ve denetim değeri içeren künyeyi ekleme"
-dots = "nokta boyutu (varsayılan: standard). Boyut standard dışında olursa kendini tanıtan sayfalar üretilir; --protect başka bir düzey belirtmedikçe bunlar standard düzeyde korunur"
-protect = "tüm belgeye yayılan onarım verisi; kendini tanıtan sayfalar üretir, --dots başka bir boyut belirtmedikçe standard noktalarla. Korumasız kendini tanıtan sayfalar için 'none' kullanın. --dots ve --protect olmadan sayfalar uyumlu ve korumasız olur"
+dots = "nokta boyutu (varsayılan: standard). Boyut 'standard' dışında olursa kendini tanıtan sayfalar üretilir; --protect başka bir düzey belirtmedikçe bunlar 'standard' düzeyde korunur"
+protect = "tüm belgeye yayılan onarım verisi; kendini tanıtan sayfalar üretir, --dots başka bir boyut belirtmedikçe 'standard' noktalarla. Korumasız kendini tanıtan sayfalar için 'none' kullanın. --dots ve --protect olmadan sayfalar uyumlu ve korumasız olur"
 compatible = "optar 0.2 ile C aracının okuyabildiği sayfalar (--dots ve --protect verilmezse varsayılan)"
 decode = "taranmış sayfaların kodunu çözüp dosyaya geri dönüştür"
 base = "taramalar: BASE_0001.png, BASE_0002.png, ..."
@@ -182,11 +182,11 @@ label_unreadable = "etiket okunamıyor"
 scan_not_grey = "tarama 2 boyutlu, uint8 türünde gri tonlamalı bir görüntü olmalı; gelen: şekil {shape}, dtype {dtype}"
 scan_empty = "tarama boş"
 scan_too_small = "{width} x {height} piksellik tarama, sayfa biçiminin {page_width} x {page_height} boyutundan küçük"
-corners_coincide = "sayfa köşeleri bozuk (üst üste çakışıyor)"
+corners_coincide = "sayfa köşeleri bozuk (çakışıyor)"
 page_too_small = "taramada bulunan sayfa, artı işaretlerini bulmaya yetmeyecek kadar küçük"
-too_few_dots = "sayfada, öğrenmeye yetecek kadar bilinen nokta yok"
+too_few_dots = "sayfada öğrenmeye yetecek kadar bilinen nokta yok"
 page_size = "{width} x {height} piksellik sayfa, {paper} kâğıttaki {dots} nokta düzeninin {page_width} x {page_height} piksellik sayfası değil"
-page_clipped = "{width} x {height} piksellik sayfa, {paper} kâğıtta {margin} pt kenar boşluğundan azını bırakıyor ve yazıcı tarafından kırpılır"
+page_clipped = "{width} x {height} piksellik sayfa, {paper} kâğıtta {margin} pt'den az kenar boşluğu bırakıyor ve yazıcı tarafından kırpılırdı"
 strip_needs_layout = "bir etiket şeridi için sayfasının düzeni gerekir"
 strip_too_large = "{width} x {height} boyutundaki etiket şeridi, {dots} nokta düzeninin etiket alanına sığmıyor"
 no_pages = "yazılacak sayfa yok"
@@ -256,7 +256,7 @@ REPLACE_REJECTED_TITLE = "Tarama kullanılmadı"
 ASSIGN_TITLE = "Sayfaya ata"
 PAGE_FIELD = "Sayfa:"
 START_BY_HAND_TITLE = "Belgeyi elle oluştur"
-START_BY_HAND_PROMPT = "Hiçbir tarama tanınamadı. Çıktının kâğıdını ve sayfa sayısını girin, ardından her taramayı kendi sayfasına atayın."
+START_BY_HAND_PROMPT = "Hiçbir tarama tanınamadı. Çıktının kâğıt boyutunu ve sayfa sayısını girin, ardından her taramayı kendi sayfasına atayın."
 TOTAL_FIELD = "Sayfa sayısı:"
 # Asked when the window is closed while a file is being written.
 STILL_WRITING_TITLE = "Dosya hâlâ yazılıyor"
@@ -281,7 +281,7 @@ PREPARING = "Dosya okunuyor…"
 CREATING = "PDF oluşturuluyor…"
 COMPATIBLE = "optar 0.2 ve özgün optar ile uyumlu"
 # Why a PDF is not created over the file being put on paper.
-DEST_IS_SOURCE = "PDF, kâğıda yazılan dosyanın yerine geçerdi; başka bir ad seçin"
+DEST_IS_SOURCE = "PDF, kâğıda yazılan dosyanın üzerine yazılırdı; başka bir ad seçin"
 # After the pages and size of a protected file that may lose no whole page.
 DAMAGE_REPAIRED = "sayfa içindeki hasar onarılır, ama bütün bir sayfa kaybolursa dosya da kaybolur"
 # What a document without a name is called.
@@ -454,9 +454,9 @@ range = "{first}–{last}. sayfalar hâlâ okunuyor"
 # What saving must confirm first.
 [gui.save]
 # {runs}: the runs above, then perhaps "more" below.
-incomplete = "Kaydedilen dosya eksik olacak: {runs}."
+incomplete = "Kaydedilen dosya tam olmayacak: {runs}."
 # {advice}: rescan advice (whole sentences).
-unrepaired = "{advice} Şimdi kaydederseniz, kaydedilen dosya yalnızca kurtarılabilen kısımdan oluşur ve yanlış bölümler içerebilir."
+unrepaired = "{advice} Şimdi kaydederseniz, kaydedilen dosya yalnızca kurtarılabilen kısımdan oluşur ve yanlış kısımlar içerebilir."
 checking = "Parmak izi karşılaştırması hâlâ sürüyor; bu yüzden kurtarılan dosyanın özgün dosya olup olmadığı henüz bilinmiyor."
 empty = "Kaydedilecek bir şey yok."
 mismatch = "Kurtarılan dosya, kâğıda yazdırılmış parmak iziyle eşleşmiyor: bazı verilerin kodu yanlış çözüldü, yani bu özgün dosya değil."
@@ -486,7 +486,7 @@ not_decodable = "Taramanın kodu hiçbir yönde çözülemedi"
 # The detail panel of a page.
 [gui.detail]
 title = "Sayfa {page}/{total}"
-repairs = "Onarımlar: tek bitlik: {one}, iki bitlik: {two}, üç bitlik: {three}"
+repairs = "Onarımlar — tek bitlik: {one}, iki bitlik: {two}, üç bitlik: {three}"
 missing = "Bu sayfanın taraması eklenmedi"
 waiting = "Okunmayı bekliyor"
 unreadable = "Bu tarama okunamadı"

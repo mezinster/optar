@@ -28,7 +28,7 @@ way in the window, the command line and every page.
 - **Typography.** Double quotes “…” (Turkish typography; never «» or „“ in Turkish text; the guillemets in this glossary only mark examples).
   Dash in prose «—» with spaces, used sparingly. Page ranges with an en dash
   and no spaces: «2–4», as `gui.list.range` writes it. Ellipsis «…» as one
-  character, as in English. Circumflex where TDK writes it: «kâğıt», «hâlâ».
+  character, as in English. Circumflex where TDK writes it: «kâğıt», «hâlâ», «dâhil». Compounds spelt as TDK spells them: «tam sayı», «on iki yüzlü».
 - **Numbers.** Thousands separator «.» (`[format].group`), decimal comma «,»
   (`[format].decimal`): «199.773», «0,36». Outside code blocks, in prose and
   table cells alike, numbers are written this way; inside code blocks,
@@ -103,6 +103,7 @@ catalogue.
 | printout | çıktı | The pages as printed, the physical set. Kept apart from «belge». «Çıktı» also means "output" in the command-line help («çıktı dosyası», «çıktı türü»); both are the established words and the context keeps them apart. |
 | document | belge | A set of pages that carries one file. |
 | page | sayfa | See the convention on «bölüm». Rejected: «yaprak» (a leaf has two sides). |
+| part (of a file, of a page, of a tag) | kısım | «dosyanın her kısmından», «sayfanın her kısmında», tag table header «Kısım». «Bölüm» is kept for a page of the site and a numbered section of the format page. |
 | slower reader | yavaş okuma yöntemi (short: yavaş yöntem) | "The ordinary reader" «normal okuma yöntemi» / «normal yöntem». First mention on a page: «ikinci, daha yavaş okuma yöntemi». "Read by the slower reader" «yavaş yöntemle okundu». "Slower reader for coarse scans" «düşük çözünürlüklü taramalar için yavaş yöntem». Rejected: «okuyucu» (a device, as in «kart okuyucu»), «yavaş mod» (a mode is chosen by the user; this runs by itself). |
 | self-identifying page | kendini tanıtan sayfa | Plural «kendini tanıtan sayfalar». Shares the root «tanı-» with "identify" («tanınamadı», «Sayfa tanınıyor»). First mention on a page may add «(hangi belgeye ait olduğunu ve kaçıncı sayfa olduğunu kendisi söyleyen sayfa)». |
 | verified | doğrulandı (doğrulanmış) | "File verified" «dosya doğrulandı». The root **«doğrula-» is reserved** for verified / verification: "did not verify" «doğrulamadan geçmedi», "cannot be verified" «doğrulanamaz», "after verification" «doğrulamadan sonra». "It cannot be confirmed that…" (caution) is «teyit edilemez», never «doğrulanamaz». Checking against the fingerprint is «parmak iziyle karşılaştırma». Rejected: «onaylandı» (approved, vaguer), «garanti» (stronger). |
@@ -110,6 +111,7 @@ catalogue.
 | lost | kayıp; kaybolmak | Blocks: «kayıp: 3», «Hasarlı · 3 kayıp». A whole page: «24 sayfadan 2 sayfa kaybolsa da kurtarılabilir». Distinct from "missing". |
 | damaged | hasarlı; hasar | Page state «Hasarlı». "Damage" «hasar». |
 | missing | eksik | A page of which no scan has been added. State «Eksik». Not «kayıp»: the paper may exist, only the scan is missing. |
+| incomplete (a saved file) | tam olmayan; «tam olmayacak» | «Kaydedilen dosya tam olmayacak: …». Keeps «eksik» for missing pages. |
 
 ### The window's vocabulary
 
@@ -147,7 +149,7 @@ catalogue.
 | original optar, the C program | özgün optar; C ile yazılmış özgün program | |
 | dot size names: Standard, Medium, Big, Large, Extra large | Standart, Orta, Büyük, İri, Çok iri | Capitalised as a selector entry or at the start; lower-case in running text («standart noktalarla», «iri noktalar»). |
 | protection levels: None, Standard, High | Yok, Standart, Yüksek | In prose «standart koruma», «yüksek koruma», «korumasız». |
-| paper names | A4, US Letter | Kept. In prose «Letter kâğıt». |
+| paper names | A4, US Letter | Kept. In prose «A4 kâğıt», «Letter kâğıt» (no apostrophe suffix on «Letter», whose Turkish pronunciation is uncertain). The paper chosen is «kâğıt boyutu» («Çıktının kâğıt boyutunu … girin»). |
 | actual size, fit to page | gerçek boyut (%100), “Sayfaya sığdır” | The latter as the Windows print dialog in Turkish names it. |
 | grayscale, colour, black and white | gri tonlamalı, renkli, siyah beyaz | |
 | bottom bar | alttaki çubuk (durum çubuğu) | |
@@ -171,12 +173,19 @@ catalogue.
 | ignored | yok sayıldı | |
 | protection level `{level}` | Koruma düzeyi {level} | The option value reads as a name: «Koruma düzeyi standard: …». |
 | pixels (in errors) | piksel; «… piksellik» | «{width} x {height} piksellik sayfa». |
+| option value quoted in help prose | 'standard', 'none' | In single quotes, so that `standard` does not read as a misspelling of «standart». |
+| overwrite (a file) | üzerine yazmak | «dosyanın üzerine yazılırdı». Not «yerine geçmek» (substitute). |
+| standard error (stderr) | standart hata çıkışı | Not «akış», which is the format's "stream". |
+| commit (git) | işleme (commit) | «… işlemesindeki hâliyle» (format page), «işlemeye (commit) karşı» (development page). |
 
 ### Format specification terms (`format.md`)
 
 | English | Turkish |
 |---|---|
 | page pixel, data pixel, scan pixel | sayfa pikseli, veri pikseli, tarama pikseli |
+| integer | tam sayı |
+| dodecahedron | on iki yüzlü |
+| the specification (as "the document" in development) | belirtim; the format page calls itself «bu metin», the English original «İngilizce metin» |
 | page format, format string | sayfa biçimi, biçim dizesi |
 | layout | düzen |
 | grid | ızgara |
@@ -209,7 +218,7 @@ catalogue.
 - **Promise** — «24 sayfadan 2 sayfa kaybolsa da kurtarılabilir» keeps the
   modal «-abilir» (can), not «dayanır» (withstands, stronger).
 - **"May be damaged", "may contain wrong parts"** — «hasarlı olabilir»,
-  «yanlış bölümler içerebilir».
+  «yanlış kısımlar içerebilir» (a part of the file is «kısım», never «bölüm»).
 - **Warnings** stay firm: "was not saved" «kaydedilmedi» (the program chose
   not to), not «kaydedilemedi».
 

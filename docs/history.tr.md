@@ -13,7 +13,7 @@ geliştirdi.
 
 Bu proje o kaynak koddan yola çıktı. C ile yazılmış özgün programlar,
 deponun `lega-c` klasöründe değiştirilmeden saklanır. Bunlar artık tarihtir:
-bu projede hiçbir şey onları artık derlemez ya da çalıştırmaz.
+bu projede hiçbir şey onları derlemez ya da çalıştırmaz.
 [README](https://github.com/mezinster/optar#history-the-original-c-program)
 dosyası onların özgün talimatlarını saklar.
 
@@ -27,7 +27,7 @@ dosyası onların özgün talimatlarını saklar.
 | 0.4.0 | Çözünürlüğü çok düşük taramalar için yavaş okuma yöntemi. |
 | 0.5.0 | Okunmakta olan taramalar için ilerleme çubukları ve yavaş yöntemin düzelttiklerinin sayıları. |
 
-Biçimin kendisi, C programından gelenler de dahil olmak üzere,
+Biçimin kendisi, C programından gelenler de dâhil olmak üzere,
 [biçim belirtiminin](format.md) 8. kısmında açıklanmıştır.
 
 ## Lisans { #licence }

@@ -32,7 +32,7 @@ dokunulmaz. Yavaş yöntem bir şey bulamazsa etiketten okunan sonuç korunur.
 ## Nasıl çalışır { #how-it-works }
 
 Yavaş yöntem taramayı büyütür. Normal yöntemin emin olduğu noktalardan,
-sayfanın her bölümünde komşu noktaların birbirine nasıl bulaştığını öğrenir.
+sayfanın her kısmında komşu noktaların birbirine nasıl karıştığını öğrenir.
 Sonra bu bilgiyle her noktayı okur ve her sembolü bir bütün olarak seçer.
 
 ## Uygulamada { #in-the-application }
@@ -47,8 +47,8 @@ Düzeltilen noktalar önizlemede işaretlenmiştir.*
   sürdüğü söylenir.
 - Ardından satır, sayfanın yavaş yöntemle okunduğunu ve kaç noktanın
   düzeltildiğini söyler; örneğin “Sayfa 3 · Yavaş yöntemle okundu · 265.112
-  nokta düzeltildi”. Düzeltilen nokta, kendi izlenimi sembolü hakkındaki
-  kararda yenik düşen noktadır.
+  nokta düzeltildi”. Düzeltilen nokta, tek başına okunan değeri sembolün
+  bütün olarak seçilmesinde geçersiz kalan noktadır.
 - Düzeltilen noktalar tarama önizlemesinde işaretlenir; her işaret bir nokta
   genişliğindedir. Düşük çözünürlüklü taramalarda bu çoğu zaman noktaların
   yüzde birkaçıdır; bu yüzden sayfaya bütün olarak bakıldığında düzeltmeler
@@ -65,7 +65,7 @@ sayfada neyin onarılamayacak durumda olduğunu söyleyemez.
 ## Komut satırında { #on-the-command-line }
 
 `optar decode` da onu kendiliğinden çalıştırır ve denendiği her tarama için
-bunu standart hata akışına (stderr) yazar. `--no-slow-reader` onu kapatır.
+bunu standart hata çıkışına (stderr) yazar. `--no-slow-reader` onu kapatır.
 
 ## Ne kadar sürer { #how-long-it-takes }
 

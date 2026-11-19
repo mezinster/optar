@@ -30,7 +30,7 @@ Uygulamanın testleri PySide6 ve pytest-qt gerektirir
 
 Sayfa biçimini [biçim belirtimi](format.md) ve `tests/vectors` içindeki
 uygunluk vektörleri tanımlar. `tests/unit/test_spec.py` belirtimdeki
-tabloları ve örnekleri kodla karşılaştırır; bu yüzden belge ve kod birlikte
+tabloları ve örnekleri kodla karşılaştırır; bu yüzden belirtim ve kod birlikte
 değiştirilir.
 
 ## Tek dosyalık programları derleme { #building-the-one-file-programs }
@@ -76,7 +76,7 @@ dil menüsü vardır.
 ve kod blokları İngilizcedekiyle aynıdır. Hangi bölümlerin geride kaldığını
 görmek için `python tools/translation_status.py` komutunu çalıştırın.
 Eskimiş bir bölümü güncellemek için İngilizce bölümde neyin değiştiğini
-okuyun (`source_hash` değerindeki commit'e karşı `git diff`), çeviriyi buna
+okuyun (`source_hash` değerindeki işlemeye (commit) karşı `git diff`), çeviriyi buna
 göre değiştirin, ardından `source_hash` değerini
 `git hash-object docs/<page>.md` çıktısıyla değiştirin. Gerisini
 `tests/unit/test_doc_translations.py` denetler. Çevirmenler için kurallar

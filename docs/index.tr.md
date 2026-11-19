@@ -10,7 +10,7 @@ dosyayı bu sayfaların taramalarından geri okur.
 
 ![İki sayfayı okuduktan sonra uygulama: ikisi de sağlam, dosya doğrulandı](img/verified.png)
 
-- **Bir A4 sayfaya yaklaşık 200.000 bayt sığar**, standart nokta boyutuyla.
+- **Standart nokta boyutuyla bir A4 sayfaya yaklaşık 200.000 bayt sığar.**
 - **Daha büyük noktalar** seçilebilir; böylece 200 dpi çözünürlüklü bir
   tarayıcı yeterli olur. Bu durumda bir sayfaya daha az veri sığar.
 - **Koruma**, tüm sayfalara yayılmış ek veridir. Program bu veriyle lekeleri

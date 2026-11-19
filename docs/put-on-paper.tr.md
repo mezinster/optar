@@ -65,7 +65,7 @@ hasarlı yerleri onarır ve kaybolan sayfaları yeniden oluşturur. Seçenekler
 - Kâğıt ister: standart koruma yaklaşık %14, yüksek koruma yaklaşık %34 daha
   fazla sayfa ekler.
 - Ek veri öyle yayılır ki bir leke, yırtık bir köşe ya da eksik bir sayfa,
-  dosyanın her bölümünden aşağı yukarı aynı küçük miktarı götürür. Korumanın
+  dosyanın her kısmından aşağı yukarı aynı küçük miktarı götürür. Korumanın
   onardığı da bu küçük miktardır.
 - Koruma varsa sayfaların bir kısmı koruma verisini taşır ve her sayfa,
   hangi belgenin hangi sayfası olduğunu söyleyen kısa bir kaydı tekrarlar.

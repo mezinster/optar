@@ -54,7 +54,7 @@ sayfalar yavaş yöntemin kapsamında değildir.
 - Daha büyük noktalı bir sayfanın hiçbir gerçek taraması henüz okunmadı.
 - Etiketlerin okunması ve kod çözme için otomatik testler yalnızca sentetik
   taramalarda var; gerçekten yazdırılıp taranmış sayfalarda yok. Daha büyük
-  noktalı ya da koruma eklenmiş her çıktı buna dahildir.
+  noktalı ya da koruma eklenmiş her çıktı buna dâhildir.
 - Sayfa beslemeli tarayıcılar, programın üç gerçek taramada nokta ızgarasını
   bulmasının ötesinde test edilmedi.
 - Bir çıktının üç gerçek 300 dpi taraması yaklaşık 286 dpi olarak ölçüldü;
@@ -74,5 +74,5 @@ sentetik test görüntülerinde C `unoptar` programınınkilerle bit bit aynıd�
 
 Kendini tanıtan bir çıktının her sayfası yine sıradan bir optar sayfasıdır:
 aynı ızgara boyutuyla derlenmiş bir C `unoptar` noktalarını tam olarak okur
-(A4'te iri noktalar ve Letter'da orta noktalar için kaydedildi). Döndürdüğü
+(A4 kâğıtta iri noktalar ve Letter kâğıtta orta noktalar için kaydedildi). Döndürdüğü
 şey dosya değil, dosyanın çevresine ek bilgiler ve koruma sarılmış veridir.

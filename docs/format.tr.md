@@ -4,7 +4,7 @@ source_hash: 90182c569913da957ad8b2b3c51203f66726cc36
 
 # optar biçimi { #the-optar-format }
 
-Bu belirtimin bağlayıcı metni İngilizce metindir: [The optar format](https://mezinster.github.io/optar/format/). Biçimi bu metin ile `tests/vectors` içindeki test vektörleri tanımlar. Bu çeviri bilgilendiricidir; İngilizce metinle çeliştiği yerde İngilizce metin geçerlidir.
+Bu belirtimin bağlayıcı metni İngilizce metindir: [The optar format](https://mezinster.github.io/optar/format/). Biçimi İngilizce metin ile `tests/vectors` içindeki test vektörleri tanımlar. Bu çeviri bilgilendiricidir; İngilizce metinle çeliştiği yerde İngilizce metin geçerlidir.
 
 optar, bir dosyayı kâğıt üzerinde siyah ve beyaz noktalardan oluşan sayfalar
 olarak saklar. Bu metin, bir sayfanın ve bir belgenin (tek bir dosyayı taşıyan
@@ -39,18 +39,18 @@ karşılaştırılır.
 
 ### 1.1 Sayılar, bitler ve baytlar { #11-numbers-bits-and-bytes }
 
-- Tüm tamsayılar, `0x` önekini taşımadıkça onluk tabanda yazılır.
+- Tüm tam sayılar, `0x` önekini taşımadıkça onluk tabanda yazılır.
 - `a // b` aşağı yuvarlanan bölme, `a mod b` bu bölmenin kalanı, `ceil(a / b)`
-  yukarı yuvarlanan bölmedir. Üçü de yalnızca negatif olmayan tamsayılarda
+  yukarı yuvarlanan bölmedir. Üçü de yalnızca negatif olmayan tam sayılarda
   kullanılır.
 - Sayımlar ve indisler 0'dan başlar; bunun istisnaları sayfa numaraları ve
-  2.5 bölümündeki onikiyüzlünün yüzleridir, bunlar 1'den başlar.
+  2.5 bölümündeki on iki yüzlünün yüzleridir, bunlar 1'den başlar.
 - Bir **bit dizisi** en anlamlı bit önce olmak üzere okunur: bir bayt
   dizisinin `n` numaralı biti, `n // 8` numaralı baytın `7 - (n mod 8)`
   numaralı bitidir; burada bir baytın 7 numaralı biti onun en anlamlı bitidir.
   Bir bit dizisinden alınan `w` bitlik bir sözcüğün en anlamlı biti, dizinin
   ilk bitidir.
-- Başlıktaki (bölüm 4.2) çok baytlı tamsayılar big-endian düzenindedir: en
+- Başlıktaki (bölüm 4.2) çok baytlı tam sayılar big-endian düzenindedir: en
   anlamlı bayt önce gelir.
 - SHA-256 ve CRC-32 bilinen olağan işlevlerdir. CRC-32, zlib, PNG ve
   Ethernet'teki CRC-32'dir: yansıtılmış polinom `0xEDB88320`, başlangıç değeri
@@ -135,7 +135,7 @@ Bu tablodaki adlar metin boyunca kullanılır.
 
 ### 2.1 Sayfa biçimi ve biçim dizesi { #21-the-page-format-and-the-format-string }
 
-Bir **sayfa biçimi**, negatif olmayan sekiz tamsayıdır:
+Bir **sayfa biçimi**, negatif olmayan sekiz tam sayıdır:
 
 | Alan | Ad | Anlamı | Olmalıdır |
 |---|---|---|---|
@@ -306,7 +306,7 @@ code_bits_of_order_4 = 16, 11
 code_bits_of_order_5 = 32, 26
 ```
 
-Burada bir sembol `large` bitlik bir tamsayı olarak yazılır; bitlerin sayfaya
+Burada bir sembol `large` bitlik bir tam sayı olarak yazılır; bitlerin sayfaya
 yerleştirildiği sıradaki **`b` numaralı biti** en anlamlı bitten itibaren
 sayılır: 0 numaralı bit, değeri `2 ^ (large - 1)` olan bittir.
 
@@ -314,7 +314,7 @@ sayılır: 0 numaralı bit, değeri `2 ^ (large - 1)` olan bittir.
 
 12 bitlik `d` sözcüğünün sembolü `d * 4096 + p(d)` olur: üst 12 bitte sözcük,
 onun altında 12 eşlik biti. Eşlik bitleri, yüzleri 1'den 12'ye kadar
-numaralanmış bir onikiyüzlüden gelir. `f` yüzü, `d` sözcüğünün değeri
+numaralanmış bir on iki yüzlüden gelir. `f` yüzü, `d` sözcüğünün değeri
 `2 ^ (f - 1)` olan bitini temsil eder. Her yüzün beş komşusu vardır:
 
 <!-- spec-table: golay -->
@@ -334,7 +334,7 @@ numaralanmış bir onikiyüzlüden gelir. `f` yüzü, `d` sözcüğünün değer
 | 12 | 7, 8, 9, 10, 11 | `0x83f` |
 
 `r` yüzünün maskesinde, `r` yüzünün komşusu olmayan her yüz için (`r` yüzünün
-kendisi dahil) bir 1 bulunur. `d AND mask` değerinde tek sayıda 1 biti varsa
+kendisi dâhil) bir 1 bulunur. `d AND mask` değerinde tek sayıda 1 biti varsa
 `r` yüzünün eşlik biti 1'dir. Bu bit, `p(d)` değerinin `2 ^ (12 - r)` değerli
 bitidir: 1. yüz en anlamlı eşlik bitini, 12. yüz en az anlamlı eşlik bitini
 verir.
@@ -513,7 +513,7 @@ sonuç:
 - Bir sayfa en fazla `(data_width - logo_width) // TEXT_WIDTH` karakter
   gösterir; bu, satırın kısaltıldığı uzunluktan azdır; kalanı çizilmez.
 - 32 ile 127 arası kodların dışındaki karakterler hücre kaplamaz, ama satırın
-  kısaltıldığı uzunluğa sayılır.
+  kısaltıldığı uzunluğun hesabına katılır.
 - 127 kodu bir hücre kaplar ve logonun ilk `TEXT_WIDTH` sütununu çizer. Böyle
   bir etiket geri okunamaz.
 
@@ -637,13 +637,13 @@ Bir başlık `HEADER_SIZE` bayttır:
 | Başlangıç | Boyut | Alan | Tür | İçerik |
 |---|---|---|---|---|
 | 0 | 4 | `magic` | bayt dizisi | `HEADER_MAGIC` |
-| 4 | 1 | `version` | tamsayı | `CONTAINER_VERSION` |
-| 5 | 1 | `parity` | tamsayı | kod sözcüğü başına eşlik baytı: 0, 32 veya 64 |
-| 6 | 2 | `page` | tamsayı | bu sayfanın numarası, 1'den başlayarak |
-| 8 | 2 | `total` | tamsayı | belgedeki sayfa sayısı |
-| 10 | 8 | `size` | tamsayı | dosyanın bayt cinsinden boyutu |
+| 4 | 1 | `version` | tam sayı | `CONTAINER_VERSION` |
+| 5 | 1 | `parity` | tam sayı | kod sözcüğü başına eşlik baytı: 0, 32 veya 64 |
+| 6 | 2 | `page` | tam sayı | bu sayfanın numarası, 1'den başlayarak |
+| 8 | 2 | `total` | tam sayı | belgedeki sayfa sayısı |
+| 10 | 8 | `size` | tam sayı | dosyanın bayt cinsinden boyutu |
 | 18 | 16 | `fingerprint` | bayt dizisi | dosyanın SHA-256 değerinin ilk `FINGERPRINT_SIZE` baytı |
-| 34 | 4 | `crc` | tamsayı | 0 ile 33 arasındaki baytların CRC-32 değeri |
+| 34 | 4 | `crc` | tam sayı | 0 ile 33 arasındaki baytların CRC-32 değeri |
 
 Tamsayılar big-endian düzenindedir. `page` (ve onunla birlikte `crc`) dışındaki
 tüm alanlar bir belgenin her sayfasında aynıdır.
@@ -769,9 +769,10 @@ Dolgu hiçbir şey taşımaz. İki içerik vardır ve ikisi de geçerlidir:
 
 - optar 0.3.0 sıfır baytlar yazıyordu;
 - optar 0.3.1 ve sonrası **dolgu akışını** yazar: akışın `n` numaralı parçası
-  (`n = 0, 1, 2, ...`), `PADDING_KEY` ve ardından 8 bayt big-endian olarak
-  `n` değerinin SHA-256 değerinden oluşan `PADDING_BLOCK` bayttır; akış,
-  parçaların birleştirilmesidir. Veri bölgesinin dolgusu, akışın 0 numaralı
+  (`n = 0, 1, 2, ...`) şöyle elde edilen `PADDING_BLOCK` bayttır:
+  `PADDING_KEY` baytlarının ardına `n` değeri 8 bayt big-endian olarak eklenir
+  ve bu bayt dizisinin tamamının SHA-256 değeri alınır; akış, parçaların
+  birleştirilmesidir. Veri bölgesinin dolgusu, akışın 0 numaralı
   baytından başlar; gövdenin sonundaki dolgu, akışı veri bölgesinin dolgusunun
   bittiği yerden sürdürür. (Sıfır baytlar her sayfada boydan boya beyaz
   çizgiler olarak yazdırılır; akış ise veri gibi yazdırılır.)
@@ -1121,7 +1122,7 @@ bir `v` örneği `floor(255 * (v / 255) ^ (1 / gamma) + 0.5)` olur; burada
 `gamma`, dosyanın gama değeri (PNG `gAMA`) ya da dosya hiçbir değer vermiyorsa
 0.454545'tir. Renkli bir görüntü kanal kanal dönüştürülür, ardından 0.212671
 kırmızı, 0.715160 yeşil, 0.072169 mavi ağırlıklarıyla birleştirilir ve en
-yakın tamsayıya yuvarlanır. 16 bitlik bir örneğin üst 8 biti alınır.
+yakın tam sayıya yuvarlanır. 16 bitlik bir örneğin üst 8 biti alınır.
 
 ```example
 linear_light_of_128 = 56
@@ -1146,8 +1147,8 @@ Kod çözücüye sayfa biçimi verilir. Kod çözücü dik konumdaki görüntü 
    merkezine bağlı olan geri kalan her şeydir. Öteki tüm pikseller (sayfa ile
    taramanın kenarı arasındaki kir) beyaz yapılır.
 3. **Çerçevede bir boşluk.** Bir yazıcı sayfanın bir kenarını kırptıysa,
-   çerçevede bir boşluk olur, sayfanın çevresindeki beyaz noktaların arasına
-   sızar ve 2. adım sayfanın yalnızca bir parçasını bulur. Bulunan alan,
+   çerçevede bir boşluk olur; sayfanın çevresindeki beyaz da noktaların
+   arasına sızar ve 2. adım sayfanın yalnızca bir parçasını bulur. Bulunan alan,
    beyaz kenar olmayan kısmın yarısından azsa, sayfanın çevresindeki beyaz
    bunun yerine en az `2 * r + 1` piksel genişliğindeki geçitlerden
    ulaşılabilen kısım olarak alınır; burada
@@ -1292,7 +1293,7 @@ değiştirilmeden saklanır. `tests/vectors/c` içindeki vektörler o programdan
 Biçimin C programından koruduğu şeyler:
 
 - çerçeve, artı işaretleri, veri piksellerinin sırası ve serpiştirme;
-- onikiyüzlüden kurulan Golay tablosu ve Hamming kodları;
+- on iki yüzlüden kurulan Golay tablosu ve Hamming kodları;
 - yazı tipi şeridi, etiket satırı ve onun üç tuhaflığı (bölüm 2.8);
 - 9999 sayfa sınırı ve tek bir `1/0` sayfası olarak yazdırılan boş dosya;
 - bir sayfanın kendi akışının uzunluğunu kaydetmemesi;

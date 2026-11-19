@@ -12,7 +12,7 @@ olarak iki yoldan biriyle söyleyebilir.
 |---|---|
 | Koruma eklenerek ya da standart dışında bir nokta boyutuyla yapılmış | sayfanın verilerindeki bir başlıkla (“kendini tanıtan sayfalar”) |
 | 0.2.0 ya da daha yeni bir sürümün uyumlu çıktısı | alttaki etiketteki künyeyle |
-| 0.1.0 ile ya da C aracıyla yapılmış | yalnızca etiketle; etiketi karşılaştırabilecek hiçbir şey yoktur |
+| 0.1.0 ile ya da C aracıyla yapılmış | yalnızca etiketle; etiketin karşılaştırılabileceği hiçbir şey yoktur |
 
 Etiketteki geçerli bir künye her zaman önceliklidir: etiketinde geçerli bir
 künye bulunan sayfa, verileri ne içerirse içersin 0.2.0 sayfası olarak
@@ -65,7 +65,7 @@ onu elle bir sayfaya atayabilirsiniz.
 her sayfasındaki serbest metnin başına `[SIZE:FINGERPRINT:CC]` biçiminde bir
 künye yazdırır.
 
-| Bölüm | Anlamı |
+| Kısım | Anlamı |
 |---|---|
 | `SIZE` | dosyanın bayt cinsinden boyutu |
 | `FINGERPRINT` | dosyanın SHA-256 değerinin ilk 8 onaltılık basamağı |

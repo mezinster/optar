@@ -51,8 +51,8 @@ Listeden şunları yapabilirsiniz:
   sayfanın yedek taramasını kullanmak;
 - eklediğiniz taramalar birden fazla çıktıya aitse başka bir belgeye geçmek;
 - tanınamayan bir taramayı elle bir sayfaya atamak;
-- hiçbir tarama tanınamadığında belgeyi elle oluşturmak: kâğıdı ve sayfa
-  sayısını girersiniz, ardından her taramayı kendi sayfasına atarsınız.
+- hiçbir tarama tanınamadığında belgeyi elle oluşturmak: kâğıt boyutunu ve
+  sayfa sayısını girersiniz, ardından her taramayı kendi sayfasına atarsınız.
 
 ## Bir tarama okunurken { #while-a-scan-is-being-read }
 
@@ -120,7 +120,7 @@ eklenecek ya da yeniden taranacak sayfaları belirtir.
 Dosya doğrulanmamışsa “Dosyayı kaydet…” onay ister ve dosyada neyin yanlış
 olduğunu söyler.
 
-Onarılamayan, koruma eklenmiş bir belge, dosyanın yanlış bölümler
+Onarılamayan, koruma eklenmiş bir belge, dosyanın yanlış kısımlar
 içerebileceği uyarısından sonra, kurtarılabildiği kadarıyla yine de
 kaydedilebilir. Bu yalnızca sayfalarının en az yarısı okunduysa mümkündür:
 daha azından hiçbir şey kaydedilmez.
