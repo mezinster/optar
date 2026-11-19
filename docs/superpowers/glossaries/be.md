@@ -38,6 +38,12 @@ is Russian, and Russian-looking calques were avoided (no «метка» for tag,
   invariant phrases («Пашкоджана», «У парадку», «Адсутнічае»), not full
   sentences. A page state takes the neuter/feminine short form agreeing with
   «старонка» («Выпраўлена», «Пашкоджана»).
+- **Names of the operating system's own menus and dialogs** (install page).
+  macOS has no Belarusian interface, so the page gives the English name the
+  user will see first and the Belarusian translation in brackets: System
+  Settings («Сістэмныя налады»), Privacy & Security («Прыватнасць і
+  бяспека»), Open Anyway («Усё роўна адкрыць»), Open («Адкрыць»). No quotation
+  marks around the English names.
 - **Typography.** Quotes «ёлачкі» (inner „лапкі“); dash «—» with spaces in
   prose; en dash «–» without spaces in number ranges («старонкі 2–4»), as
   `gui.list.range` writes it; ellipsis «…» as one character, as in English.
@@ -74,7 +80,7 @@ is Russian, and Russian-looking calques were avoided (no «метка» for tag,
 | document | дакумент | Genitive «дакумента» (official norm for an inanimate thing). A set of pages that carries one file. |
 | page | старонка | Feminine: старонка / старонкі / старонак; accusative старонку / старонкі / старонак; locative «на старонцы». Rejected: «аркуш» (a sheet has two sides; an optar page is one printed side). See «раздзел» above. |
 | slower reader | павольны метад чытання (short: павольны метад) | "The ordinary reader" «звычайны метад чытання» / «звычайны метад». First mention on a page: «другі, больш павольны метад чытання». The comparative is dropped in the name, as Belarusian names do not carry it. Rejected: «счытвальнік», «чытальнік» (sound like hardware), «павольны рэжым» (a mode is something the user chooses; this runs by itself). "Read by the slower reader" «прачытана павольным метадам». "Slower reader for coarse scans" «павольны метад для сканаў з нізкай раздзяляльнасцю». |
-| self-identifying page | самаапазнавальная старонка | Plural «самаапазнавальныя старонкі». Built on «апазнаць» (identify), the verb the window uses for scans («скан не апазнаны», «Апазнанне старонкі»), so the term and the verb share a root. The double «аа» is the regular spelling of «сама-» + «апазнавальная». On first mention on a page add the gloss «(старонкі, якія самі паведамляюць, да якога дакумента яны належаць і які ў іх нумар)». Rejected: «самаідэнтыфікавальная» (heavy and bookish), «самавызначальная» («самавызначэнне» is political self-determination), «старонка з загалоўкам» (loses the name). |
+| self-identifying page | самаапазнавальная старонка | Plural «самаапазнавальныя старонкі». Built on «апазнаць» (identify), the verb the window uses for scans («скан не апазнаны», «Апазнанне старонкі»), so the term and the verb share a root. The double «аа» is the regular spelling of «сама-» + «апазнавальная». On first mention on a page, where the page does not explain the term itself, add the gloss «(старонкі, якія самі паведамляюць, да якога дакумента яны належаць і які ў іх нумар)» (after «раздрукоўка»: «(старонкі якой самі паведамляюць, …)»). Pages that explain it themselves and carry no gloss: `identification.be.md` (its section «Самаапазнавальныя старонкі» is the explanation) and `format.be.md` (defines it in 1.4 and part 4). The gloss is on `command-line.be.md` and `evidence.be.md`. Rejected: «самаідэнтыфікавальная» (heavy and bookish), «самавызначальная» («самавызначэнне» is political self-determination), «старонка з загалоўкам» (loses the name). |
 | verified | правераны (файл правераны) | Always means: the recovered file matched its fingerprint. The root **«правер-» is reserved** for verified / verification: "not verified" «не правераны», "did not verify" «не прайшоў праверку», "cannot be verified" «праверыць нельга». "Check that…" in an instruction is «Пераканайцеся, што…»; checking the fingerprint is «звярка з адбіткам». Rejected: «пацверджаны» (vaguer), «верыфікаваны» (bookish), «звераны» (only compared, weaker), anything with «гарантавана» (stronger). |
 | repaired | выпраўлены (repair: выправіць, выпраўленне) | The protection or the page's error correction fixed damaged data: «выпраўлена 6 912 байтаў», «Выпраўлена · 3». A *missing* page is not «выпраўлена»: "repaired from the others" is «адноўлена па астатніх» (same verb as "recover", "rebuild"). |
 | lost | страчаны (страціць) | Blocks that could not be repaired («страчана 3»), and a whole page lost from the printout («можна страціць 1 старонку з 12»). Distinct from "missing". "A page loses part of the file" «губляецца частка файла». |
@@ -122,6 +128,7 @@ is Russian, and Russian-looking calques were avoided (no «метка» for tag,
 | actual size (100%), fit to page | у натуральную велічыню (100%), «Па памеры старонкі» | The second is quoted as a print dialog names it. |
 | grayscale, colour, black and white | у адценнях шэрага, каляровы, чорна-белы | |
 | image (a file to read) | выява | Feminine: выява / выявы. The Belarusian localisation word for an image file. |
+| desktop application | праграма з акном | The `optar-gui` program, in the install table header and in prose. Rejected: «настольная праграма» (a calque), «праграма з графічным інтэрфейсам» (too long for a table header). |
 | bottom bar | радок унізе (радок стану) | |
 | progress bar | індыкатар выканання | |
 | row, list of scans | радок, спіс сканаў | |
@@ -158,6 +165,7 @@ is Russian, and Russian-looking calques were avoided (no «метка» for tag,
 | rows of pixels | у радках пікселяў | Said after the numbers: «{height} замест {rows} (у радках пікселяў)». |
 | point (pt), paper margin | пункт (short «пт»), поле | |
 | hyphen (in a format string) | злучок | «восем цэлых лікаў праз злучок». |
+| release workflow, push (Git) | сцэнарый выпуску (release workflow), адпраўка (push) | Development page only; the English word follows in brackets on first use. |
 
 ### Format specification terms (`format.md`)
 
@@ -189,6 +197,8 @@ is Russian, and Russian-looking calques were avoided (no «метка» for tag,
 | erasure | сціранне | |
 | generator polynomial, field polynomial | спараджальны мнагачлен, мнагачлен поля | GF(256) as written. |
 | big-endian, most significant bit | старэйшым байтам наперад (big-endian), старэйшы біт | |
+| floating point | рухомая коска («32-бітная арыфметыка з рухомай коскай») | Not «плаваючая коска» (a copy of Russian). |
+| (memory and time) cost | выдаткі памяці і часу | 6.2. Not «расход». |
 | normative, informative | нарматыўны, даведачны | |
 | test vectors, conformance vectors | тэставыя вектары, вектары адпаведнасці | |
 | encoder, decoder, reader | кадавальнік, дэкодар, праграма чытання | "Reader" in parts 6 and 7 is any program that reads pages. |

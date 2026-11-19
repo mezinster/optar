@@ -7,7 +7,7 @@ source_hash: 3205775811b328fd30b9d40d49b0c5b503e8cced
 optar напісаў на C Карэл «Clock» Кулгаві (Karel Kulhavy) з Twibright Labs у
 2007 годзе ў выглядзе праграм `optar`, `unoptar` і `pgm2ps`. Яго сайт —
 [ronja.twibright.com/optar](http://ronja.twibright.com/optar/). Колін Дзін
-(Colin Dean) захоўваў зыходны код даступным і ўдасканальваў яго з 2012 па
+(Colin Dean) падтрымліваў зыходны код у адкрытым доступе і ўдасканальваў яго з 2012 па
 2018 год на [github.com/colindean/optar](https://github.com/colindean/optar).
 
 Гэты праект пачаўся з таго зыходнага кода. Першапачатковыя праграмы на C

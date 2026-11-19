@@ -40,7 +40,7 @@ source_hash: f5551682033e226e7bf557d24edd97efecf26b2d
 
     .venv/bin/pyinstaller --onefile --name optar-gui --collect-data optar packaging/gui_entry.py
 
-Працоўны працэс выпуску збірае абедзве праграмы для Linux, macOS і Windows,
+Сцэнарый выпуску (release workflow) збірае абедзве праграмы для Linux, macOS і Windows,
 калі адпраўляецца тэг версіі.
 
 ## Гэты сайт { #this-site }
@@ -50,7 +50,7 @@ source_hash: f5551682033e226e7bf557d24edd97efecf26b2d
     .venv/bin/pip install -e '.[docs]'
     .venv/bin/mkdocs serve
 
-Пасля push у `master`, які змяняе `docs/`, сайт публікуецца.
+Пасля адпраўкі (push) у `master`, якая змяняе `docs/`, сайт публікуецца.
 
 ## Пераклады { #translations }
 
