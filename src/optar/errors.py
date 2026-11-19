@@ -29,6 +29,20 @@ class Grouped(int):
         return format(self)
 
 
+class Alternatives(tuple):
+    """Names of which one is meant (the image formats a scan may be in): ``A, B or
+    C`` in the English text, the language's separator and word for "or" in a
+    translation (``optar.i18n.alternatives``)."""
+
+    def __format__(self, spec: str) -> str:
+        names = [str(name) for name in self]
+        text = "".join(names) if len(names) < 2 else ", ".join(names[:-1]) + " or " + names[-1]
+        return format(text, spec)
+
+    def __str__(self) -> str:
+        return format(self)
+
+
 def keyed[E: OptarError](err: E, key: str | None, values: dict[str, object]) -> E:
     """``err`` given the message key and values (a key of None leaves it without)."""
     err.key = key

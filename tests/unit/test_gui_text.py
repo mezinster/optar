@@ -1016,6 +1016,26 @@ def test_constants_follow_the_language(catalogues):
     assert text.READ_TAB == "Read from paper"
 
 
+def test_a_kept_list_of_formats_is_joined_in_the_language_shown(tmp_path, catalogues):
+    from optar import i18n
+    from optar.errors import OptarError
+    from optar.imageio import read_scan
+
+    (tmp_path / "t.txt").write_text("hello")
+    with pytest.raises(OptarError) as caught:
+        read_scan(tmp_path / "t.txt")
+    words = text.Words.error(caught.value)  # kept while English is the language
+    assert str(words) == str(caught.value)
+    try:
+        for code in ("ru", "pl", "tr"):
+            i18n.set_language(code)
+            assert str(words) == i18n.error_text(caught.value)
+            assert text.error_text(caught.value) == str(words) and " or " not in str(words)
+    finally:
+        i18n.set_language("en")
+    assert str(words) == str(caught.value)
+
+
 def test_unknown_constant_is_an_attribute_error():
     with pytest.raises(AttributeError):
         text.NO_SUCH_NAME  # noqa: B018

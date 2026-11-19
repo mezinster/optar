@@ -209,3 +209,48 @@ def test_unsupplied_placeholder_names_key_and_language(catalogues):
         i18n.t("x.z")
     with pytest.raises(KeyError, match=r"'x\.p'.*'thing'"):
         i18n.n("x.p", 2)
+
+
+def _not_an_image(path):
+    from optar.errors import OptarError
+    from optar.imageio import read_scan
+
+    path.write_text("hello")
+    with pytest.raises(OptarError) as caught:
+        read_scan(path)
+    return caught.value
+
+
+def _expected_not_an_image(code, path, items):
+    """The sentence built from the real catalogue of ``code`` alone."""
+    cat = i18n.catalogue(code)
+    joined = cat["alternatives.last"].format(
+        items=cat["alternatives.separator"].join(items[:-1]), last=items[-1])
+    return cat["err.not_an_image"].format(path=path, formats=joined)
+
+
+def test_alternatives_join_in_the_language():
+    assert i18n.alternatives(("A",)) == "A"
+    assert i18n.alternatives(("A", "B", "C")) == "A, B or C"
+    i18n.set_language("ru")
+    assert i18n.alternatives(("A", "B", "C")) == "A, B или C"
+
+
+@pytest.mark.parametrize("code", ["ru", "uk", "be", "pl", "ka", "tr", "it", "es"])
+def test_the_accepted_formats_are_joined_in_the_language(tmp_path, code):
+    e = _not_an_image(tmp_path / "t.txt")
+    items = tuple(e.values["formats"])
+    english = str(e)
+    assert i18n.error_text(e) == english  # English: the text of the exception
+    i18n.set_language(code)
+    worded = i18n.error_text(e)
+    assert worded == _expected_not_an_image(code, tmp_path / "t.txt", items)
+    assert " or " not in worded and str(e) == english
+
+
+def test_the_accepted_formats_read_as_the_native_readers_asked(tmp_path):
+    e = _not_an_image(tmp_path / "t.txt")
+    for code, joined in (("ru", "BMP, PGM/PPM или JPEG"), ("pl", "BMP, PGM/PPM lub JPEG"),
+                         ("tr", "BMP, PGM/PPM ya da JPEG")):
+        i18n.set_language(code)
+        assert joined in i18n.error_text(e)

@@ -10,7 +10,7 @@ import tomllib
 from collections.abc import Iterable
 from importlib import resources
 
-from .errors import Grouped
+from .errors import Alternatives, Grouped
 
 ORDER: tuple[str, ...] = ("en", "ru", "uk", "be", "pl", "ka", "tr", "it", "es")
 
@@ -170,8 +170,26 @@ def error_text(e: BaseException) -> str:
     if isinstance(entry, dict):
         return str(e)
     given = getattr(e, "values", {})
-    values = {k: number(v) if isinstance(v, Grouped) else v for k, v in given.items()}
-    return _fill(entry, key, code, values)
+    return _fill(entry, key, code, {k: _worded(v) for k, v in given.items()})
+
+
+def _worded(value: object) -> object:
+    """An error's value as the current language shows it."""
+    if isinstance(value, Grouped):
+        return number(value)
+    if isinstance(value, Alternatives):
+        return alternatives(value)
+    return value
+
+
+def alternatives(names: Iterable[object]) -> str:
+    """Names of which one is meant, joined in the current language: the earlier
+    ones by ``alternatives.separator``, the last added by ``alternatives.last``."""
+    names = [str(name) for name in names]
+    if len(names) < 2:
+        return "".join(names)
+    return t("alternatives.last", items=t("alternatives.separator").join(names[:-1]),
+             last=names[-1])
 
 
 def n(key: str, count: int, /, **values: object) -> str:

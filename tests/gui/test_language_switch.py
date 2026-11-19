@@ -396,6 +396,19 @@ def test_a_kept_library_error_words_itself_in_the_language(stub):
     assert str(line) == "ValueError: bad"
 
 
+def test_a_kept_list_of_formats_is_joined_in_the_stub_language(stub, tmp_path):
+    path = tmp_path / "t.txt"
+    path.write_text("hello")
+    work = process_scan(str(path))
+    english = str(work.reason)
+    assert english.endswith(" PGM/PPM or JPEG image")
+    i18n.set_language(stub)
+    worded = str(work.reason)
+    # Every part is the stub's: the sentence, the separators and the join.
+    assert worded.startswith(MARK) and worded.count(MARK) == 1 + 3 + 1
+    assert f"PNG{MARK}, TIFF" in worded and f"{MARK}PNG" in worded
+
+
 def test_a_scan_that_is_not_a_regular_file_words_its_reason_when_shown(stub, tmp_path):
     folder = tmp_path / "folder.png"
     folder.mkdir()  # not a regular file, on every system
@@ -426,3 +439,13 @@ def test_kept_words_are_not_hashed_and_a_kept_error_names_itself():
         hash(words)
     kept = text._KeptError(error(OptarError, "err.no_pages", "no pages to write"))
     assert repr(kept) == "_KeptError('OptarError', 'err.no_pages', 'no pages to write')"
+
+
+def test_a_failed_repair_words_its_library_error_in_the_language(stub):
+    e = error(OptarError, "err.no_pages", "no pages to write")
+    s = document_module.Summary(DocState.INCOMPLETE, 2, 0, 0, 0, 1, 9, protection=32,
+                                repair_error=text.Words.error_line(e))
+    english = text.summary_line(s)
+    assert english == text.repair_failed("no pages to write")
+    i18n.set_language(stub)
+    assert text.summary_line(s) == text.repair_failed(MARK + "no pages to write")

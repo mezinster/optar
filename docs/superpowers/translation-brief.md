@@ -192,6 +192,9 @@ hold for every language.
   `gui.health.damaged` and their kind agree with a noun that is not in the
   string; the comment above each entry in `en.toml` names it. Take gender
   and number from that noun.
+- **A list of alternatives is joined by `[alternatives]`**: `separator`
+  between the earlier names and `last` (`"{items} or {last}"`) for the last
+  one, with your word for "or"; it fills `{formats}` in `err.not_an_image`.
 - **Catalogue comments stay in English**, identical to `en.toml`'s. They are
   notes for translators and maintainers.
 - **Numbers** follow the rule of section 3 (your separators outside code,

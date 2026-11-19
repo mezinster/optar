@@ -353,6 +353,15 @@ def test_unidentified_file_names_accepted_formats(tmp_path):
         read_scan(tmp_path / "t.txt")
 
 
+def test_the_accepted_formats_are_kept_as_a_list_for_the_translations(tmp_path):
+    (tmp_path / "t.txt").write_text("hello")
+    with pytest.raises(OptarError) as caught:
+        read_scan(tmp_path / "t.txt")
+    formats = caught.value.values["formats"]
+    assert tuple(formats) == ("PNG", "TIFF", "BMP", "PGM/PPM", "JPEG")
+    assert f"{formats}" == "PNG, TIFF, BMP, PGM/PPM or JPEG"
+
+
 def test_scan_pixel_limit_raises_pillows_limit_under_the_read_lock():
     normal = Image.MAX_IMAGE_PIXELS
     with optar.imageio.scan_pixel_limit():

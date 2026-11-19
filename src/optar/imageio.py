@@ -8,7 +8,7 @@ from contextlib import contextmanager
 import numpy as np
 from PIL import Image, UnidentifiedImageError
 
-from .errors import Grouped, OptarError, error
+from .errors import Alternatives, Grouped, OptarError, error
 from .format import PIXELS_PER_INCH
 
 DEFAULT_FILE_GAMMA = 0.454545
@@ -67,9 +67,8 @@ def _to_gray8(im: Image.Image) -> tuple[np.ndarray, bool]:
     return np.asarray(im.convert("RGB")), True
 
 
-def _accepted_formats() -> str:
-    names = [{"PPM": "PGM/PPM"}.get(f, f) for f in SCAN_FORMATS]
-    return ", ".join(names[:-1]) + " or " + names[-1]
+def _accepted_formats() -> Alternatives:
+    return Alternatives({"PPM": "PGM/PPM"}.get(f, f) for f in SCAN_FORMATS)
 
 
 @contextmanager

@@ -207,6 +207,13 @@ upper_right = "sağ üst köşe bulunamıyor"
 lower_left = "sol alt köşe bulunamıyor"
 lower_right = "sağ alt köşe bulunamıyor"
 
+# A list of names of which one is meant, inside an error message (the image
+# formats of err.not_an_image): the earlier names joined by separator, the last
+# one added by last ("PNG, TIFF, BMP, PGM/PPM or JPEG").
+[alternatives]
+separator = ", "
+last = "{items} ya da {last}"
+
 [count.page]
 other = "{n} sayfa"
 
