@@ -238,7 +238,7 @@ def _scalar_examples() -> dict[str, list]:
         "paper": [*PAPERS, "odd"],
         "noun": ["page", "byte", "block", "dot", "scan"],
         "scan_name": [None, "scan.png"],
-        "name": ["doc.tar", "", "<b>x</b> {y}"],
+        "name": ["doc.tar", "ok", "save", "<b>x</b> {y}"],
         "dropped": ["", "о т"],
         "message": ["boom", "{braces} <b>"],
         "path": ["/x/out.pdf"],
