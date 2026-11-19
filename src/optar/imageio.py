@@ -8,7 +8,7 @@ from contextlib import contextmanager
 import numpy as np
 from PIL import Image, UnidentifiedImageError
 
-from .errors import OptarError
+from .errors import Grouped, OptarError, error
 from .format import PIXELS_PER_INCH
 
 DEFAULT_FILE_GAMMA = 0.454545
@@ -119,25 +119,39 @@ def read_scan(path) -> np.ndarray:
                 release()
             pixels = im.width * im.height
             if pixels > MAX_SCAN_PIXELS:
-                raise OptarError(
-                    f"cannot read image {path}: {pixels:,} pixels is more than "
-                    f"the {MAX_SCAN_PIXELS:,} a scan may have"
+                raise error(
+                    OptarError, "err.image_too_large",
+                    "cannot read image {path}: {pixels} pixels is more than the {limit} a "
+                    "scan may have",
+                    path=path, pixels=Grouped(pixels), limit=Grouped(MAX_SCAN_PIXELS),
                 )
             checked_pixels = pixels
             im.load()
             if im.width * im.height > MAX_SCAN_PIXELS:
-                raise OptarError(
-                    f"cannot read image {path}: {im.width * im.height:,} pixels is more "
-                    f"than the {MAX_SCAN_PIXELS:,} a scan may have"
+                raise error(
+                    OptarError, "err.image_too_large",
+                    "cannot read image {path}: {pixels} pixels is more than the {limit} a "
+                    "scan may have",
+                    path=path, pixels=Grouped(im.width * im.height),
+                    limit=Grouped(MAX_SCAN_PIXELS),
                 )
             if im.width * im.height != checked_pixels:  # a transpose keeps the count
-                raise OptarError(f"cannot read image {path}: image size changed while loading")
+                raise error(
+                    OptarError, "err.image_size_changed",
+                    "cannot read image {path}: image size changed while loading", path=path,
+                )
             file_gamma = im.info.get("gamma") or DEFAULT_FILE_GAMMA
             data, is_colour = _to_gray8(im)
     except UnidentifiedImageError as e:
-        raise OptarError(f"cannot read image {path}: not a {_accepted_formats()} image") from e
+        raise error(
+            OptarError, "err.not_an_image", "cannot read image {path}: not a {formats} image",
+            path=path, formats=_accepted_formats(),
+        ) from e
     except (OSError, ValueError, SyntaxError, Image.DecompressionBombError) as e:
-        raise OptarError(f"cannot read image {path}: {e}") from e
+        raise error(
+            OptarError, "err.image_unreadable", "cannot read image {path}: {reason}",
+            path=path, reason=str(e),
+        ) from e
     finally:
         release()
     table = _gamma_table(float(file_gamma))

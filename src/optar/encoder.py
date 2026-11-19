@@ -9,7 +9,7 @@ from typing import BinaryIO
 
 import numpy as np
 
-from optar.errors import FormatError, OptarError
+from optar.errors import FormatError, OptarError, error
 from optar.fec import encode_symbols
 from optar.font import LABEL_HEIGHT, label_text, render_label
 from optar.format import PageFormat
@@ -37,10 +37,16 @@ def check_encodable(nbytes: int, fmt: PageFormat) -> int:
     for more than MAX_PAGES pages. encode() runs the same check.
     """
     if fmt.text_height != LABEL_HEIGHT:
-        raise FormatError(f"label band must be {LABEL_HEIGHT} rows, not {fmt.text_height}")
+        raise error(
+            FormatError, "err.label_band", "label band must be {rows} rows, not {height}",
+            rows=LABEL_HEIGHT, height=fmt.text_height,
+        )
     total = page_count(nbytes, fmt)
     if total > MAX_PAGES:
-        raise OptarError(f"too many pages: {total} needed, at most {MAX_PAGES}")
+        raise error(
+            OptarError, "err.too_many_pages", "too many pages: {total} needed, at most {limit}",
+            total=total, limit=MAX_PAGES,
+        )
     return total
 
 

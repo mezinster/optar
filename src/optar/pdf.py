@@ -14,7 +14,7 @@ from collections.abc import Iterable
 
 import numpy as np
 
-from optar.errors import FormatError, OptarError
+from optar.errors import FormatError, OptarError, error
 from optar.format import (
     MIN_MARGIN_PT,
     PIXELS_PER_INCH,
@@ -47,19 +47,26 @@ def _check_page(item, target: Paper | Layout) -> tuple[np.ndarray, np.ndarray | 
     if isinstance(target, Layout):
         fmt = target.fmt
         if (width, height) != (fmt.width, fmt.height):
-            raise FormatError(
-                f"a {width} x {height} pixel page is not the {fmt.width} x {fmt.height} "
-                f"pixel page of the {target.dots.name} dot layout on {target.paper.name} paper"
+            raise error(
+                FormatError, "err.page_size",
+                "a {width} x {height} pixel page is not the {page_width} x {page_height} "
+                "pixel page of the {dots} dot layout on {paper} paper",
+                width=width, height=height, page_width=fmt.width, page_height=fmt.height,
+                dots=target.dots.name, paper=target.paper.name,
             )
     elif not target.fits_image(width, height):
-        raise FormatError(
-            f"a {width} x {height} pixel page leaves less than the {MIN_MARGIN_PT:g} pt "
-            f"margin on {target.name} paper and would be clipped by the printer"
+        raise error(
+            FormatError, "err.page_clipped",
+            "a {width} x {height} pixel page leaves less than the {margin} pt margin on "
+            "{paper} paper and would be clipped by the printer",
+            width=width, height=height, margin=f"{MIN_MARGIN_PT:g}", paper=target.name,
         )
     if band is None:
         return image, None
     if not isinstance(target, Layout):
-        raise FormatError("a label strip needs the layout of its page")
+        raise error(
+            FormatError, "err.strip_needs_layout", "a label strip needs the layout of its page"
+        )
     ok = isinstance(band, np.ndarray) and band.dtype == np.uint8 and band.ndim == 2
     if not ok or not band.size:
         raise TypeError("label strip must be a non-empty 2-D uint8 numpy array")
@@ -69,9 +76,11 @@ def _check_page(item, target: Paper | Layout) -> tuple[np.ndarray, np.ndarray | 
         rows * STANDARD_PRINTER_DOTS > fmt.text_height * dots
         or cols * STANDARD_PRINTER_DOTS > fmt.data_width * dots
     ):
-        raise FormatError(
-            f"a {cols} x {rows} label strip does not fit the label band of the "
-            f"{target.dots.name} dot layout"
+        raise error(
+            FormatError, "err.strip_too_large",
+            "a {width} x {height} label strip does not fit the label band of the {dots} "
+            "dot layout",
+            width=cols, height=rows, dots=target.dots.name,
         )
     return image, band
 
@@ -105,7 +114,7 @@ def write_pdf(
     pages = iter(pages)
     first = next(pages, None)
     if first is None:
-        raise OptarError("no pages to write")
+        raise error(OptarError, "err.no_pages", "no pages to write")
     first = _check_page(first, paper)
     f = open(path, "wb")  # opened outside the try: a failed open removes nothing
     try:

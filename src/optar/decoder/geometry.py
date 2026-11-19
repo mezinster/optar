@@ -9,7 +9,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from optar.decoder.options import DecodeOptions
-from optar.errors import DecodeError
+from optar.errors import DecodeError, error
 from optar.format import PageFormat
 
 
@@ -45,6 +45,17 @@ def _diag_scan(img: np.ndarray, cut: int, from_right: bool, from_bottom: bool):
         size *= 2
 
 
+def _no_corner(name: str) -> DecodeError:
+    """A corner that is not found; each message is whole, to be translated whole."""
+    if name == "upper left":
+        return error(DecodeError, "err.no_corner.upper_left", "cannot find upper left corner")
+    if name == "upper right":
+        return error(DecodeError, "err.no_corner.upper_right", "cannot find upper right corner")
+    if name == "lower left":
+        return error(DecodeError, "err.no_corner.lower_left", "cannot find lower left corner")
+    return error(DecodeError, "err.no_corner.lower_right", "cannot find lower right corner")
+
+
 def find_corners(img: np.ndarray, cut: int) -> np.ndarray:
     """Corners UL, UR, LL, LR as (x, y), integers at pixel upper left corners."""
     corners = np.zeros((4, 2), np.int64)
@@ -57,7 +68,7 @@ def find_corners(img: np.ndarray, cut: int) -> np.ndarray:
     for i, (name, from_right, from_bottom, ax, ay) in enumerate(scans):
         found = _diag_scan(img, cut, from_right, from_bottom)
         if found is None:
-            raise DecodeError(f"cannot find {name} corner")
+            raise _no_corner(name)
         corners[i] = (found[0] + ax, found[1] + ay)
     return corners
 

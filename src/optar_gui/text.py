@@ -64,12 +64,35 @@ def _num(value: int) -> str:
     return i18n.number(value)
 
 
+def _dec(value: float, places: int) -> str:
+    """A number with ``places`` decimals, in the language's way (``8.3``)."""
+    from optar import i18n
+
+    return i18n.decimal(value, places)
+
+
+def _missing(e: KeyError, key: str) -> bool:
+    """Whether ``e`` says that ``key`` is in no catalogue (not that its
+    translation names a placeholder that is not given, which must surface)."""
+    return e.args == (key,)
+
+
 def _name(key: str, default: str) -> str:
     """The catalogue's name under ``key``, or ``default`` for a name it lacks."""
     try:
         return _t(key)
-    except KeyError:
+    except KeyError as e:
+        if not _missing(e, key):
+            raise
         return default
+
+
+def error_text(e: BaseException) -> str:
+    """A library error's message in the current language (``optar.errors``: the
+    message of its key, filled with its values), else its text."""
+    from optar import i18n
+
+    return i18n.error_text(e)
 
 
 def __getattr__(name: str) -> str:
@@ -79,8 +102,9 @@ def __getattr__(name: str) -> str:
         key = "cli.ACTUAL_SIZE" if name == "ACTUAL_SIZE" else f"gui.{name}"
         try:
             return _t(key)
-        except KeyError:
-            pass
+        except KeyError as e:
+            if not _missing(e, key):
+                raise
     raise AttributeError(name)
 
 
@@ -661,7 +685,7 @@ def _share(part: int, whole: int) -> str:
     share = 100 * part / whole
     if 0 < share < 0.05:
         return _t("gui.slow.share_small")
-    return _t("gui.slow.share", share=f"{share:.1f}")
+    return _t("gui.slow.share", share=_dec(share, 1))
 
 
 def slow_reader_detail(page: PageView, repaired_bytes: int | None = None) -> tuple[str, ...]:

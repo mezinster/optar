@@ -77,6 +77,28 @@ def test_english_counts():
         assert i18n.n(f"count.{noun}", 2) == f"2 {noun}s"
 
 
+def test_english_decimals():
+    assert i18n.decimal(8.25, 1) == "8.2" and i18n.decimal(8.3, 1) == "8.3"
+    assert i18n.decimal(100, 1) == "100.0"
+    assert i18n.decimal(1234567.891, 2) == "1,234,567.89"
+    assert i18n.decimal(0.04, 0) == "0"
+
+
+def test_decimals_use_the_languages_separators(catalogues):
+    catalogues.add("it", {"language": {"name": "Italiano"},
+                          "format": {"group": ".", "decimal": ","}})  # fmt: skip
+    i18n.set_language("it")
+    assert i18n.decimal(8.3, 1) == "8,3"
+    assert i18n.decimal(1234567.891, 2) == "1.234.567,89"
+    assert i18n.number(1234567) == "1.234.567"
+
+
+def test_decimals_fall_back_to_the_english_separator(catalogues):
+    catalogues.add("ru", {"language": {"name": "Русский"}, "format": {"group": "\u00a0"}})
+    i18n.set_language("ru")
+    assert i18n.decimal(1234.5, 1) == "1\u00a0234.5"
+
+
 def test_values_with_braces_are_literal(catalogues):
     catalogues.add("en", {"x": {"y": "Saved {name}"}})
     assert i18n.t("x.y", name="{0}{name}.png") == "Saved {0}{name}.png"

@@ -1026,6 +1026,59 @@ def test_unknown_constant_is_an_attribute_error():
     assert not hasattr(text, "_PRIVATE")
 
 
+def test_a_broken_constant_translation_names_its_key(catalogues):
+    from optar import i18n
+
+    catalogues.add("ru", {"gui": {"READ_TAB": "Чтение {oops}"}})
+    i18n.set_language("ru")
+    try:
+        with pytest.raises(KeyError, match="gui.READ_TAB"):
+            text.READ_TAB  # noqa: B018
+    finally:
+        i18n.set_language("en")
+
+
+def test_a_broken_name_translation_names_its_key(catalogues):
+    from optar import i18n
+
+    catalogues.add("ru", {"gui": {"button": {"ok": "ОК {oops}"}}})
+    i18n.set_language("ru")
+    try:
+        with pytest.raises(KeyError, match="gui.button.ok"):
+            text.button("ok")
+        assert text.button("odd") == "odd"  # a name the catalogues lack
+    finally:
+        i18n.set_language("en")
+
+
+def test_a_share_uses_the_languages_decimal_separator(catalogues):
+    from optar import i18n
+
+    catalogues.add("it", {"language": {"name": "Italiano"},
+                          "format": {"group": ".", "decimal": ","}})  # fmt: skip
+    i18n.set_language("it")
+    try:
+        line = text.detail_text(slow_page(1, 83, 1000), None, 1)[2]
+        assert "(8,3%)" in line
+    finally:
+        i18n.set_language("en")
+
+
+def test_error_text_shows_a_library_error_in_the_language(catalogues):
+    from optar import i18n
+    from optar.errors import OptarError, error
+
+    e = error(OptarError, "err.no_pages", "no pages to write")
+    assert text.error_text(e) == "no pages to write"
+    assert text.error_text(ValueError("x {y}")) == "x {y}"
+    catalogues.add("ru", {"err": {"no_pages": "нет страниц"}})
+    i18n.set_language("ru")
+    try:
+        assert text.error_text(e) == "нет страниц"
+    finally:
+        i18n.set_language("en")
+
+
 def test_untrusted_names_with_braces():
     assert text.saved_message("/x/{0}.bin", 5) == "Saved 5 bytes to {0}.bin"
     assert "{name}.png" in text.assign_prompt("{name}.png")

@@ -140,6 +140,19 @@ def name_and_separator_problems(catalogue: dict, code: str | None = None) -> lis
     return problems
 
 
+DECIMALS = (".", ",")
+
+
+def decimal_problems(catalogue: dict) -> list[str]:
+    """``[format].decimal`` is a decimal mark that is not the thousands separator."""
+    decimal = catalogue.get("format.decimal")
+    if decimal not in DECIMALS:
+        return [f"[format].decimal is {decimal!r}, not one of {DECIMALS}"]
+    if decimal == catalogue.get("format.group"):
+        return [f"[format].decimal is the same as [format].group ({decimal!r})"]
+    return []
+
+
 # --- Every function of text.py answers ---------------------------------------------
 
 A = "0-65-93-24-3-1-2-24"
@@ -172,6 +185,7 @@ def _unwrapped(**kw):
 
 def _object_examples() -> dict[str, list]:
     """Representative inputs, by the annotation of the parameter that takes them."""
+    from optar.errors import Grouped, OptarError, error
     from optar.format import LAYOUTS
     from optar.tag import make_tag
     from optar_gui.document import (
@@ -248,6 +262,14 @@ def _object_examples() -> dict[str, list]:
         ],
         "Layout|None": [None, LAYOUTS[("a4", "standard")]],
         "Summary|None": [None, summaries[3]],
+        "BaseException": [
+            ValueError("boom {braces}"),
+            error(OptarError, "err.cannot_read", "cannot read {path}: {reason}",
+                  path="/x/{y}.png", reason="No such file or directory"),  # fmt: skip
+            error(OptarError, "err.image_too_large", "cannot read image {path}: {pixels} "
+                  "pixels is more than the {limit} a scan may have", path="/x/a.png",
+                  pixels=Grouped(123_456_789), limit=Grouped(100_000_000)),  # fmt: skip
+        ],
     }
 
 
@@ -420,6 +442,11 @@ def test_language_name_and_group_separator(code):
 
 
 @pytest.mark.parametrize("code", LANGUAGES)
+def test_decimal_separator(code):
+    assert not decimal_problems(i18n.catalogue(code))
+
+
+@pytest.mark.parametrize("code", LANGUAGES)
 def test_every_text_function_answers(code):
     assert not text_function_problems(code)
 
@@ -438,6 +465,7 @@ def test_english_passes_every_catalogue_check(english):
     assert not category_problems("en", english)
     assert not value_problems(english)
     assert not name_and_separator_problems(english)
+    assert not decimal_problems(english)
 
 
 def test_every_text_function_answers_in_english():
@@ -499,6 +527,14 @@ def test_language_name_and_separator_are_checked():
     assert name_and_separator_problems({"language.name": "X", "format.group": ";"})
     assert name_and_separator_problems({"language.name": "X"})
     assert name_and_separator_problems({})
+
+
+def test_the_decimal_separator_is_checked():
+    assert not decimal_problems({"format.group": ".", "format.decimal": ","})
+    assert not decimal_problems({"format.group": "\u00a0", "format.decimal": ","})
+    assert decimal_problems({"format.group": ","})
+    assert decimal_problems({"format.group": ",", "format.decimal": ","})
+    assert decimal_problems({"format.group": ".", "format.decimal": ";"})
 
 
 def test_each_language_must_use_its_own_group_separator():

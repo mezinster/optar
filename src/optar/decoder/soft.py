@@ -44,7 +44,7 @@ from optar.decoder import PageGrid, PageResult, PageStats, locate_page, page_to_
 from optar.decoder.filters import blur, minmax
 from optar.decoder.options import DecodeOptions
 from optar.decoder.sample import sample_bits
-from optar.errors import DecodeError, IdentifyError
+from optar.errors import DecodeError, IdentifyError, error
 from optar.fec import decode_symbols, encode_symbols
 from optar.format import Layout, PageFormat
 from optar.layout import channel_xy
@@ -287,7 +287,9 @@ class _Reader:
                 late.append(region)
         if late:
             if total_n < _MIN_FIT_DOTS:
-                raise DecodeError("too few known dots on the page to learn from")
+                raise error(
+                    DecodeError, "err.too_few_dots", "too few known dots on the page to learn from"
+                )
             weights = _solve(total_g, total_b, total_n)
             for region in late:
                 self._stop()
@@ -502,7 +504,7 @@ def identify_coarse(
     outlines = {r: identify._outline(identify._turn(image, r), options) for r in rotations}
     outline = next((c for r in rotations if (c := outlines[r]) is not None), None)
     if outline is None:
-        raise IdentifyError(identify.NO_PAGE)
+        raise error(IdentifyError, "err.no_page", "no page found")  # identify.NO_PAGE
     candidates = [
         (layout, rotation)
         for paper in identify._papers_by_shape(outline)
@@ -536,5 +538,7 @@ def identify_coarse(
             result=result, scan_dpi=identify.scan_dpi(grid, layout) / applied,
             reader="slow", enlarged=applied,
         )  # fmt: skip
-    raise IdentifyError(identify.LABEL_UNREADABLE, scan_dpi=identify._outline_dpi(outline))
+    unreadable = error(IdentifyError, "err.label_unreadable", "label unreadable")
+    unreadable.scan_dpi = identify._outline_dpi(outline)
+    raise unreadable  # identify.LABEL_UNREADABLE
 

@@ -12,11 +12,19 @@ import threading
 from collections.abc import Iterator
 from pathlib import Path
 
-from .errors import OptarError
+from .errors import OptarError, error
 
 
 def io_error(verb: str, path: str | os.PathLike, e: OSError) -> OptarError:
-    return OptarError(f"cannot {verb} {path}: {e.strerror or e}")
+    """``cannot read PATH: REASON`` (or write); the verb chooses the message key."""
+    reason = str(e.strerror or e)
+    if verb == "read":
+        return error(OptarError, "err.cannot_read", "cannot read {path}: {reason}",
+                     path=path, reason=reason)  # fmt: skip
+    if verb == "write":
+        return error(OptarError, "err.cannot_write", "cannot write {path}: {reason}",
+                     path=path, reason=reason)  # fmt: skip
+    return OptarError(f"cannot {verb} {path}: {reason}")
 
 
 # The umask can only be read by setting it; the lock keeps two threads from

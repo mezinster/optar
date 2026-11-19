@@ -436,7 +436,7 @@ def process_scan(
     try:
         image = read_scan(path)
     except OptarError as e:
-        return ScanWork(None, str(e), None, 0, None, (0, 0))
+        return ScanWork(None, text.error_text(e), None, 0, None, (0, 0))
     _check(cancelled)
     turn = _take_turn(image.size, cancelled)
 
@@ -463,7 +463,7 @@ def process_scan(
             size = _upright_size(image, 0)
             return ScanWork(None, reason, None, 0, None, size, scan_dpi=e.scan_dpi)
         except DecodeError as e:
-            return ScanWork(None, str(e), None, 0, None, _upright_size(image, 0))
+            return ScanWork(None, text.error_text(e), None, 0, None, _upright_size(image, 0))
         rotation = identity.rotation
         size = _upright_size(image, rotation)
         del image
@@ -490,7 +490,7 @@ def process_scan(
             try:
                 result = decode_located(grid, detail=True)
             except DecodeError as e:
-                return ScanWork(info, str(e), None, rotation, None, size, **found)
+                return ScanWork(info, text.error_text(e), None, rotation, None, size, **found)
             finally:
                 del grid
         else:
@@ -525,13 +525,13 @@ def process_unlabelled(
     try:
         image = read_scan(path)
     except OptarError as e:
-        return ScanWork(None, str(e), None, 0, None, (0, 0))
+        return ScanWork(None, text.error_text(e), None, 0, None, (0, 0))
     _check(cancelled)
     turn = _take_turn(image.size, cancelled)
     try:
         rotation, result = decode_unlabelled(image, fmt, detail=True)
     except DecodeError as e:
-        return ScanWork(None, str(e), None, 0, None, _upright_size(image, 0))
+        return ScanWork(None, text.error_text(e), None, 0, None, _upright_size(image, 0))
     finally:
         if turn:
             _LARGE_SCAN_TURN.release()

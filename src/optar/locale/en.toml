@@ -3,6 +3,7 @@ name = "English"
 
 [format]
 group = ","
+decimal = "."
 
 [cli]
 ACTUAL_SIZE = 'Print at actual size (100%), not "fit to page".'
@@ -28,6 +29,7 @@ gap = "optar: {missing} is missing but {existing} exists"
 page_stats = "page {number}: {symbols}, {corrected}, {uncorrectable}"
 force_advice = "--force saves what was recovered, which may be damaged."
 dot_need = "{name} {dpi}"
+in_scan = "{name}: {message}"
 
 [cli.wrote_pdf]
 one = "wrote {path} ({count} page)"
@@ -158,6 +160,56 @@ decode_output = "output file (default: stdout)"
 debug_images = "write BASE_NNNN_debug.png"
 force = "save what was recovered of self-identifying pages even if it did not verify"
 no_slow_reader = "do not try the slower reader on scans the ordinary reader cannot identify"
+
+# Library errors (optar.errors): each entry is the English text of the error,
+# word for word; a test compares them with the code.
+[err]
+cannot_read = "cannot read {path}: {reason}"
+cannot_write = "cannot write {path}: {reason}"
+unknown_paper = "unknown paper {name}; known: {known}"
+unknown_dots = "unknown dot size {name}; known: {known}"
+format_syntax = "page format must be eight dash-separated integers: {text}"
+label_band = "label band must be {rows} rows, not {height}"
+label_font = "cannot read a label band of {height} rows; the font is {rows}"
+too_many_pages = "too many pages: {total} needed, at most {limit}"
+too_large_to_protect = "too large to protect: {size} bytes on paper, at most {limit}"
+unknown_parity = "parity must be one of {known}, not {parity}"
+format_too_small = "page format {format} is too small for the container"
+format_cannot_end = "page format {format} cannot end a stream on a page"
+impossible_document = "the pages describe a document that cannot exist: {total} pages for a file of {size} bytes"
+image_too_large = "cannot read image {path}: {pixels} pixels is more than the {limit} a scan may have"
+image_size_changed = "cannot read image {path}: image size changed while loading"
+not_an_image = "cannot read image {path}: not a {formats} image"
+image_unreadable = "cannot read image {path}: {reason}"
+no_page = "no page found"
+label_unreadable = "label unreadable"
+scan_not_grey = "scan must be a 2-D uint8 grey image, got shape {shape} dtype {dtype}"
+scan_empty = "scan is empty"
+scan_too_small = "scan of {width} x {height} pixels is smaller than the page format's {page_width} x {page_height}"
+corners_coincide = "page corners are degenerate (they coincide)"
+page_too_small = "page found in the scan is too small to locate its crosses"
+too_few_dots = "too few known dots on the page to learn from"
+page_size = "a {width} x {height} pixel page is not the {page_width} x {page_height} pixel page of the {dots} dot layout on {paper} paper"
+page_clipped = "a {width} x {height} pixel page leaves less than the {margin} pt margin on {paper} paper and would be clipped by the printer"
+strip_needs_layout = "a label strip needs the layout of its page"
+strip_too_large = "a {width} x {height} label strip does not fit the label band of the {dots} dot layout"
+no_pages = "no pages to write"
+
+[err.invalid_format]
+version = "invalid page format: version must be 0"
+fec_order = "invalid page format: fec_order must be 1..5"
+xcrosses = "invalid page format: xcrosses must be >= 2"
+ycrosses = "invalid page format: ycrosses must be >= 2"
+chalf = "invalid page format: chalf must be >= 1"
+cpitch = "invalid page format: cpitch must exceed 2*chalf"
+border = "invalid page format: border must be >= 1"
+text_height = "invalid page format: text_height must be >= 1"
+
+[err.no_corner]
+upper_left = "cannot find upper left corner"
+upper_right = "cannot find upper right corner"
+lower_left = "cannot find lower left corner"
+lower_right = "cannot find lower right corner"
 
 [count.page]
 one = "{n} page"

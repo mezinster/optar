@@ -25,6 +25,7 @@ from functools import partial
 from PySide6.QtCore import QEventLoop, QObject, Qt, QThreadPool, QTimer, Signal
 
 from optar.errors import OptarError
+from optar_gui import text
 from optar_gui.work import Cancelled
 
 __all__ = ["JobRunner", "default_max_workers"]
@@ -40,10 +41,17 @@ def default_max_workers() -> int:
 
 
 def _one_line(e: BaseException) -> str:
-    text = next((line.strip() for line in str(e).splitlines() if line.strip()), "")
-    if isinstance(e, OptarError) and text:
-        return text
-    return f"{type(e).__name__}: {text}" if text else type(e).__name__
+    """The first line of an error's message, an optar error's in the window's language."""
+    message = str(e)
+    if isinstance(e, OptarError):
+        try:
+            message = text.error_text(e)
+        except KeyError:  # a broken translation: logged, and the English shown
+            log.exception("the message of %r could not be translated", e)
+    line = next((line.strip() for line in message.splitlines() if line.strip()), "")
+    if isinstance(e, OptarError) and line:
+        return line
+    return f"{type(e).__name__}: {line}" if line else type(e).__name__
 
 
 class _Job:

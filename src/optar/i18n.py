@@ -10,6 +10,8 @@ import tomllib
 from collections.abc import Iterable
 from importlib import resources
 
+from .errors import Grouped
+
 ORDER: tuple[str, ...] = ("en", "ru", "uk", "be", "pl", "ka", "tr", "it", "es")
 
 _CATEGORIES = {
@@ -135,14 +137,41 @@ def t(key: str, /, **values: object) -> str:
     return _fill(entry, key, code, values)
 
 
-def number(value: int) -> str:
-    group = ","
+def _format_entry(name: str, default: str) -> str:
+    """The ``[format]`` entry ``name`` of the current language, else English's."""
     for code in (_current, "en"):
         flat = _load(code)
-        if flat is not None and "format.group" in flat:
-            group = flat["format.group"]
-            break
-    return f"{value:,}".replace(",", group)
+        if flat is not None and f"format.{name}" in flat:
+            return flat[f"format.{name}"]
+    return default
+
+
+def number(value: int) -> str:
+    return f"{value:,}".replace(",", _format_entry("group", ","))
+
+
+def decimal(value: float, places: int) -> str:
+    """``value`` with ``places`` decimals, in the language's decimal separator
+    (and its thousands separator, as ``number``)."""
+    marks = {ord(","): _format_entry("group", ","), ord("."): _format_entry("decimal", ".")}
+    return f"{value:,.{places}f}".translate(marks)
+
+
+def error_text(e: BaseException) -> str:
+    """A library error's message in the current language: the catalogue's entry
+    for its key (``optar.errors``) filled with its values, else ``str(e)``."""
+    key = getattr(e, "key", None)
+    if key is None:
+        return str(e)
+    try:
+        entry, code = _lookup(key)
+    except KeyError:
+        return str(e)
+    if isinstance(entry, dict):
+        return str(e)
+    given = getattr(e, "values", {})
+    values = {k: number(v) if isinstance(v, Grouped) else v for k, v in given.items()}
+    return _fill(entry, key, code, values)
 
 
 def n(key: str, count: int, /, **values: object) -> str:

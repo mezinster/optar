@@ -26,7 +26,7 @@ from optar.container import (
 )
 from optar.decoder import BitPacker, decode_pages
 from optar.encoder import check_encodable, encode
-from optar.errors import DecodeError, FormatError, IdentifyError, OptarError
+from optar.errors import DecodeError, FormatError, IdentifyError, OptarError, keyed
 from optar.fileio import io_error, replacing
 from optar.font import fine_label
 from optar.format import DOT_SIZES, PAPERS, PARITY, Layout, PageFormat, Paper, get_layout
@@ -309,7 +309,7 @@ def _probe(path: str, slow: bool = True) -> ScanIdentity | str:
     try:
         image = read_scan(path)
     except OptarError as e:
-        return _t("cli.probe.unread", detail=str(e))
+        return _t("cli.probe.unread", detail=i18n.error_text(e))
     try:
         return identify_any(
             image,
@@ -317,9 +317,9 @@ def _probe(path: str, slow: bool = True) -> ScanIdentity | str:
             on_slow=lambda: _eprint(_t("cli.slow_reader", name=os.path.basename(path))),
         )
     except IdentifyError as e:
-        return _unidentified(e.reason, e.scan_dpi, e.slow_tried)
+        return _unidentified(i18n.error_text(e), e.scan_dpi, e.slow_tried)
     except DecodeError as e:
-        return _t("cli.probe.unidentified", detail=str(e))
+        return _t("cli.probe.unidentified", detail=i18n.error_text(e))
 
 
 def _document_key(ident: ScanIdentity) -> tuple:
@@ -539,7 +539,9 @@ def _decode(args: argparse.Namespace) -> int:
                 _save_debug_image(f"{args.base}_{number:04d}_debug.png", result.debug_image)
     except DecodeError as e:
         page = e.page or len(chunks) + 1
-        raise DecodeError(f"{scan_name(page)}: {e}", page=page) from e
+        named = DecodeError(f"{scan_name(page)}: {e}", page=page)
+        values = {"name": scan_name(page), "message": i18n.error_text(e)}
+        raise keyed(named, "cli.in_scan", values) from e
 
     if not chunks:
         raise OptarError(_t("cli.cannot_open", path=f"{args.base}_0001.png"))
@@ -573,7 +575,7 @@ def _run(argv: list[str] | None) -> int:
     try:
         return _encode(args) if args.command == "encode" else _decode(args)
     except OptarError as e:
-        message = str(e)
+        message = i18n.error_text(e)
         if isinstance(e, DecodeError):
             _eprint(_t("cli.line_hint", message=message.rstrip("."), hint=_t("cli.PAPER_HINT")))
         else:
