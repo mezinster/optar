@@ -14,9 +14,11 @@ __all__ = ["main"]
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="optar-gui", description=text.cli_description()
-    )
+    # The parser of optar's own --help, which words usage, headings and errors
+    # from the catalogue. Imported here, as choose_language is (in _main).
+    from optar.cli import Parser
+
+    parser = Parser(prog="optar-gui", description=text.cli_description())
     parser.add_argument("--version", action="store_true", help=text.cli_version_help())
     parser.add_argument("--self-test", action="store_true", help=argparse.SUPPRESS)
     return parser

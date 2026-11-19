@@ -15,6 +15,35 @@ def test_version_and_bad_arguments(capsys):
     assert "--no-such-option" in capsys.readouterr().err
 
 
+def test_help_is_worded_by_the_catalogue(catalogues, monkeypatch, capsys):
+    """optar-gui --help says usage, headings and -h in the chosen language, as optar
+    --help does; a bare % in a translation (argparse expands it) is shown as it is."""
+    catalogues.add("ru", {
+        "language": {"name": "Русский"},
+        "cli": {"argparse": {"usage": "использование: ", "options": "параметры",
+                             "help": "показать справку"}},
+        "gui": {"cli": {"description": "описание", "version_help": "версия на 100%"}},
+    })  # fmt: skip
+    monkeypatch.setenv("OPTAR_LANG", "ru")
+    assert entry.main(["--help"]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith("использование: optar-gui [-h] [--version]\n")
+    assert "\nпараметры:\n" in out and "показать справку" in out
+    assert "описание" in out and "версия на 100%" in out
+    assert "usage" not in out and "options:" not in out
+
+
+def test_help_and_bad_arguments_survive_a_windowed_build_with_no_stdout_or_stderr(
+    catalogues, monkeypatch
+):
+    catalogues.add("ru", {"language": {"name": "Русский"}})
+    monkeypatch.setenv("OPTAR_LANG", "ru")
+    monkeypatch.setattr(sys, "stdout", None)
+    monkeypatch.setattr(sys, "stderr", None)
+    assert entry.main(["--help"]) == 0
+    assert entry.main(["--no-such-option"]) == 2
+
+
 def test_missing_pyside6_says_how_to_get_it(capsys, monkeypatch):
     monkeypatch.setitem(sys.modules, "PySide6", None)  # as if it were not installed
     assert entry.main([]) == 2

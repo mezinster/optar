@@ -64,11 +64,10 @@ def _n(key: str, count: int, /, **values: object) -> str:
 
 
 def _listing(key: str, count: int, /, **values: object) -> str:
-    """An entry about a list of ``count`` pages: its ``single`` form when the list
-    names exactly one page, else its ``several`` form. Not a plural rule: in some
-    languages the plural form for 1 also serves 21, which a list of 21 pages must
-    not take."""
-    return _t(f"{key}.{'single' if count == 1 else 'several'}", **values)
+    """An entry about a list of ``count`` pages (``i18n.listing``)."""
+    from optar import i18n
+
+    return i18n.listing(key, count, **values)
 
 
 def _num(value: int) -> str:

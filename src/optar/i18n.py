@@ -182,6 +182,14 @@ def n(key: str, count: int, /, **values: object) -> str:
     return _fill(entry, key, code, {"n": number(count), "count": count, **values})
 
 
+def listing(key: str, count: int, /, **values: object) -> str:
+    """An entry about a list of ``count`` pages: its ``single`` form when the list
+    names exactly one page, else its ``several`` form. Not a plural rule: in some
+    languages the plural form for 1 also serves 21, which a list of 21 pages must
+    not take."""
+    return t(f"{key}.{'single' if count == 1 else 'several'}", **values)
+
+
 def pick_language(candidates: Iterable[str | None]) -> str | None:
     """The first candidate (such as ``ru_RU.UTF-8``) that names a language present."""
     present = languages()

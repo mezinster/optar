@@ -521,6 +521,9 @@ def test_empty_values_and_braces_are_reported():
     assert not value_problems({"a": "fine {name}", "b": {"one": "{n} x", "other": "{n} y"}})
     assert not value_problems({"format.group": " "})  # a space is a separator
     assert value_problems({"format.group": ""}) and value_problems({"other": " "})
+    # Only one separator character may be blank: two spaces or a tab are not one.
+    assert value_problems({"format.group": "  "})
+    assert value_problems({"format.group": "\t"})
 
 
 def test_language_name_and_separator_are_checked():
@@ -529,6 +532,8 @@ def test_language_name_and_separator_are_checked():
     assert name_and_separator_problems({"language.name": "", "format.group": ","})
     assert name_and_separator_problems({"format.group": ","})
     assert name_and_separator_problems({"language.name": "X", "format.group": ";"})
+    assert name_and_separator_problems({"language.name": "X", "format.group": "  "})
+    assert name_and_separator_problems({"language.name": "X", "format.group": "\t"})
     assert name_and_separator_problems({"language.name": "X"})
     assert name_and_separator_problems({})
 

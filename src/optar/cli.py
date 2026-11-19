@@ -49,13 +49,7 @@ COARSE_DPI = 400
 
 _t = i18n.t
 _n = i18n.n
-
-
-def _listing(key: str, count: int, /, **values: object) -> str:
-    """An entry about a list of ``count`` pages: its ``single`` form when the list
-    names exactly one page, else its ``several`` form (not a plural rule, whose
-    form for 1 may also serve 21)."""
-    return _t(f"{key}.{'single' if count == 1 else 'several'}", **values)
+_listing = i18n.listing
 
 
 def _help(key: str) -> str:
@@ -104,9 +98,10 @@ class _Formatter(argparse.HelpFormatter):
         )
 
 
-class _Parser(argparse.ArgumentParser):
+class Parser(argparse.ArgumentParser):
     """An ArgumentParser that says its own words (usage, headings, errors) in the
-    chosen language. The words argparse builds inside its messages stay English."""
+    chosen language. The words argparse builds inside its messages stay English.
+    ``optar-gui`` uses it for its own ``--help`` too."""
 
     def __init__(self, *args, **kwargs):
         kwargs.pop("add_help", None)
@@ -128,7 +123,7 @@ class _Parser(argparse.ArgumentParser):
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = _Parser(prog="optar", description=_t("cli.description"))
+    parser = Parser(prog="optar", description=_t("cli.description"))
     parser.add_argument(
         "--version",
         action="version",

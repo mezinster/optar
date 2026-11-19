@@ -123,6 +123,19 @@ def test_present_key_wins_and_plurals_use_the_language(catalogues):
     assert i18n.language() == "ru"
 
 
+def test_a_page_list_takes_single_only_for_exactly_one_page(catalogues):
+    """``listing`` is not a plural rule: in Russian the plural form for 1 also serves 21,
+    a list of 21 pages takes ``several``."""
+    catalogues.add("ru", {
+        "language": {"name": "Русский"},
+        "x": {"pages": {"single": "страница {pages}", "several": "страницы {pages}"}},
+    })
+    i18n.set_language("ru")
+    assert i18n.listing("x.pages", 1, pages="3") == "страница 3"
+    assert i18n.listing("x.pages", 21, pages="1–21") == "страницы 1–21"
+    assert i18n.listing("x.pages", 2, pages="3, 4") == "страницы 3, 4"
+
+
 def test_unknown_key_raises():
     with pytest.raises(KeyError):
         i18n.t("no.such.key")

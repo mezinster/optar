@@ -1200,3 +1200,15 @@ def test_a_sentence_ends_with_the_languages_full_stop(catalogues):
         assert rejected.endswith("page 2. Nope!")  # already a sentence: not stopped twice
     finally:
         i18n.set_language("en")
+
+
+def test_the_version_help_escapes_a_bare_percent_for_argparse(catalogues):
+    from optar import i18n
+
+    catalogues.add("ru", {"gui": {"cli": {"version_help": "100%"}}})
+    i18n.set_language("ru")
+    try:
+        assert text.cli_version_help() == "100%%"
+    finally:
+        i18n.set_language("en")
+    assert text.cli_version_help() == "print the version and exit"
