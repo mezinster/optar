@@ -1,0 +1,765 @@
+# Беларускі каталог optar. Ключы, парадак і каментарыі — як у en.toml (каментарыі на англійскай: яны для перакладчыкаў); тэрміны — паводле docs/superpowers/glossaries/be.md.
+
+[language]
+name = "Беларуская"
+
+[format]
+group = " "
+decimal = ","
+
+[cli]
+ACTUAL_SIZE = "Друкуйце ў натуральную велічыню (100%), а не «Па памеры старонкі»."
+PAPER_HINT = "Пераканайцеся, што --paper адпавядае раздрукоўцы і што старонка адсканавана ў прамым становішчы (не павернута)."
+description = "Захоўванне файлаў на паперы."
+after_encoding = "{actual_size} Скануйце з раздзяляльнасцю {dpi} dpi."
+or_two = "{first} або {second}"
+list_separator = ", "
+sentences = "{first} {second}"
+wrote = "запісаны файл {path}"
+format_does_not_fit = "фармат {format} не змяшчаецца на паперы {paper}"
+cannot_open = "не ўдаецца адкрыць {path}"
+line = "optar: {message}"
+line_hint = "optar: {message}. {hint}"
+os_error = "optar: {reason}"
+os_error_file = "optar: {file}: {reason}"
+compatible_conflict = "--compatible нельга выкарыстоўваць разам з {options}"
+format_conflict = "--format нельга выкарыстоўваць разам з {options}"
+slow_reader = "optar: {name}: звычайны метад чытання не змог прачытаць даныя гэтага скана; запускаецца павольны метад, гэта зойме каля хвіліны"
+debug_images_unavailable = "optar: параметр --debug-images недаступны для самаапазнавальных старонак"
+force_no_effect = "optar: параметр --force не дзейнічае на раздрукоўкі версіі 0.2.0 і больш ранніх"
+gap = "optar: няма файла {missing}, хоць файл {existing} ёсць"
+page_stats = "старонка {number}: {symbols}, {corrected}, {uncorrectable}"
+force_advice = "--force захоўвае тое, што ўдалося аднавіць, але яно можа быць пашкоджана."
+dot_need = "{name} — {dpi}"
+in_scan = "{name}: {message}"
+
+[cli.wrote_pdf]
+one = "запісаны файл {path} ({count} старонка)"
+few = "запісаны файл {path} ({count} старонкі)"
+many = "запісаны файл {path} ({count} старонак)"
+
+[cli.dot_name]
+standard = "стандартныя"
+medium = "сярэднія"
+big = "вялікія"
+large = "буйныя"
+xlarge = "вельмі буйныя"
+
+[cli.protection]
+nothing = "Узровень абароны {level}: нічога не выпраўляецца; калі старонка страчана або пашкоджана, губляецца частка файла."
+within = "Узровень абароны {level}: пашкоджанні ўнутры старонак выпраўляюцца, але страчаную старонку аднавіць нельга."
+
+[cli.protection.lose]
+one = "Узровень абароны {level}: можна страціць {count} старонку з {total} і ўсё роўна аднавіць файл."
+few = "Узровень абароны {level}: можна страціць {count} старонкі з {total} і ўсё роўна аднавіць файл."
+many = "Узровень абароны {level}: можна страціць {count} старонак з {total} і ўсё роўна аднавіць файл."
+
+[cli.scan]
+missing = "optar: {name}: {reason}; старонка лічыцца адсутнай."
+page = "{name}: старонка {page} з {total}{note}"
+page_again_better = "{name}: зноў старонка {page} з {total}{note}; выкарыстоўваецца лепшы скан"
+page_again_earlier = "{name}: зноў старонка {page} з {total}{note}; выкарыстоўваецца больш ранні скан"
+note_slow = " (прачытана павольным метадам)"
+
+[cli.probe]
+unread = "не ўдалося прачытаць ({detail})"
+unidentified = "скан не апазнаны ({detail})"
+coarse = "скан не апазнаны ({detail}); яго раздзяляльнасць — каля {dpi} dpi, а для памераў кропак патрэбна: {needs}"
+coarse_tried = "скан не апазнаны ({detail}); яго раздзяляльнасць — каля {dpi} dpi (павольны метад таксама быў выпрабаваны), а для памераў кропак патрэбна: {needs}"
+
+[cli.scan.note_unreadable]
+one = ", {count} байт не чытаецца"
+few = ", {count} байты не чытаюцца"
+many = ", {count} байтаў не чытаюцца"
+
+[cli.scan.ignored]
+one = "optar: прапушчаны {count} скан іншага дакумента: {names}"
+few = "optar: прапушчаны {count} сканы іншага дакумента: {names}"
+many = "optar: прапушчана {count} сканаў іншага дакумента: {names}"
+
+[cli.summary]
+too_many_missing = "адсутнічае занадта шмат старонак, каб выправіць файл"
+worst = "у найгоршым кодавым слове выкарыстана {used} з {budget}"
+none_missing = "адсутных старонак няма"
+separator = "; "
+line = "optar: {summary}"
+
+[cli.summary.repaired]
+one = "выпраўлены {count} байт"
+few = "выпраўлены {count} байты"
+many = "выпраўлена {count} байтаў"
+
+[cli.summary.blocks_failed]
+one = "{count} блок не ўдалося выправіць"
+few = "{count} блокі не ўдалося выправіць"
+many = "{count} блокаў не ўдалося выправіць"
+
+# {list} is a list of page numbers ("3", "2, 5, 7"). The two forms are chosen by
+# whether the list names exactly one page (single) or more (several), not by a
+# plural rule: in some languages the "one" form also serves 21, 31 and so on.
+[cli.summary.missing]
+single = "няма старонкі {list}"
+several = "няма старонак {list}"
+
+[cli.too_few.read]
+one = "optar: файл не ўдалося выправіць, і ён не захаваны: прачытана толькі {read} з {count} старонкі."
+few = "optar: файл не ўдалося выправіць, і ён не захаваны: прачытана толькі {read} з {count} старонак."
+many = "optar: файл не ўдалося выправіць, і ён не захаваны: прачытана толькі {read} з {count} старонак."
+
+# {list}: the missing pages; single when it names exactly one page, several when more.
+# {fraction}: a number (2: "one page in 2").
+[cli.too_few.rescan]
+single = "Адскануйце старонку {list} і паўтарыце раскадаванне; --force нічога не захоўвае, калі прачытана менш за адну старонку з кожных {fraction}."
+several = "Адскануйце старонкі {list} і паўтарыце раскадаванне; --force нічога не захоўвае, калі прачытана менш за адну старонку з кожных {fraction}."
+
+[cli.verified]
+one = "optar: файл правераны ({count} байт)"
+few = "optar: файл правераны ({count} байты)"
+many = "optar: файл правераны ({count} байтаў)"
+
+[cli.force_saved]
+unrepaired = "optar: файл не ўдалося выправіць: ён не прайшоў праверку і можа быць пашкоджаны. Усё роўна захаваны праз --force."
+mismatch = "optar: файл не супадае са сваім адбіткам: ён не прайшоў праверку і можа быць пашкоджаны. Усё роўна захаваны праз --force."
+
+[cli.not_saved]
+unrepaired = "optar: файл не ўдалося выправіць, і ён не захаваны. {advice}"
+mismatch = "optar: файл не супадае са сваім адбіткам і не захаваны. {advice}"
+
+# {list}: pages to rescan; single when it names exactly one page, several when more.
+# {force}: the sentence cli.force_advice.
+[cli.rescan_advice]
+single = "Адскануйце нанова старонку {list} і паўтарыце раскадаванне; {force}"
+several = "Адскануйце нанова старонкі {list} і паўтарыце раскадаванне; {force}"
+
+[cli.list_more]
+one = "(яшчэ {count})"
+few = "(яшчэ {count})"
+many = "(яшчэ {count})"
+
+[cli.stat_symbols]
+one = "{count} сімвал"
+few = "{count} сімвалы"
+many = "{count} сімвалаў"
+
+[cli.stat_corrected]
+one = "скарэкціравана: {count}"
+few = "скарэкціравана: {count}"
+many = "скарэкціравана: {count}"
+
+[cli.stat_uncorrectable]
+one = "невыпраўных: {count}"
+few = "невыпраўных: {count}"
+many = "невыпраўных: {count}"
+
+[cli.uncorrectable_codewords]
+one = "optar: {count} невыпраўнае кодавае слова. {hint}"
+few = "optar: {count} невыпраўныя кодавыя словы. {hint}"
+many = "optar: {count} невыпраўных кодавых слоў. {hint}"
+
+[cli.argparse]
+usage = "выкарыстанне: "
+positionals = "пазіцыйныя аргументы"
+options = "параметры"
+error = "{prog}: памылка: {message}"
+help = "паказаць гэту даведку і выйсці"
+version = "паказаць нумар версіі праграмы і выйсці"
+
+[cli.help]
+paper = "памер паперы (па змаўчанні: a4)"
+format = "задаць фармат старонкі замест звычайнага"
+encode = "закадаваць файл у старонкі для друку"
+input = "файл, які трэба закадаваць"
+output = "базавая назва выхадных файлаў (па змаўчанні: optar_out)"
+to = "тып выніку: адзін PDF (па змаўчанні) або файлы старонак PNG ці PGM"
+label = "тэкст, які друкуецца на кожнай старонцы (па змаўчанні: назва файла, зададзеная ў -o)"
+no_tag = "не дадаваць у надпісы старонак пазнаку з памерам, адбіткам і кантрольным значэннем"
+dots = "памер кропак (па змаўчанні: standard). Любы памер, акрамя standard, дае самаапазнавальныя старонкі з абаронай узроўню standard, калі --protect не задае іншы ўзровень"
+protect = "даныя для выпраўлення, размеркаваныя па ўсім дакуменце; дае самаапазнавальныя старонкі з кропкамі памеру standard, калі --dots не задае іншы памер. Значэнне «none» дае самаапазнавальныя старонкі без абароны. Без --dots і --protect старонкі атрымліваюцца сумяшчальнымі і без абароны"
+compatible = "старонкі, якія чытаюць optar 0.2 і праграма на C (па змаўчанні, калі няма --dots і --protect)"
+decode = "раскадаваць адсканаваныя старонкі назад у файл"
+base = "сканы: BASE_0001.png, BASE_0002.png і г. д."
+decode_output = "выхадны файл (па змаўчанні: stdout)"
+debug_images = "запісаць BASE_NNNN_debug.png"
+force = "захаваць тое, што ўдалося аднавіць з самаапазнавальных старонак, нават калі файл не прайшоў праверку"
+no_slow_reader = "не спрабаваць чытаць павольным метадам сканы, якія звычайны метад не можа апазнаць"
+
+# Library errors (optar.errors): each entry is the English text of the error,
+# word for word; a test compares them with the code.
+[err]
+cannot_read = "не ўдаецца прачытаць {path}: {reason}"
+cannot_write = "не ўдаецца запісаць {path}: {reason}"
+unknown_paper = "невядомая папера {name}; вядомыя: {known}"
+unknown_dots = "невядомы памер кропак {name}; вядомыя: {known}"
+format_syntax = "фармат старонкі павінен складацца з васьмі цэлых лікаў праз злучок: {text}"
+label_band = "няправільная вышыня паласы надпісу: {height} замест {rows} (у радках пікселяў)"
+label_font = "не ўдаецца прачытаць паласу надпісу вышынёй {height}: вышыня шрыфту — {rows} (у радках пікселяў)"
+too_many_pages = "занадта шмат старонак: трэба {total}, дапускаецца не больш за {limit}"
+too_large_to_protect = "файл занадта вялікі для абароны: памер на паперы ў байтах — {size}, дапускаецца не больш за {limit}"
+unknown_parity = "цотнасць павінна быць адным са значэнняў {known}, а не {parity}"
+format_too_small = "фармат старонкі {format} занадта малы для кантэйнера"
+format_cannot_end = "фармат старонкі {format} не дазваляе скончыць паток на старонцы"
+impossible_document = "старонкі апісваюць немагчымы дакумент: старонак — {total}, а памер файла ў байтах — {size}"
+image_too_large = "не ўдаецца прачытаць выяву {path}: пікселяў у ёй {pixels}, а ў скане дапускаецца не больш за {limit}"
+image_size_changed = "не ўдаецца прачытаць выяву {path}: памер выявы змяніўся падчас загрузкі"
+not_an_image = "не ўдаецца прачытаць выяву {path}: гэта не выява {formats}"
+image_unreadable = "не ўдаецца прачытаць выяву {path}: {reason}"
+no_page = "старонка не знойдзена"
+label_unreadable = "надпіс не чытаецца"
+scan_not_grey = "скан павінен быць двухмернай выявай у адценнях шэрага тыпу uint8, а атрымана форма {shape}, тып {dtype}"
+scan_empty = "скан пусты"
+scan_too_small = "скан {width} × {height} пікс. меншы за старонку гэтага фармату ({page_width} × {page_height})"
+corners_coincide = "вуглы старонкі выраджаныя (супадаюць)"
+page_too_small = "старонка, знойдзеная на скане, занадта малая, каб знайсці на ёй крыжы"
+too_few_dots = "на старонцы занадта мала вядомых кропак, каб наладзіцца па іх"
+page_size = "старонка {width} × {height} пікс. не супадае са старонкай {page_width} × {page_height} пікс. для памеру кропак {dots} на паперы {paper}"
+page_clipped = "старонка {width} × {height} пікс. пакідае на паперы {paper} поле менш за {margin} пт, і прынтар яе абрэжа"
+strip_needs_layout = "стужцы надпісу патрэбны макет яе старонкі"
+strip_too_large = "стужка надпісу {width} × {height} не змяшчаецца ў паласу надпісу макета з памерам кропак {dots}"
+no_pages = "няма старонак для запісу"
+
+[err.invalid_format]
+version = "няправільны фармат старонкі: значэнне version павінна быць 0"
+fec_order = "няправільны фармат старонкі: значэнне fec_order павінна быць ад 1 да 5"
+xcrosses = "няправільны фармат старонкі: значэнне xcrosses павінна быць >= 2"
+ycrosses = "няправільны фармат старонкі: значэнне ycrosses павінна быць >= 2"
+chalf = "няправільны фармат старонкі: значэнне chalf павінна быць >= 1"
+cpitch = "няправільны фармат старонкі: значэнне cpitch павінна быць больш за 2*chalf"
+border = "няправільны фармат старонкі: значэнне border павінна быць >= 1"
+text_height = "няправільны фармат старонкі: значэнне text_height павінна быць >= 1"
+
+[err.no_corner]
+upper_left = "не ўдаецца знайсці левы верхні вугал"
+upper_right = "не ўдаецца знайсці правы верхні вугал"
+lower_left = "не ўдаецца знайсці левы ніжні вугал"
+lower_right = "не ўдаецца знайсці правы ніжні вугал"
+
+[count.page]
+one = "{n} старонка"
+few = "{n} старонкі"
+many = "{n} старонак"
+
+[count.byte]
+one = "{n} байт"
+few = "{n} байты"
+many = "{n} байтаў"
+
+[count.block]
+one = "{n} блок"
+few = "{n} блокі"
+many = "{n} блокаў"
+
+[count.dot]
+one = "{n} кропка"
+few = "{n} кропкі"
+many = "{n} кропак"
+
+[count.scan]
+one = "{n} скан"
+few = "{n} сканы"
+many = "{n} сканаў"
+
+# --- The desktop window (src/optar_gui/text.py) ------------------------------------
+#
+# The window speaks of "protection", "repair" and the "fingerprint", never of parity,
+# codewords or headers. A "block" is one error-correction unit; blocks are "repaired"
+# or "lost". {pages} is a list of page numbers ("3", "2-4, 7 and 9"). An entry that
+# has it comes in two forms, chosen by whether the list names exactly one page
+# (single) or more (several); this is not a plural rule, so the "one" form of your
+# language (which may also serve 21, 31 and so on) plays no part in it.
+
+[gui]
+# The window, its tabs, buttons and dialogs.
+WINDOW_TITLE = "optar"
+READ_TAB = "Прачытаць з паперы"
+ADD_SCANS = "+ Дадаць сканы…"
+REMOVE_SCAN = "Прыбраць"
+SAVE_FILE = "Захаваць файл…"
+ADD_SCANS_TITLE = "Дадаць сканы"
+SAVE_TITLE = "Захаваць адноўлены файл"
+CONFIRM_SAVE_TITLE = "Усё роўна захаваць?"
+ERROR_TITLE = "Не ўдалося захаваць"
+# Titles of the sections of the list of scans.
+NOT_PART_OF_THIS_FILE = "Не належаць да гэтага файла"
+NOT_READABLE = "Не чытаюцца"
+BEING_READ_SECTION = "Чытаюцца"
+# The actions on the selected row and their dialogs.
+REPLACE_SCAN = "Замяніць скан…"
+USE_SPARE = "Узяць гэты скан"
+SWITCH_DOCUMENT = "Перайсці да гэтага дакумента"
+ASSIGN_PAGE = "Указаць старонку…"
+START_BY_HAND = "Сабраць дакумент уручную…"
+REPLACE_REJECTED_TITLE = "Скан не выкарыстаны"
+ASSIGN_TITLE = "Указаць старонку"
+PAGE_FIELD = "Старонка:"
+START_BY_HAND_TITLE = "Сабраць дакумент уручную"
+START_BY_HAND_PROMPT = "Ніводны скан не ўдалося апазнаць. Укажыце паперу і колькасць старонак раздрукоўкі, а потым — старонку для кожнага скана."
+TOTAL_FIELD = "Старонак:"
+# Asked when the window is closed while a file is being written.
+STILL_WRITING_TITLE = "Файл яшчэ запісваецца"
+STILL_WRITING = "Файл яшчэ запісваецца. Пачакаць, пакуль запіс скончыцца? Калі закрыць акно зараз, файл можа застацца незапісаным."
+# Why a save cannot start (programming errors, never shown in a dialog).
+SAVE_RUNNING = "захаванне ўжо ідзе"
+SAVE_AFTER_CLOSE = "акно закрыта, таму больш нічога захаваць нельга"
+# The "Put on paper" tab.
+WRITE_TAB = "Запісаць на паперу"
+FILE_FIELD = "Файл:"
+PAPER_FIELD = "Папера:"
+NAME_FIELD = "Назва:"
+PRINTS_AS_FIELD = "Друкуецца як:"
+DOTS_FIELD = "Памер кропак:"
+PROTECT_FIELD = "Абарона:"
+CHOOSE_FILE = "Выбраць…"
+CHOOSE_FILE_TITLE = "Выбраць файл для запісу на паперу"
+CREATE_PDF = "Стварыць PDF…"
+CREATE_TITLE = "Захаваць PDF"
+PDF_FILTER = "PDF (*.pdf);;Усе файлы (*)"
+PREPARING = "Чытанне файла…"
+CREATING = "Стварэнне PDF…"
+COMPATIBLE = "Сумяшчальнасць з optar 0.2 і першапачатковай праграмай optar"
+# Why a PDF is not created over the file being put on paper.
+DEST_IS_SOURCE = "PDF замяніў бы файл, які запісваецца на паперу; выберыце іншую назву"
+# After the pages and size of a protected file that may lose no whole page.
+DAMAGE_REPAIRED = "пашкоджанні ўнутры старонак выпраўляюцца, але калі страціць цэлую старонку, файл будзе страчаны"
+# What a document without a name is called.
+NO_NAME = "(без назвы)"
+# A document whose file was recovered and matches its fingerprint.
+VERIFIED = "Файл адноўлены і правераны"
+# The bottom bar while scans are being read and the document has nothing else to say.
+WORKING = "Апрацоўка…"
+# The bar while a document is repaired and checked in the background.
+REPAIRING = "Выпраўленне і звярка з адбіткам…"
+# Why a page whose data says it repairs itself gave no data to repair with.
+NO_PAGE_DATA = "Даныя гэтай старонкі не ўдалося прачытаць"
+PREVIEW_LOADING = "Загрузка…"
+# A scan the ordinary reader could not read, while the slower reader tries it.
+READING_COARSE = "Скан з нізкай раздзяляльнасцю чытаецца павольным метадам; гэта зойме каля хвіліны"
+# After "too coarse to read": the slower reader could not read the scan either.
+SLOW_TRIED = "Павольны метад для сканаў з нізкай раздзяляльнасцю таксама быў выпрабаваны, але і ён не змог прачытаць скан."
+# A page read by the slower reader: in its detail (made a sentence by "sentence"
+# below), and in its row.
+READ_SLOWLY = "Прачытана павольным метадам для сканаў з нізкай раздзяляльнасцю"
+READ_SLOWLY_ROW = "Прачытана павольным метадам"
+# The step of a scan not started yet.
+WAITING = "У чарзе"
+# The choice of language.
+LANGUAGE_MENU = "Мова"
+SYSTEM_LANGUAGE = "Як у сістэме"
+# A phrase made a sentence, where the window shows it as a line of its own after
+# others (a detail panel, a reason after "was not used"): {words} with the full
+# stop of your language. A phrase that already ends with it is shown as it is.
+sentence = "{words}."
+
+# The terminal messages of optar-gui.
+[gui.cli]
+missing_qt = "Для optar-gui патрэбны PySide6: выканайце pip install '.[gui]' у копіі зыходнага кода або спампуйце optar-gui з раздзела Releases праекта."
+description = "Запіс файлаў на паперу і чытанне іх з паперы."
+version_help = "паказаць версію і выйсці"
+
+[gui.button]
+ok = "Добра"
+cancel = "Скасаваць"
+save = "Захаваць"
+yes = "Так"
+no = "Не"
+
+# Paper names, by the paper's name in optar.format.
+[gui.paper]
+a4 = "A4"
+letter = "US Letter"
+
+# Dot sizes as their selector names them, by their names in optar.format.
+[gui.dots]
+standard = "Стандартныя"
+medium = "Сярэднія"
+big = "Вялікія"
+large = "Буйныя"
+xlarge = "Вельмі буйныя"
+
+# A paper printed with a dot size other than the standard one.
+[gui.paper_dots]
+standard = "{paper}, стандартныя кропкі"
+medium = "{paper}, сярэднія кропкі"
+big = "{paper}, вялікія кропкі"
+large = "{paper}, буйныя кропкі"
+xlarge = "{paper}, вельмі буйныя кропкі"
+
+[gui.protection]
+none = "Няма"
+standard = "Стандартная"
+high = "Высокая"
+
+# The health of a page, in its row.
+[gui.health]
+good = "У парадку"
+unreadable = "Не чытаецца"
+missing = "Адсутнічае"
+waiting = "У чарзе"
+working = "Апрацоўка…"
+
+# {n} blocks repaired.
+[gui.health.repaired]
+one = "Выпраўлена · {n}"
+few = "Выпраўлена · {n}"
+many = "Выпраўлена · {n}"
+
+# {n} blocks lost, which the document's protection repaired.
+[gui.health.restored]
+one = "Выпраўлена абаронай дакумента · {n}"
+few = "Выпраўлена абаронай дакумента · {n}"
+many = "Выпраўлена абаронай дакумента · {n}"
+
+# {n} blocks lost.
+[gui.health.damaged]
+one = "Пашкоджана · страчаны {n}"
+few = "Пашкоджана · страчаны {n}"
+many = "Пашкоджана · страчана {n}"
+
+# Of a page read by the slower reader.
+[gui.health.dots_corrected]
+one = "скарэкціравана {n} кропка"
+few = "скарэкціраваны {n} кропкі"
+many = "скарэкціравана {n} кропак"
+
+[gui.health.bytes_repaired]
+one = "выпраўлены {n} байт абаронай дакумента"
+few = "выпраўлены {n} байты абаронай дакумента"
+many = "выпраўлена {n} байтаў абаронай дакумента"
+
+# The document's state in the bottom bar. Phrases are joined with " · ".
+[gui.state]
+checking = "Звярка з адбіткам…"
+matches = "супадае з адбіткам"
+mismatch = "Не супадае з адбіткам на паперы"
+no_tag = "праверыць нельга (няма пазнакі)"
+# {advice}: rescan advice (whole sentences); {repair}: what the repair did.
+advice_with_repair = "{advice} ({repair})"
+# {good}: the "good" phrase below; {repaired}: the "repaired" phrase below.
+good_with_repaired = "{good} ({repaired})"
+
+# {pages}: the missing pages; single when it names exactly one page, several when more.
+[gui.state.recoverable]
+single = "Аднаўленне магчымае: няма старонкі {pages}, яе можна аднавіць па астатніх"
+several = "Аднаўленне магчымае: няма старонак {pages}, іх можна аднавіць па астатніх"
+
+[gui.state.recovered]
+single = "Аднаўленне магчымае: няма старонкі {pages}, яна адноўлена па астатніх"
+several = "Аднаўленне магчымае: няма старонак {pages}, яны адноўлены па астатніх"
+
+# Every page of a document without a tag is read: one page, or none.
+[gui.state.read]
+one = "Прачытана старонак: {n}"
+few = "Прачытана старонак: {n}"
+many = "Прачытана старонак: {n}"
+
+# Every page of a document without a tag is read: more than one.
+[gui.state.all_read]
+one = "Прачытаны ўсе старонкі: {n}"
+few = "Прачытаны ўсе старонкі: {n}"
+many = "Прачытаны ўсе старонкі: {n}"
+
+# {good} of {n} pages are good.
+[gui.state.good]
+one = "{good} з {n} старонкі ў парадку"
+few = "{good} з {n} старонак у парадку"
+many = "{good} з {n} старонак у парадку"
+
+# Of the good pages, {n} were repaired.
+[gui.state.repaired]
+one = "{n} выпраўлена"
+few = "{n} выпраўлены"
+many = "{n} выпраўлена"
+
+# {n} pages.
+[gui.state.slow]
+one = "{n} прачытана павольным метадам"
+few = "{n} прачытаны павольным метадам"
+many = "{n} прачытана павольным метадам"
+
+[gui.state.damaged]
+one = "{n} пашкоджана"
+few = "{n} пашкоджаны"
+many = "{n} пашкоджана"
+
+[gui.state.unreadable]
+one = "{n} не чытаецца"
+few = "{n} не чытаюцца"
+many = "{n} не чытаюцца"
+
+[gui.state.missing]
+one = "{n} адсутнічае"
+few = "{n} адсутнічаюць"
+many = "{n} адсутнічаюць"
+
+# A run of pages with the same problem, in a save warning: one page, two pages,
+# or the range {first} to {last} (written with the same range mark as gui.list.range).
+# Runs are joined with "; ".
+[gui.run.missing]
+single = "няма старонкі {first}"
+pair = "няма старонак {first} і {last}"
+range = "няма старонак {first}–{last}"
+
+[gui.run.damaged]
+single = "старонка {first} пашкоджана"
+pair = "старонкі {first} і {last} пашкоджаны"
+range = "старонкі {first}–{last} пашкоджаны"
+
+[gui.run.unreadable]
+single = "старонка {first} не чытаецца"
+pair = "старонкі {first} і {last} не чытаюцца"
+range = "старонкі {first}–{last} не чытаюцца"
+
+[gui.run.reading]
+single = "старонка {first} яшчэ чытаецца"
+pair = "старонкі {first} і {last} яшчэ чытаюцца"
+range = "старонкі {first}–{last} яшчэ чытаюцца"
+
+# What saving must confirm first.
+[gui.save]
+# {runs}: the runs above, then perhaps "more" below.
+incomplete = "Захаваны файл будзе няпоўным: {runs}."
+# {advice}: rescan advice (whole sentences).
+unrepaired = "{advice} Калі захаваць зараз, захаваецца толькі тое, што ўдалося аднавіць, і ў ім могуць быць няправільныя часткі."
+checking = "Звярка з адбіткам яшчэ ідзе, таму пакуль невядома, ці супадае адноўлены файл з арыгіналам."
+empty = "Няма чаго захоўваць."
+mismatch = "Адноўлены файл не супадае з адбіткам, надрукаваным на паперы: частка даных раскадавана няправільна, таму гэта не арыгінальны файл."
+by_hand = "Гэты дакумент сабраны ўручную, таму файл нельга праверыць, і ён будзе дапоўнены нулямі да цэлай старонкі."
+untagged = "На гэтых старонках няма пазнакі, таму файл нельга праверыць, і ён будзе дапоўнены нулямі да цэлай старонкі."
+
+# After the runs a save warning names: the pages it does not name.
+[gui.save.more]
+one = "і яшчэ {n} старонка адсутнічае або пашкоджана"
+few = "і яшчэ {n} старонкі адсутнічаюць або пашкоджаны"
+many = "і яшчэ {n} старонак адсутнічаюць або пашкоджаны"
+
+# The standing caution over a document without a tag.
+[gui.caution]
+untagged = "На гэтых старонках няма пазнакі, таму нельга пераканацца, што яны з адной раздрукоўкі і што файл поўны. Захаваны файл будзе дапоўнены нулямі."
+by_hand = "Гэты дакумент сабраны ўручную, таму нельга пераканацца, што старонкі з адной раздрукоўкі і што файл поўны. Захаваны файл будзе дапоўнены нулямі."
+
+# Why a scan is unreadable, by the reason the program gives.
+[gui.reason]
+no_page = "На гэтай выяве не знойдзена старонка optar"
+label_unreadable = "Не ўдалося прачытаць надпіс унізе старонкі"
+page_number = "Нумар старонкі ў надпісе не адпавядае гэтаму дакументу"
+page_count = "У надпісе ўказана немагчымая колькасць старонак"
+size_mismatch = "Гэты скан зроблены з паперы іншага памеру, чым у дакумента"
+format_mismatch = "Гэты скан раскадаваны для іншага памеру паперы, чым у дакумента"
+# A scan assigned to a page by hand that decodes badly whichever way up it is read.
+not_decodable = "Не ўдалося раскадаваць скан ні ў адной арыентацыі"
+
+# The detail panel of a page.
+[gui.detail]
+title = "Старонка {page} з {total}"
+repairs = "Выпраўленні: аднабітавых — {one}, двухбітавых — {two}, трохбітавых — {three}"
+missing = "Скан гэтай старонкі не дададзены"
+waiting = "У чарзе на чытанне"
+unreadable = "Гэты скан не ўдалося прачытаць"
+reading = "Чытаецца…"
+
+# After "{n} blocks": {n} of them repaired.
+[gui.detail.repaired]
+one = "{n} выпраўлены"
+few = "{n} выпраўлены"
+many = "{n} выпраўлена"
+
+[gui.detail.lost]
+one = "{n} страчаны"
+few = "{n} страчаны"
+many = "{n} страчана"
+
+[gui.detail.restored]
+one = "{n} выпраўлены абаронай дакумента"
+few = "{n} выпраўлены абаронай дакумента"
+many = "{n} выпраўлена абаронай дакумента"
+
+# Rows of the list of scans.
+[gui.row]
+page = "Старонка {page}"
+spare = "Запасны"
+# After the title of a spare's detail.
+spare_tag = "запасны"
+spare_not_in_use = "Не выкарыстоўваецца: для старонкі ўзяты іншы скан"
+
+# A group of scans of another printout.
+[gui.row.other_printout]
+one = "{n} скан іншай раздрукоўкі, не належыць да гэтага файла"
+few = "{n} сканы іншай раздрукоўкі, не належаць да гэтага файла"
+many = "{n} сканаў іншай раздрукоўкі, не належаць да гэтага файла"
+
+# Why a scan chosen to replace page {page} was not used. {name} is its file name.
+[gui.rejected]
+unusable = "Скан {name} не выкарыстаны для старонкі {page}: яго не ўдалося прачытаць, таму ў старонкі {page} застаецца ранейшы скан."
+unusable_reason = "Скан {name} не выкарыстаны для старонкі {page}: яго не ўдалося прачытаць ({reason}), таму ў старонкі {page} застаецца ранейшы скан."
+other_page = "Скан {name} не выкарыстаны для старонкі {page}: гэта старонка {other} гэтага дакумента, і ў спісе ён паказаны пры гэтай старонцы."
+# {printout}: name · paper · pages.
+other_document = "Скан {name} не выкарыстаны для старонкі {page}: гэта старонка {other} іншай раздрукоўкі ({printout})."
+# {why}: a sentence.
+not_used = "Скан {name} не выкарыстаны для старонкі {page}. {why}"
+unread = "Яго не ўдалося прачытаць."
+
+[gui.dialog]
+replace_title = "Выбраць скан старонкі {page}"
+assign_prompt = "Якая старонка гэтага дакумента на скане {name}?"
+# After the page number in the page field.
+of_pages = " з {total}"
+scan_filter = "Сканы ({patterns});;Усе файлы (*)"
+
+[gui.message]
+check_failed = "Не ўдалося звярыць файл з адбіткам: {message}"
+save_failed = "Не ўдалося захаваць файл: {message}"
+not_regular_file = "не ўдаецца прачытаць {path}: гэта не звычайны файл (папка, канал або прылада)"
+file_unreadable = "Не ўдалося прачытаць файл: {message}"
+created = "Створаны файл {name}"
+create_failed = "Не ўдалося стварыць PDF: {message}"
+size_changed = "памер выявы змяніўся падчас загрузкі"
+preview_failed = "Гэты скан нельга паказаць: {message}"
+repair_failed = "Не ўдалося выправіць старонкі: {reason}"
+
+[gui.message.saved]
+one = "Захаваны {n} байт у файл {name}"
+few = "Захаваны {n} байты ў файл {name}"
+many = "Захавана {n} байтаў у файл {name}"
+
+[gui.message.too_many_pixels]
+one = "У скане {n} піксель, а дапускаецца не больш за {limit}"
+few = "У скане {n} пікселі, а дапускаецца не больш за {limit}"
+many = "У скане {n} пікселяў, а дапускаецца не больш за {limit}"
+
+# Putting a file on paper.
+[gui.write]
+dot_size = "{dots} (сканаваць пры {dpi} dpi)"
+
+# Of a protected printout of {total} pages.
+[gui.write.promise]
+one = "можна страціць {n} старонку з {total}"
+few = "можна страціць {n} старонкі з {total}"
+many = "можна страціць {n} старонак з {total}"
+
+# Why a file cannot be put on paper with the chosen dot size and protection.
+[gui.too_large]
+fits_unprotected = "Без абароны файл змесціцца."
+
+[gui.too_large.protect]
+one = "Гэты файл занадта вялікі, каб абараніць яго пры гэтым памеры кропак: у раздрукоўцы з абаронай можа быць не больш за {n} старонку."
+few = "Гэты файл занадта вялікі, каб абараніць яго пры гэтым памеры кропак: у раздрукоўцы з абаронай можа быць не больш за {n} старонкі."
+many = "Гэты файл занадта вялікі, каб абараніць яго пры гэтым памеры кропак: у раздрукоўцы з абаронай можа быць не больш за {n} старонак."
+
+[gui.too_large.pages]
+one = "Гэты файл занадта вялікі, каб запісаць яго на паперу з такімі наладамі: у раздрукоўцы можа быць не больш за {n} старонку."
+few = "Гэты файл занадта вялікі, каб запісаць яго на паперу з такімі наладамі: у раздрукоўцы можа быць не больш за {n} старонкі."
+many = "Гэты файл занадта вялікі, каб запісаць яго на паперу з такімі наладамі: у раздрукоўцы можа быць не больш за {n} старонак."
+
+[gui.too_large.fits_dots]
+standard = "Файл змесціцца са стандартнымі кропкамі."
+medium = "Файл змесціцца з сярэднімі кропкамі."
+big = "Файл змесціцца з вялікімі кропкамі."
+large = "Файл змесціцца з буйнымі кропкамі."
+xlarge = "Файл змесціцца з вельмі буйнымі кропкамі."
+
+[gui.too_large.fits_either]
+standard = "Файл змесціцца без абароны або са стандартнымі кропкамі."
+medium = "Файл змесціцца без абароны або з сярэднімі кропкамі."
+big = "Файл змесціцца без абароны або з вялікімі кропкамі."
+large = "Файл змесціцца без абароны або з буйнымі кропкамі."
+xlarge = "Файл змесціцца без абароны або з вельмі буйнымі кропкамі."
+
+# Why the printed name differs from the name typed. Sentences.
+[gui.name]
+dropped = "Гэтых знакаў няма ў шрыфце надпісу, і яны не друкуюцца: {chars}."
+no_room = "У надпісе пры гэтым памеры кропак няма месца для назвы, таму яна не друкуецца."
+cut = "Назва занадта доўгая для старонкі і будзе абрэзана."
+stored = "Старонкам яна не патрэбна: поўная назва захоўваецца разам з файлам."
+printed = "Менавіта па надрукаванай назве старонкі потым апазнаюцца."
+
+# A scan made at too low a resolution; {measured} is rounded to the nearest 10.
+[gui.coarse]
+page = "Раздзяляльнасць скана занадта нізкая для гэтай старонкі: каля {measured} dpi. Адскануйце яе з раздзяляльнасцю {needed} dpi."
+# The resolution each dot size needs, by its name in optar.format.
+unreadable = "Скан зроблены прыкладна пры {measured} dpi, гэта занадта нізкая раздзяляльнасць для чытання. Скануйце з раздзяляльнасцю {standard} dpi для стандартных кропак, {medium} — для сярэдніх, {big} — для вялікіх, {large} — для буйных, {xlarge} — для вельмі буйных."
+
+# The detail of a page read by the slower reader.
+[gui.slow]
+corrected = "Кропак, скарэкціраваных унутры старонкі: {dots}."
+# {share}: the share below.
+corrected_of = "Кропак, скарэкціраваных унутры старонкі: {dots} з {total} ({share})."
+# {share}: a percentage with one decimal, such as 8.3.
+share = "{share}%"
+share_small = "менш за 0,1%"
+pending = "Памылкі гэтага метаду выпраўляе абарона дакумента; колькі байтаў гэтай старонкі яна выправіла, будзе паказана, калі дакумент пройдзе праверку."
+none_wrong = "Пасля праверкі: няправільных байтаў на гэтай старонцы не аказалася."
+
+[gui.slow.repaired]
+one = "Пасля праверкі: {n} байт гэтай старонкі быў няправільны і выпраўлены абаронай дакумента."
+few = "Пасля праверкі: {n} байты гэтай старонкі былі няправільныя і выпраўлены абаронай дакумента."
+many = "Пасля праверкі: {n} байтаў гэтай старонкі былі няправільныя і выпраўлены абаронай дакумента."
+
+# Each step of a scan's reading.
+[gui.step]
+open = "Адкрыццё файла"
+find = "Пошук старонкі"
+identify = "Апазнанне старонкі"
+read = "Чытанне даных"
+slow-sample = "Павольны метад: выбарка"
+# The {current}th of {total} fits of the slower reader.
+slow-fit = "Павольны метад: праход {current} з {total}"
+# A step with no words of its own.
+other = "Апрацоўка"
+
+# {done} of {n} scans are read.
+[gui.scans_read]
+one = "Прачытана сканаў: {done} з {n}"
+few = "Прачытана сканаў: {done} з {n}"
+many = "Прачытана сканаў: {done} з {n}"
+
+# The bar while scans are being read and the document has nothing else to say.
+[gui.scans_read_working]
+one = "Апрацоўка… Прачытана сканаў: {done} з {n}"
+few = "Апрацоўка… Прачытана сканаў: {done} з {n}"
+many = "Апрацоўка… Прачытана сканаў: {done} з {n}"
+
+# Lists of page numbers: "1, 3 and 5", "2-4 and 9".
+[gui.list]
+comma = ", "
+and = "{items} і {last}"
+# Three or more pages in a row, from {first} to {last}: your language's range mark.
+range = "{first}–{last}"
+
+# The pages a list does not name.
+[gui.list.more]
+one = "яшчэ {n}"
+few = "яшчэ {n}"
+many = "яшчэ {n}"
+
+# What repairing a document did.
+[gui.repair]
+unprotected = "Дакумент надрукаваны без абароны, таму нічога нельга было выправіць"
+too_much = "у найгоршым месцы спатрэбілася {used} з {budget}: занадта шмат для выпраўлення"
+
+[gui.repair.bytes]
+one = "выпраўлены {n} байт"
+few = "выпраўлены {n} байты"
+many = "выпраўлена {n} байтаў"
+
+# How close a repair came to failing: {percent}% of the repair capacity ({used}
+# of {budget}) used at the worst spot.
+[gui.margin]
+wide = "у найгоршым месцы выкарыстана {percent}% рэсурсу выпраўлення ({used} з {budget}): вялікі запас"
+moderate = "у найгоршым месцы выкарыстана {percent}% рэсурсу выпраўлення ({used} з {budget}): умераны запас"
+close = "у найгоршым месцы выкарыстана {percent}% рэсурсу выпраўлення ({used} з {budget}): на мяжы"
+
+# After a repair that could not give the file.
+[gui.rescan]
+nothing = "Файл не ўдалося выправіць цалкам. Калі адсканаваць старонкі нанова, вынік яшчэ можа палепшыцца."
+# {what}: "add" and "rescan" below, or both.
+advice = "Файл не ўдалося выправіць цалкам. Вынік яшчэ можна палепшыць, калі дадаць старонкі або адсканаваць іх нанова: {what}."
+both = "{add} і {rescan}"
+
+# {pages}: single when it names exactly one page, several when more.
+[gui.rescan.add]
+single = "дадайце старонку {pages}"
+several = "дадайце старонкі {pages}"
+
+# {pages}: at most three pages, the most damaged first; single or several as above.
+[gui.rescan.worst]
+single = "адскануйце нанова старонку {pages} — на ёй найбольш пашкоджанняў"
+several = "адскануйце нанова старонкі {pages} — на іх найбольш пашкоджанняў"
