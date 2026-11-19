@@ -1076,8 +1076,10 @@ def test_help_to_a_narrower_stdout_than_stderr_is_english(monkeypatch):
     the language must fit both, or --help would end in UnicodeEncodeError."""
     import io
 
-    out = io.TextIOWrapper(io.BytesIO(), encoding="cp1252", errors="strict")
-    err = io.TextIOWrapper(io.BytesIO(), encoding="utf-8", errors="backslashreplace")
+    # newline="": the bytes are what the program wrote, on every platform (a wrapper
+    # without it writes "\r\n" on Windows).
+    out = io.TextIOWrapper(io.BytesIO(), encoding="cp1252", errors="strict", newline="")
+    err = io.TextIOWrapper(io.BytesIO(), encoding="utf-8", errors="backslashreplace", newline="")
     monkeypatch.setenv("OPTAR_LANG", "ka")
     monkeypatch.setenv("COLUMNS", "100")
     monkeypatch.setattr(sys, "stdout", out)

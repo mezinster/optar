@@ -737,8 +737,8 @@ def test_missing_pages_are_listed(tmp_path):
 def _tree(tmp_path):
     (tmp_path / "docs").mkdir()
     (tmp_path / "src" / "optar" / "locale").mkdir(parents=True)
-    for name in ("index", "install"):
-        (tmp_path / "docs" / f"{name}.md").write_text(f"# {name}\n")
+    for name in ("index", "install"):  # LF on every platform, as git stores a page
+        (tmp_path / "docs" / f"{name}.md").write_bytes(f"# {name}\n".encode())
     return tmp_path
 
 
@@ -772,9 +772,12 @@ def test_status_reports_stale_and_missing_pages(tmp_path):
     assert status.problems(root) == [
         ("docs/index.ru.md", "missing"), ("docs/install.ru.md", "missing"),
     ]
-    good = status.blob_hash((root / "docs" / "index.md").read_bytes())
+    good = status.blob_hash(b"# index\n")  # what git hash-object gives for the LF page
     (root / "docs" / "index.ru.md").write_text(f"---\nsource_hash: {good}\n---\n# i\n")
     (root / "docs" / "install.ru.md").write_text(f"---\nsource_hash: {'0' * 40}\n---\n# i\n")
+    assert status.problems(root) == [("docs/install.ru.md", "stale")]
+    # The same English page checked out with CRLF (core.autocrlf on Windows) is fresh.
+    (root / "docs" / "index.md").write_bytes(b"# index\r\n")
     assert status.problems(root) == [("docs/install.ru.md", "stale")]
     (root / "docs" / "install.ru.md").write_text("# no front matter\n")
     assert status.problems(root) == [("docs/install.ru.md", "stale")]
