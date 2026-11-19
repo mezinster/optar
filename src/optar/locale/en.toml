@@ -4,6 +4,161 @@ name = "English"
 [format]
 group = ","
 
+[cli]
+ACTUAL_SIZE = 'Print at actual size (100%), not "fit to page".'
+PAPER_HINT = "Check that --paper matches the printout and that the page is scanned upright."
+description = "Store files on paper."
+after_encoding = "{actual_size} Scan at {dpi} dpi."
+or_two = "{first} or {second}"
+list_separator = ", "
+sentences = "{first} {second}"
+wrote = "wrote {path}"
+format_does_not_fit = "format {format} does not fit on {paper} paper"
+cannot_open = "cannot open {path}"
+line = "optar: {message}"
+line_hint = "optar: {message}. {hint}"
+os_error = "optar: {reason}"
+os_error_file = "optar: {file}: {reason}"
+compatible_conflict = "--compatible cannot be used with {options}"
+format_conflict = "--format cannot be used with {options}"
+slow_reader = "optar: {name}: the ordinary reader could not read this scan's data; trying the slower reader, which takes about a minute"
+debug_images_unavailable = "optar: --debug-images is not available for self-identifying pages"
+force_no_effect = "optar: --force has no effect on printouts from 0.2.0 or earlier"
+gap = "optar: {missing} is missing but {existing} exists"
+page_stats = "page {number}: {symbols}, {corrected}, {uncorrectable}"
+force_advice = "--force saves what was recovered, which may be damaged."
+dot_need = "{name} {dpi}"
+
+[cli.wrote_pdf]
+one = "wrote {path} ({count} page)"
+other = "wrote {path} ({count} pages)"
+
+[cli.dot_name]
+standard = "Standard"
+medium = "Medium"
+big = "Big"
+large = "Large"
+xlarge = "Extra large"
+
+[cli.protection]
+nothing = "Protection {level}: nothing is repaired; a lost or damaged page loses part of the file."
+within = "Protection {level}: repairs damage within pages; it cannot make up for a lost page."
+
+[cli.protection.lose]
+one = "Protection {level}: can lose {count} page of {total} and still recover the file."
+other = "Protection {level}: can lose {count} pages of {total} and still recover the file."
+
+[cli.scan]
+missing = "optar: {name}: {reason}; counted as a missing page."
+page = "{name}: page {page} of {total}{note}"
+page_again_better = "{name}: page {page} of {total} again{note}; using the better scan"
+page_again_earlier = "{name}: page {page} of {total} again{note}; using the earlier scan"
+note_slow = " (read by the slower reader)"
+
+[cli.probe]
+unread = "could not be read ({detail})"
+unidentified = "not identified ({detail})"
+coarse = "not identified ({detail}); it was scanned at about {dpi} dpi, the dot sizes need: {needs}"
+coarse_tried = "not identified ({detail}); it was scanned at about {dpi} dpi (the slower reader was tried too), the dot sizes need: {needs}"
+
+[cli.scan.note_unreadable]
+one = ", {count} byte unreadable"
+other = ", {count} bytes unreadable"
+
+[cli.scan.ignored]
+one = "optar: {count} scan from another document was ignored: {names}"
+other = "optar: {count} scans from another document were ignored: {names}"
+
+[cli.summary]
+too_many_missing = "too many pages are missing to repair the file"
+worst = "worst codeword used {used} of {budget}"
+none_missing = "no pages missing"
+separator = "; "
+line = "optar: {summary}"
+
+[cli.summary.repaired]
+one = "repaired {count} byte"
+other = "repaired {count} bytes"
+
+[cli.summary.blocks_failed]
+one = "{count} block could not be repaired"
+other = "{count} blocks could not be repaired"
+
+[cli.summary.missing]
+one = "missing page {list}"
+other = "missing pages {list}"
+
+[cli.too_few.read]
+one = "optar: the file could not be repaired and was not saved: only {read} of {count} page read."
+other = "optar: the file could not be repaired and was not saved: only {read} of {count} pages read."
+
+[cli.too_few.rescan]
+one = "Scan page {list} and decode again; --force saves nothing from fewer than one page in {fraction}."
+other = "Scan pages {list} and decode again; --force saves nothing from fewer than one page in {fraction}."
+
+[cli.verified]
+one = "optar: file verified ({count} byte)"
+other = "optar: file verified ({count} bytes)"
+
+[cli.force_saved]
+unrepaired = "optar: the file could not be repaired: it did not verify and may be damaged. Saved anyway because of --force."
+mismatch = "optar: the file does not match its fingerprint: it did not verify and may be damaged. Saved anyway because of --force."
+
+[cli.not_saved]
+unrepaired = "optar: the file could not be repaired and was not saved. {advice}"
+mismatch = "optar: the file does not match its fingerprint and was not saved. {advice}"
+
+[cli.rescan_advice]
+one = "Rescan page {list} and decode again; {force}"
+other = "Rescan pages {list} and decode again; {force}"
+
+[cli.list_more]
+one = "({count} more)"
+other = "({count} more)"
+
+[cli.stat_symbols]
+one = "{count} symbols"
+other = "{count} symbols"
+
+[cli.stat_corrected]
+one = "{count} corrected"
+other = "{count} corrected"
+
+[cli.stat_uncorrectable]
+one = "{count} uncorrectable"
+other = "{count} uncorrectable"
+
+[cli.uncorrectable_codewords]
+one = "optar: {count} uncorrectable codewords. {hint}"
+other = "optar: {count} uncorrectable codewords. {hint}"
+
+[cli.argparse]
+usage = "usage: "
+positionals = "positional arguments"
+options = "options"
+error = "{prog}: error: {message}"
+help = "show this help message and exit"
+version = "show program's version number and exit"
+
+[cli.help]
+paper = "paper size (default: a4)"
+format = "override the page format"
+encode = "encode a file into printable pages"
+input = "file to encode"
+output = "output base name (default: optar_out)"
+to = "output type: one PDF (default), or PNG or PGM page files"
+label = "text printed on each page (default: the file name given with -o)"
+no_tag = "do not add the size, fingerprint and check tag to the page labels"
+dots = "dot size (default: standard). Any size but standard makes self-identifying pages, protected at the standard level unless --protect says otherwise"
+protect = "repair data spread over the whole document; makes self-identifying pages, with standard dots unless --dots says otherwise. Use 'none' for self-identifying pages without protection. Without --dots and --protect the pages are compatible and unprotected"
+compatible = "pages that optar 0.2 and the C tool read (the default without --dots and --protect)"
+decode = "decode scanned pages back into a file"
+base = "scans are BASE_0001.png, BASE_0002.png, ..."
+decode_output = "output file (default: stdout)"
+debug_images = "write BASE_NNNN_debug.png"
+force = "save what was recovered of self-identifying pages even if it did not verify"
+no_slow_reader = "do not try the slower reader on scans the ordinary reader cannot identify"
+
 [count.page]
 one = "{n} page"
 other = "{n} pages"

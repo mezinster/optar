@@ -942,3 +942,204 @@ def test_an_ordinary_reading_of_a_page_is_preferred_to_a_slow_one(capsys):
     with mock.patch.object(cli, "_document_key", lambda i: "doc"):
         assert cli._gather(["a", "b"], {"a": worse, "b": ordinary}, worse) == {1: ordinary.payload}
     capsys.readouterr()
+
+
+# --- Languages ---------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _english_unless_chosen(monkeypatch):
+    """These tests pin English wording: neither the machine's language nor a
+    language chosen by one test may reach another."""
+    from optar import i18n
+
+    monkeypatch.setenv("OPTAR_LANG", "en")
+    yield
+    i18n.set_language("en")
+
+
+ENGLISH_HELP = {
+    "": """\
+usage: optar [-h] [--version] {encode,decode} ...
+
+Store files on paper.
+
+positional arguments:
+  {encode,decode}
+    encode         encode a file into printable pages
+    decode         decode scanned pages back into a file
+
+options:
+  -h, --help       show this help message and exit
+  --version        show program's version number and exit
+""",
+    "encode": """\
+usage: optar encode [-h] [-o BASE] [--to {pdf,png,pgm}] [--label LABEL] [--no-tag]
+                    [--dots {standard,medium,big,large,xlarge}] [--protect {none,standard,high}]
+                    [--compatible] [--paper {a4,letter}] [--format STRING]
+                    INPUT
+
+positional arguments:
+  INPUT                 file to encode
+
+options:
+  -h, --help            show this help message and exit
+  -o BASE               output base name (default: optar_out)
+  --to {pdf,png,pgm}    output type: one PDF (default), or PNG or PGM page files
+  --label LABEL         text printed on each page (default: the file name given with -o)
+  --no-tag              do not add the size, fingerprint and check tag to the page labels
+  --dots {standard,medium,big,large,xlarge}
+                        dot size (default: standard). Any size but standard makes self-identifying
+                        pages, protected at the standard level unless --protect says otherwise
+  --protect {none,standard,high}
+                        repair data spread over the whole document; makes self-identifying pages,
+                        with standard dots unless --dots says otherwise. Use 'none' for self-
+                        identifying pages without protection. Without --dots and --protect the
+                        pages are compatible and unprotected
+  --compatible          pages that optar 0.2 and the C tool read (the default without --dots and
+                        --protect)
+  --paper {a4,letter}   paper size (default: a4)
+  --format STRING       override the page format
+""",
+    "decode": """\
+usage: optar decode [-h] [-o OUTPUT] [--debug-images] [--force] [--no-slow-reader]
+                    [--paper {a4,letter}] [--format STRING]
+                    BASE
+
+positional arguments:
+  BASE                 scans are BASE_0001.png, BASE_0002.png, ...
+
+options:
+  -h, --help           show this help message and exit
+  -o OUTPUT            output file (default: stdout)
+  --debug-images       write BASE_NNNN_debug.png
+  --force              save what was recovered of self-identifying pages even if it did not verify
+  --no-slow-reader     do not try the slower reader on scans the ordinary reader cannot identify
+  --paper {a4,letter}  paper size (default: a4)
+  --format STRING      override the page format
+""",
+}
+
+
+@pytest.mark.parametrize("command", ["", "encode", "decode"])
+def test_english_help_is_unchanged(command, capsys, monkeypatch):
+    monkeypatch.setenv("COLUMNS", "100")
+    with pytest.raises(SystemExit) as e:
+        main([command, "--help"] if command else ["--help"])
+    assert e.value.code == 0
+    assert capsys.readouterr().out == ENGLISH_HELP[command]
+
+
+@pytest.mark.parametrize(
+    "env, enc, want",
+    [
+        ({"OPTAR_LANG": "ru"}, "utf-8", "ru"),
+        ({"OPTAR_LANG": "xx", "LANG": "pl_PL.UTF-8"}, "utf-8", "pl"),
+        ({"LC_ALL": "C", "LANG": "it_IT"}, "utf-8", "it"),  # C is skipped, not final
+        ({"LANG": "ka_GE.UTF-8"}, "cp1252", "en"),
+        ({"LANG": "ka_GE.UTF-8"}, None, "ka"),
+        ({"LANG": "ka_GE.UTF-8"}, "no-such-codec", "en"),
+        ({"LC_MESSAGES": "tr", "LANG": "it"}, "utf-8", "tr"),
+        ({}, "utf-8", "en"),
+    ],
+)
+def test_choose_language(env, enc, want, catalogues):
+    from optar.cli import choose_language
+
+    for code in ("ru", "pl", "it", "ka", "tr"):
+        catalogues.add(
+            code, {"language": {"name": code}, "x": "\u10d0\u0431" if code == "ka" else "x"}
+        )
+    assert choose_language(env, enc) == want
+
+
+def test_choose_language_uses_the_system_language_last(catalogues):
+    from optar.cli import choose_language
+
+    catalogues.add("tr", {"language": {"name": "tr"}})
+    catalogues.add("it", {"language": {"name": "it"}})
+    assert choose_language({}, "utf-8", system="tr_TR") == "tr"
+    assert choose_language({"LANG": "it"}, "utf-8", system="tr_TR") == "it"
+
+
+def test_messages_follow_the_language(tmp_path, infile, capsys, monkeypatch, catalogues):
+    catalogues.add(
+        "ru",
+        {
+            "language": {"name": "Русский"},
+            "cli": {"wrote": "записан {path}", "help": {"protect": "защита"}},
+        },
+    )
+    monkeypatch.setenv("OPTAR_LANG", "ru")
+    out = str(tmp_path / "o")
+    assert main(["encode", str(infile), "-o", out, "--to", "png"]) == 0
+    err = capsys.readouterr().err
+    assert f"записан {out}_0001.png" in err
+    with pytest.raises(SystemExit):
+        main(["encode", "--help"])
+    help_text = capsys.readouterr().out
+    assert "--protect" in help_text and "защита" in help_text
+    from optar import i18n
+
+    assert i18n.language() == "en"  # main leaves the language as it found it
+
+
+def test_argparse_words_follow_the_language(capsys, monkeypatch, catalogues):
+    catalogues.add(
+        "ru",
+        {
+            "language": {"name": "Русский"},
+            "cli": {
+                "argparse": {
+                    "usage": "использование: ",
+                    "options": "параметры",
+                    "positionals": "позиционные",
+                    "error": "{prog}: ошибка: {message}",
+                }
+            },
+        },
+    )
+    monkeypatch.setenv("OPTAR_LANG", "ru")
+    with pytest.raises(SystemExit):
+        main(["encode", "--help"])
+    out = capsys.readouterr().out
+    assert out.startswith("использование: optar encode [-h]")
+    assert "\nпараметры:\n" in out and "\nпозиционные:\n" in out
+    with pytest.raises(SystemExit) as e:
+        main(["encode", "x", "--compatible", "--dots", "big"])
+    assert e.value.code == 2
+    err = capsys.readouterr().err
+    assert err.startswith("использование: optar [-h]")
+    assert "optar: ошибка: --compatible cannot be used with --dots" in err
+
+
+def test_a_message_with_braces_in_a_name_is_shown_as_it_is(tmp_path, capsys):
+    assert main(["decode", str(tmp_path / "{x}")]) == 2
+    assert f"cannot open {tmp_path}/{{x}}_0001.png" in capsys.readouterr().err
+
+
+def test_cli_source_holds_no_wording():
+    import ast
+    from pathlib import Path
+
+    import optar.cli
+
+    tree = ast.parse(Path(optar.cli.__file__).read_text(encoding="utf-8"))
+
+    def wording(node):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return " " in node.value
+        if isinstance(node, ast.JoinedStr):
+            return any(isinstance(v, ast.Constant) and " " in v.value for v in node.values)
+        return False
+
+    found = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        name = getattr(node.func, "attr", getattr(node.func, "id", ""))
+        args = [k.value for k in node.keywords if k.arg in ("help", "description")]
+        if name in ("_eprint", "error"):
+            args += node.args
+        found += [ast.unparse(a) for a in args if wording(a)]
+    assert not found, found
