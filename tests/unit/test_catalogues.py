@@ -453,9 +453,8 @@ def test_every_text_function_answers(code):
     assert not text_function_problems(code)
 
 
-@pytest.mark.xfail(strict=False, reason="languages arrive one by one; Task 10 removes the mark")
 def test_all_nine_languages_are_present():
-    assert list(i18n.languages()) == list(i18n.ORDER)
+    assert tuple(i18n.languages()) == i18n.ORDER
 
 
 # --- English is itself a valid catalogue, and the checks bite -----------------------

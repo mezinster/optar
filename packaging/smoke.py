@@ -7,6 +7,7 @@ Standard library only: it runs the executable and never imports optar.
 """
 
 import hashlib
+import os
 import re
 import subprocess
 import sys
@@ -40,10 +41,10 @@ def payload():
     return bytes(out[:PAYLOAD_SIZE])
 
 
-def run(exe, *args):
+def run(exe, *args, env=None):
     cmd = [exe, *map(str, args)]
     try:
-        result = subprocess.run(cmd, capture_output=True, timeout=TIMEOUT)
+        result = subprocess.run(cmd, capture_output=True, timeout=TIMEOUT, env=env)
     except subprocess.TimeoutExpired:
         fail(f"timed out after {TIMEOUT}s: {' '.join(cmd)}")
     except OSError as exc:
@@ -51,8 +52,8 @@ def run(exe, *args):
     return result
 
 
-def run_ok(exe, *args):
-    result = run(exe, *args)
+def run_ok(exe, *args, env=None):
+    result = run(exe, *args, env=env)
     if result.returncode != 0:
         fail(
             f"exit code {result.returncode} from: {exe} {' '.join(map(str, args))}\n"
@@ -60,6 +61,24 @@ def run_ok(exe, *args):
             f"stderr: {result.stderr.decode(errors='replace')}"
         )
     return result
+
+
+def help_in(exe, code):
+    """The text of ``--help`` with OPTAR_LANG=code, as a string."""
+    env = {**os.environ, "OPTAR_LANG": code}
+    result = run_ok(exe, "--help", env=env)
+    return result.stdout.decode(errors="replace") + result.stderr.decode(errors="replace")
+
+
+def check_catalogues(exe):
+    """The build carries the catalogues: Georgian help is Georgian, not the English help."""
+    english = help_in(exe, "en")
+    georgian = help_in(exe, "ka")
+    if georgian == english:
+        fail("--help with OPTAR_LANG=ka is the English help: the catalogues are not in the build")
+    if not any("\u10a0" <= ch <= "\u10ff" for ch in georgian):
+        fail("--help with OPTAR_LANG=ka has no Georgian letters")
+    print("ok: --help in Georgian differs from English")
 
 
 def main(argv):
@@ -75,6 +94,8 @@ def main(argv):
     if version not in shown:
         fail(f"--version output {shown.strip()!r} does not contain {version!r}")
     print(f"ok: --version ({version})")
+
+    check_catalogues(exe)
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)

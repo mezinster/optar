@@ -143,6 +143,7 @@ def test_self_test_runs_in_english_and_loads_every_catalogue(qapp, catalogues, c
     i18n.set_language("ru")
     assert selftest.run_self_test() == 0
     out = capsys.readouterr().out
-    assert "ok loaded the catalogues of 2 languages" in out
+    count = len(list(i18n.languages()))
+    assert f"ok loaded the catalogues of {count} languages" in out
     assert "ok created a PDF" in out
     assert i18n.language() == "ru"
