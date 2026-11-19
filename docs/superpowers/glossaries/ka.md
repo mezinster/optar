@@ -107,6 +107,7 @@ used the same way in the window, the command line and every page.
 | rebuild (a lost page) | აღდგენა | Docs only; same verb as "recover". |
 | corrected (dots, symbols, bits) | შესწორებული (შესწორდა) | Kept apart from "repaired" as English keeps them apart: «შესწორდა 265 112 წერტილი · დოკუმენტის დაცვით გამოსწორდა 6 912 ბაიტი». "Error correction" «შეცდომების შესწორება», "error-correcting code" «შეცდომების შემსწორებელი კოდი». |
 | uncorrectable, beyond correction | შეუსწორებელი | |
+| a repair that reports no failure; the repair reported no failure | გამოსწორება, რომელიც მარცხს არ აცხადებს; გამოსწორებამ მარცხი არ განაცხადა | Says only that the repair did not report failure. Never «შეცდომა არ გამოვლენილა» (no error was found): finding and fixing wrong bytes is what a repair does. Such a file is still not «შემოწმებული». |
 | repair capacity, budget | გამოსწორების რესურსი | "Used 18 of 32" «32-დან 18». "The worst spot" «ყველაზე უარესი ადგილი». |
 | margin (wide, moderate, close to the limit) | მარაგი (დიდი მარაგი, ზომიერი მარაგი, ზღვართან ახლოს) | |
 | check the fingerprint, checking | ანაბეჭდთან შედარება | «მიმდინარეობს ანაბეჭდთან შედარება…». Keeps «შემოწმ-» free for "verified". |
