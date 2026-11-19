@@ -29,7 +29,7 @@ Testy aplikacji wymagają PySide6 i pytest-qt
 
 Format strony definiują [specyfikacja formatu](format.md) i wektory zgodności
 w `tests/vectors`. `tests/unit/test_spec.py` porównuje tabele i przykłady
-specyfikacji z kodem, więc dokument i kod zmienia się razem.
+specyfikacji z kodem, więc dokument i kod trzeba zmieniać razem.
 
 ## Budowanie programów jednoplikowych { #building-the-one-file-programs }
 

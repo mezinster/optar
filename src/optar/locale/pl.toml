@@ -22,8 +22,8 @@ line = "optar: {message}"
 line_hint = "optar: {message}. {hint}"
 os_error = "optar: {reason}"
 os_error_file = "optar: {file}: {reason}"
-compatible_conflict = "--compatible nie można używać razem z {options}"
-format_conflict = "--format nie można używać razem z {options}"
+compatible_conflict = "opcji --compatible nie można używać razem z {options}"
+format_conflict = "opcji --format nie można używać razem z {options}"
 slow_reader = "optar: {name}: zwykła metoda odczytu nie zdołała odczytać danych tego skanu; uruchamiana jest wolniejsza metoda, co zajmie około minuty"
 debug_images_unavailable = "optar: opcja --debug-images jest niedostępna dla stron samoidentyfikujących"
 force_no_effect = "optar: opcja --force nie działa na wydruki z wersji 0.2.0 i wcześniejszych"
@@ -588,13 +588,13 @@ many = "{n} skanów innego wydruku, nie należy do tego pliku"
 
 # Why a scan chosen to replace page {page} was not used. {name} is its file name.
 [gui.rejected]
-unusable = "Skanu {name} nie użyto dla strony {page}: nie udało się go odczytać, więc strona {page} zachowuje dotychczasowy skan."
-unusable_reason = "Skanu {name} nie użyto dla strony {page}: nie udało się go odczytać ({reason}), więc strona {page} zachowuje dotychczasowy skan."
-other_page = "Skanu {name} nie użyto dla strony {page}: jest to strona {other} tego dokumentu i na liście figuruje przy niej."
+unusable = "Skanu {name} nie użyto jako strony {page}: nie udało się go odczytać, więc strona {page} zachowuje dotychczasowy skan."
+unusable_reason = "Skanu {name} nie użyto jako strony {page}: nie udało się go odczytać ({reason}), więc strona {page} zachowuje dotychczasowy skan."
+other_page = "Skanu {name} nie użyto jako strony {page}: jest to strona {other} tego dokumentu i na liście jest przy tej stronie."
 # {printout}: name · paper · pages.
-other_document = "Skanu {name} nie użyto dla strony {page}: jest to strona {other} innego wydruku ({printout})."
+other_document = "Skanu {name} nie użyto jako strony {page}: jest to strona {other} innego wydruku ({printout})."
 # {why}: a sentence.
-not_used = "Skanu {name} nie użyto dla strony {page}. {why}"
+not_used = "Skanu {name} nie użyto jako strony {page}. {why}"
 unread = "Nie udało się go odczytać."
 
 [gui.dialog]
@@ -621,9 +621,9 @@ few = "Zapisano {n} bajty w pliku {name}"
 many = "Zapisano {n} bajtów w pliku {name}"
 
 [gui.message.too_many_pixels]
-one = "Skan ma {n} piksel, a dopuszczalne jest najwyżej {limit}"
-few = "Skan ma {n} piksele, a dopuszczalne jest najwyżej {limit}"
-many = "Skan ma {n} pikseli, a dopuszczalne jest najwyżej {limit}"
+one = "{n} piksel to więcej, niż może mieć skan ({limit})"
+few = "{n} piksele to więcej, niż może mieć skan ({limit})"
+many = "{n} pikseli to więcej, niż może mieć skan ({limit})"
 
 # Putting a file on paper.
 [gui.write]
@@ -669,7 +669,7 @@ dropped = "Tych znaków nie ma w czcionce napisu i nie zostaną wydrukowane: {ch
 no_room = "Napis przy tym rozmiarze kropek nie ma miejsca na nazwę, więc nie zostanie ona wydrukowana."
 cut = "Nazwa jest za długa dla strony i zostanie skrócona."
 stored = "Strony jej nie potrzebują: pełna nazwa jest przechowywana razem z plikiem."
-printed = "To po wydrukowanej nazwie strony będą później identyfikowane."
+printed = "Strony będą później identyfikowane po wydrukowanej nazwie."
 
 # A scan made at too low a resolution; {measured} is rounded to the nearest 10.
 [gui.coarse]
@@ -707,15 +707,15 @@ other = "Przetwarzanie"
 
 # {done} of {n} scans are read.
 [gui.scans_read]
-one = "Odczytano {done} z {n} skanu"
-few = "Odczytano {done} z {n} skanów"
-many = "Odczytano {done} z {n} skanów"
+one = "odczytano {done} z {n} skanu"
+few = "odczytano {done} z {n} skanów"
+many = "odczytano {done} z {n} skanów"
 
 # The bar while scans are being read and the document has nothing else to say.
 [gui.scans_read_working]
-one = "Przetwarzanie… Odczytano {done} z {n} skanu"
-few = "Przetwarzanie… Odczytano {done} z {n} skanów"
-many = "Przetwarzanie… Odczytano {done} z {n} skanów"
+one = "Przetwarzanie… odczytano {done} z {n} skanu"
+few = "Przetwarzanie… odczytano {done} z {n} skanów"
+many = "Przetwarzanie… odczytano {done} z {n} skanów"
 
 # Lists of page numbers: "1, 3 and 5", "2-4 and 9".
 [gui.list]

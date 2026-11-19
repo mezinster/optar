@@ -88,9 +88,9 @@ samych stron w wersji 0 (część 2).
 
 | Rodzaj | Zapisywany przez | Strumień to | Napis niesie |
 |---|---|---|---|
-| prosty | program w C, optar 0.1.0, `--no-tag` | plik | tylko dowolny tekst |
+| prosty | program w C, optar 0.1.0, `--no-tag` | plik | tylko tekst dowolny |
 | ze znacznikiem | optar 0.2.0 i nowsze („zgodny”) | plik | znacznik (część 3) |
-| samoidentyfikujący | optar 0.3.0 i nowsze | kontener (część 4) | tylko dowolny tekst |
+| samoidentyfikujący | optar 0.3.0 i nowsze | kontener (część 4) | tylko tekst dowolny |
 
 ### 1.5 Stałe { #15-constants }
 
@@ -483,7 +483,7 @@ glyph_column_of_capital_a = 429
 font_strip_sha256 = 481c0abd7884afb5ab6d958fbb95c0d6be97b0e2a7124f57e1abcd118d7d4bc4
 ```
 
-**Wiersz napisu** strony `page` z `total` z dowolnym tekstem `text` to
+**Wiersz napisu** strony `page` z `total` z tekstem dowolnym `text` to
 
     two spaces, the format string, a space, page, "/", total, a space, text
 
@@ -534,7 +534,7 @@ Wektory: `tests/vectors/c/label.json`, `tests/vectors/c/encoder_pages.json`.
 
 Dokument prosty nie mówi, jak długi jest jego plik, które strony tworzą jedną
 całość ani czy plik został odczytany poprawnie. **Dokument ze znacznikiem**
-mówi to w dowolnym tekście każdego napisu. Jego strumieniem jest sam plik,
+mówi to w tekście dowolnym każdego napisu. Jego strumieniem jest sam plik,
 więc jego strony odczytują także programy, które nic nie wiedzą o znaczniku.
 
 ### 3.1 Znacznik { #31-the-tag }
@@ -550,7 +550,7 @@ Dla pliku o rozmiarze `size` bajtów:
   małymi literami, przy czym `page` i `total` są zapisane tak jak w wierszu
   napisu.
 
-Znacznik strony to tekst `[SIZE:FINGERPRINT:CHECK]`. Dowolny tekst napisu
+Znacznik strony to tekst `[SIZE:FINGERPRINT:CHECK]`. Tekst dowolny napisu
 strony to znacznik albo znacznik, jedna spacja i nazwa. `SIZE`
 i `FINGERPRINT` są takie same na każdej stronie dokumentu; `CHECK` jest różny
 na różnych stronach.
@@ -573,7 +573,7 @@ Wektory: `tests/vectors/py/tag.json`.
 
 ### 3.2 Kiedy znacznik jest ważny { #32-when-a-tag-is-valid }
 
-Dowolny tekst napisu **zaczyna się od znacznika**, gdy zaczyna się od `[`,
+Tekst dowolny napisu **zaczyna się od znacznika**, gdy zaczyna się od `[`,
 rozmiaru jak wyżej, `:`, dokładnie 8 znaków z `0-9a-f`, `:`, dokładnie
 2 znaków z `0-9a-f` i `]`, a po znaczniku następuje spacja albo koniec
 tekstu.
@@ -847,7 +847,7 @@ niewykorzystanych bitów po swoim ładunku, a ładunki niektórych stron nie
 zaczynają się na początku bajtu strumienia.
 
 Strumień drukuje się tak, jak opisuje sekcja 2.7, co daje dokładnie `T` stron.
-Napis strony to zwykły wiersz napisu, którego dowolny tekst jest przeznaczony
+Napis strony to zwykły wiersz napisu, którego tekst dowolny jest przeznaczony
 dla ludzi: jest to nazwa pliku (napis podany przez użytkownika albo nazwa
 pliku), taka sama na każdej stronie, i nie zawiera on znacznika. (Ważny
 znacznik sprawiłby, że program odczytujący uznałby stronę za stronę dokumentu
@@ -973,7 +973,7 @@ wektor nie ustala PDF; robi to `tests/unit/test_pdf.py`.
 Obrazy stron zapisuje się też jako pliki PNG lub PGM z jednym pikselem obrazu
 na piksel strony; wektory identyfikują stronę po skrócie SHA-256 jej
 binarnego pliku PGM (`P5`), którego dokładne bajty podaje
-`tests/vectors/README.md`: nagłówek PGM `P5\n<width> <height>\n255\n`
+`tests/vectors/README.md`: nagłówek `P5\n<width> <height>\n255\n`
 w ASCII, a następnie bajty pikseli wiersz po wierszu.
 
 ### 5.4 Pasek napisu { #54-the-label-strip }
@@ -1022,7 +1022,7 @@ wydrukować każdy i może ona deklarować cokolwiek.
 W przypadku strony w układzie `standard` program odczytujący musi najpierw
 sprawdzić napis. Jeśli napis ma postać z sekcji 2.8, zawiera ciąg formatu tego
 układu, liczbę stron wynoszącą co najwyżej `MAX_PAGES`, numer strony od 1 do
-liczby stron (albo 1 przy liczbie stron 0), a jego dowolny tekst zaczyna się
+liczby stron (albo 1 przy liczbie stron 0), a jego tekst dowolny zaczyna się
 od znacznika, który jest ważny dla tego numeru i tej liczby stron (sekcja
 3.2), to strona jest stroną dokumentu ze znacznikiem. Musi być traktowana jako
 taka strona nawet wtedy, gdy jej dane zawierają ważny nagłówek.
@@ -1090,7 +1090,7 @@ weryfikuje pliku: słowo kodowe z większą liczbą błędnych bajtów, niż jeg
 parzystość potrafi naprawić, może zostać zamienione w inne ważne słowo
 kodowe, a przy parzystości 0 nic w ogóle nie jest sprawdzane.
 
-Nazwa pliku (sekcja 4.6) leży poza odciskiem. Jest tekstem niezaufanym nawet
+Nazwa pliku (sekcja 4.6) nie jest objęta odciskiem. Jest tekstem niezaufanym nawet
 wtedy, gdy plik jest zweryfikowany, podobnie jak każdy napis.
 
 ### 6.4 Dopełnienia nigdy się nie odczytuje { #64-padding-is-never-read }
@@ -1121,7 +1121,7 @@ Skan wczytuje się jako 8-bitowy obraz w skali szarości w świetle liniowym.
 Próbka `v` pliku staje się wartością
 `floor(255 * (v / 255) ^ (1 / gamma) + 0.5)`, gdzie `gamma` to gamma pliku
 (PNG `gAMA`) albo 0.454545, gdy plik jej nie podaje. Obraz kolorowy
-przekształca się kanał po kanale, a następnie waży z wagami 0.212671 dla
+przekształca się kanał po kanale, a następnie oblicza się średnią ważoną z wagami 0.212671 dla
 czerwonego, 0.715160 dla zielonego i 0.072169 dla niebieskiego oraz zaokrągla
 do najbliższej liczby całkowitej. Próbka 16-bitowa zachowuje swoje górne
 8 bitów.
@@ -1235,7 +1235,7 @@ Gdy nie podano mu formatu strony, ten projekt sam go ustala:
 
 Błędnie odczytany znacznik przechodzi sprawdzenie wartości kontrolnej mniej
 więcej raz na 256 przypadków; napis bez znacznika nie ma żadnej wartości
-kontrolnej, dlatego musi zostać odczytany wyraźnie i dlatego dowolny tekst, który od ważnego znacznika dzieli jeden
+kontrolnej, dlatego musi zostać odczytany wyraźnie i dlatego tekst dowolny, który od ważnego znacznika dzieli jeden
 błędnie odczytany znak, jest odrzucany. Te progi przyjęcia należą do tego
 programu odczytującego, a nie do formatu.
 
@@ -1247,7 +1247,7 @@ skanie, na którym na piksel danych przypada mniej niż 2.5 piksela skanu,
 a jednocześnie 1% lub więcej symboli strony jest nie do skorygowania, ten
 projekt próbuje drugiej, wolniejszej metody odczytu (`src/optar/decoder/soft.py`),
 przeznaczonej dla skanu o zbyt niskiej rozdzielczości dla jego rozmiaru
-kropek. Dla każdego kandydującego układu i obrotu, w kolejności z 7.5,
+kropek. Dla każdego rozważanego układu i obrotu, w kolejności z 7.5,
 metoda ta:
 
 1. powiększa skan tak, aby piksel danych miał szerokość około czterech
@@ -1283,8 +1283,8 @@ Strona z części 2 to format Twibright Optar, programu w C, który w 2007 roku
 napisał Karel Kulhavy i który od 2012 roku jest utrzymywany w
 `colindean/optar`. Jego źródła są przechowywane bez zmian w folderze `lega-c`
 tego projektu, w stanie z commita `9c8379c25466bf142459a26b0f34521bdde2af12`
-tamtego repozytorium. Wektory w `tests/vectors/c` zostały nagrane z tego
-programu; te w `tests/vectors/py` – z tego projektu.
+tamtego repozytorium. Wektory w `tests/vectors/c` zostały zarejestrowane za pomocą
+tego programu; te w `tests/vectors/py` – za pomocą tego projektu.
 
 | Wersja | Co dodała |
 |---|---|

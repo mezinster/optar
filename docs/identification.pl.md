@@ -11,7 +11,7 @@ wykonano wydruk.
 | Wydruk | Identyfikowany po |
 |---|---|
 | Wykonany z ochroną albo z dowolnym rozmiarem kropek innym niż standardowy | nagłówku w danych strony („strony samoidentyfikujące”: strony, które same podają, do jakiego dokumentu należą i jaki mają numer) |
-| Wydruk zgodny z wersji 0.2.0 lub nowszej | znaczniku w napisie u dołu strony |
+| Wydruk zgodny wykonany w wersji 0.2.0 lub nowszej | znaczniku w napisie u dołu strony |
 | Z wersji 0.1.0 lub z programu w C | samym napisie, którego nie ma z czym porównać |
 
 Ważny znacznik w napisie zawsze wygrywa: strona, której napis ma ważny
@@ -38,14 +38,14 @@ równomiernie. Wersja 0.3.0 wypełniała je zerami, które drukowały się jako
 białe pasy w poprzek stron. Odczytywane są oba warianty, także przez wersję
 0.3.0: żaden program odczytujący nie zagląda do wypełnienia.
 
-Nagłówkowi strony nie ufa się samemu w sobie: jedna zeskanowana strona
+Sam nagłówek strony nie jest wiarygodny: jedna zeskanowana strona
 mogłaby twierdzić, że należy do dowolnego dokumentu. Tylko odcisk odzyskanego
 pliku sprawia, że plik jest zweryfikowany.
 
 ## Napis { #the-label }
 
 Każda strona ma u dołu napis: format strony, numer strony i liczbę stron,
-a potem dowolny tekst. W wydrukach z wersji 0.2.0 i wcześniejszych aplikacja
+a potem tekst dowolny. W wydrukach z wersji 0.2.0 i wcześniejszych aplikacja
 odczytuje ten napis ze skanu.
 
 - Napis ze znacznikiem jest przyjmowany, gdy odczytuje się wiarygodnie,
@@ -63,7 +63,7 @@ ręcznie przypisać do strony.
 ## Znacznik { #the-tag }
 
 Od wersji 0.2.0 `optar encode` i aplikacja drukują znacznik na początku
-dowolnego tekstu każdej strony wydruku zgodnego, w postaci
+tekstu dowolnego każdej strony wydruku zgodnego, w postaci
 `[SIZE:FINGERPRINT:CC]`.
 
 | Część | Znaczenie |

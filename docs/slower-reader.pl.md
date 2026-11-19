@@ -24,8 +24,8 @@ Uruchamia się sama, w dwóch przypadkach:
   skanie napis może być jeszcze czytelny tam, gdzie dane już nie są.
 
 Strona, której dane odczytują się dobrze, to stara strona bez nagłówka i nie
-jest ruszana. Jeśli wolniejsza metoda niczego nie znajdzie, zostaje odczyt
-z napisu.
+jest ruszana. Jeśli wolniejsza metoda niczego nie znajdzie, zachowany zostaje
+odczyt napisu.
 
 ## Jak działa { #how-it-works }
 
@@ -63,21 +63,21 @@ naprawienia.
 ## W wierszu poleceń { #on-the-command-line }
 
 `optar decode` też uruchamia ją sam i informuje o tym na stderr dla każdego
-skanu, na którym jej próbuje. `--no-slow-reader` ją wyłącza.
+skanu, do którego ją stosuje. `--no-slow-reader` ją wyłącza.
 
 ## Ile to trwa { #how-long-it-takes }
 
-Strona A4 zajęła na komputerze, na którym rozwijano program, łącznie od 40 do
-70 sekund: 20–35 sekund, zanim zwykła metoda się poddała, a potem 20–35 sekund
+Odczyt strony A4 trwał na komputerze, na którym rozwijano program, łącznie
+od 40 do 70 sekund: 20–35 sekund, zanim zwykła metoda się poddała, a potem 20–35 sekund
 pracy wolniejszej metody.
 
 Obraz, który w ogóle nie jest stroną optar, ale na którym znaleziono zarys
-strony, kosztuje około 20–35 sekund więcej niż bez wolniejszej metody.
+strony, zajmuje około 20–35 sekund dłużej niż bez wolniejszej metody.
 
 ## Ograniczenia { #limits }
 
-- Identyfikuje stronę tylko po nagłówku w jej danych. Stare strony w stylu
-  0.2, identyfikowane po znaczniku w napisie, nie są objęte.
+- Identyfikuje stronę tylko po nagłówku w jej danych. Nie obsługuje starych
+  stron w stylu 0.2, identyfikowanych po znaczniku w napisie.
 - Strona, której znacznik zwykła metoda zaakceptowała, nigdy nie trafia do
   wolniejszej metody.
 - Oczekuje się, że standardowa ochrona nie wystarczy dla strony ze

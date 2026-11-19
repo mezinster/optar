@@ -43,13 +43,13 @@ przechodzi weryfikację z wolniejszą metodą. Przy domyślnym rozmyciu symulato
 (1,0) zwykła metoda sama odczytuje taką stronę w 300 dpi.
 
 Symulator jest łagodniejszy niż skaner właściciela: w symulacji przy 290 dpi
-wolniejsza metoda niczego nie naprawiała, podczas gdy prawdziwy dokument
+wolniejsza metoda niczego nie naprawiła, podczas gdy prawdziwy dokument
 wymagał naprawienia 41 495 bajtów.
 
 Standardowa ochrona ma budżet 32, mniej niż 40, których potrzebował najgorszy
 blok prawdziwego dokumentu. Oczekuje się więc, że dokument ze standardową
-ochroną zeskanowany w ten sposób nie zostanie odzyskany. Stare strony w stylu
-0.2 nie są objęte wolniejszą metodą.
+ochroną zeskanowany w ten sposób nie zostanie odzyskany. Wolniejsza metoda nie
+obsługuje starych stron w stylu 0.2.
 
 ## Czego nie wykazano { #what-is-not-shown }
 
@@ -72,10 +72,10 @@ programu `optar` w C dla A4, Letter i wszystkich pięciu trybów korekcji
 błędów. Położenia krzyżyków i próbkowane bity dekodera w Pythonie są
 identyczne co do bitu z programem `unoptar` w C na syntetycznych obrazach
 testowych. Jedno i drugie jest sprawdzane z wynikami programów w C, które
-nagrano jeden raz i przechowuje się w `tests/vectors`.
+zarejestrowano jeden raz i przechowuje się w `tests/vectors`.
 
 Każda strona wydruku samoidentyfikującego jest nadal zwykłą stroną optar:
 program `unoptar` w C zbudowany z tym samym rozmiarem siatki odczytuje jej
-kropki dokładnie (nagrano to dla bardzo dużych kropek na A4 i średnich kropek
+kropki dokładnie (zarejestrowano to dla bardzo dużych kropek na A4 i średnich kropek
 na Letter). Zwraca przy tym dane z dodatkowymi informacjami i ochroną
 opakowanymi wokół pliku, a nie sam plik.

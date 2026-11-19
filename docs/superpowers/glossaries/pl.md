@@ -87,9 +87,9 @@ English pages and from Polish software usage, not from the Russian glossary.
 | repair capacity | zdolność naprawcza | "used 18 of 32" «wykorzystało 18 z 32». "The worst spot" «najgorsze miejsce». |
 | margin (wide, moderate, close to the limit) | zapas (duży zapas, umiarkowany zapas, blisko granicy) | |
 | check the fingerprint, checking | sprawdzić odcisk, sprawdzanie odcisku | «Sprawdzanie odcisku…». |
-| matches / does not match the fingerprint | zgadza się / nie zgadza się z odciskiem | A verb, so it needs no gender. |
+| matches / does not match the fingerprint | zgadza się / nie zgadza się z odciskiem | A verb, so it needs no gender. In the past tense «był zgodny z odciskiem» (not «zgodził się», which means "consented"). |
 | identify (a scan), identified | zidentyfikować, zidentyfikowany | «Identyfikacja strony» (step), «nie zidentyfikowano». Rejected: «rozpoznać» (fine Polish, but the term "self-identifying" needs the same root). |
-| assign (a scan) to a page | przypisać do strony | Button «Przypisz do strony…». |
+| assign (a scan) to a page | przypisać do strony | Button «Przypisz do strony…». "Not used for page 3" «nie użyto jako strony 3» (not «dla strony»). |
 | start a document by hand, put together by hand | złożyć dokument ręcznie, złożony ręcznie | One verb for both, so the button and the later caution match («Ten dokument złożono ręcznie»). |
 | replace (scan) | zastąpić | «Zastąp skan…». |
 | use this scan | użyj tego skanu | |
@@ -158,6 +158,7 @@ English pages and from Polish software usage, not from the Russian glossary.
 | Golay code, (extended) Hamming code, Reed-Solomon code | kod Golaya, (rozszerzony) kod Hamminga, kod Reeda-Solomona | Usual Polish spellings. |
 | parity, parity bytes, parity level | parzystość, bajty parzystości, poziom parzystości | Never shown in the window. |
 | check (of a tag), check digits | wartość kontrolna, cyfry kontrolne | Not «suma kontrolna». |
+| free text (of a label) | tekst dowolny | Adjective after the noun, which marks it as a term: «tekst dowolny napisu», «w tekście dowolnym». Not «dowolny tekst», which reads as "any text". Plain «dowolny» keeps its ordinary meaning "any" elsewhere. |
 | header, header copy | nagłówek, kopia nagłówka | |
 | magic | sygnatura | Field name `magic` stays in code font. |
 | well-formed, acceptable, valid | poprawny składniowo, dopuszczalny, ważny | "Valid" is «ważny» everywhere in `format.pl.md` ("invalid" «nieważny»); the other two are the defined terms of 6.2. |
@@ -168,7 +169,7 @@ English pages and from Polish software usage, not from the Russian glossary.
 | generator polynomial, field polynomial | wielomian generujący, wielomian ciała | |
 | big-endian, most significant bit | big-endian (najstarszy bajt pierwszy), najstarszy bit | |
 | normative, informative | normatywny, informacyjny | As in Polish standards (PN). |
-| test vectors, conformance vectors | wektory testowe, wektory zgodności | |
+| test vectors, conformance vectors | wektory testowe, wektory zgodności | "Recorded" (vectors, outputs) «zarejestrowane», not «nagrane» (sound or video). |
 | encoder, decoder, reader | koder, dekoder, program odczytujący | "Reader" in parts 6 and 7 is any implementation. |
 | reference decoder | dekoder referencyjny | |
 | plain, tagged, self-identifying document | dokument prosty, dokument ze znacznikiem, dokument samoidentyfikujący | |
@@ -293,7 +294,8 @@ Page translators copy these from `pl.toml` exactly (English → Polish):
 | Does not match the fingerprint on the paper | Nie zgadza się z odciskiem na papierze | `gui.state.mismatch` |
 | Recoverable: page 3 missing, can be repaired from the others | Do odzyskania: brak strony 3, można ją odtworzyć z pozostałych | `gui.state.recoverable` |
 | … repaired from the others · matches the fingerprint | … odtworzona z pozostałych · zgadza się z odciskiem | `gui.state.recovered`, `gui.state.matches` |
-| Working… 3 of 6 scans read | Przetwarzanie… Odczytano 3 z 6 skanów | `gui.scans_read_working` |
+| Working… 3 of 6 scans read | Przetwarzanie… odczytano 3 z 6 skanów | `gui.scans_read_working` |
+| … · 3 of 6 scans read | … · odczytano 3 z 6 skanów (lower case: it always follows « · ») | `gui.scans_read` |
 | Checking the fingerprint… | Sprawdzanie odcisku… | `gui.state.checking` |
 | All N pages read · cannot be verified (no tag) | Odczytano wszystkie strony: N · nie można zweryfikować (brak znacznika) | `gui.state.all_read`, `gui.state.no_tag` |
 | 4 of 6 pages good · 1 damaged · 1 missing | 4 z 6 stron w porządku · 1 uszkodzona · 1 brakująca | `gui.state.good`, `gui.state.damaged`, `gui.state.missing` |

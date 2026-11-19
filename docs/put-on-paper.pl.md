@@ -67,7 +67,7 @@ utracone strony. Do wyboru są: Brak, Standardowa i Wysoka.
   około 34%.
 - Dodatkowe dane są rozłożone tak, że plama, oderwany róg czy brakująca
   strona odbierają każdej części pliku mniej więcej tyle samo – niewiele.
-  Właśnie tę niewielką część naprawia ochrona.
+  Właśnie taką niewielką stratę naprawia ochrona.
 - Przy ochronie część stron niesie dane ochrony, a każda strona powtarza
   krótki zapis, który podaje, z jakiego dokumentu pochodzi i którą jest
   stroną. Dlatego na sam plik zostaje mniej miejsca, niż pokazuje tabela
@@ -85,8 +85,8 @@ z T” (albo „N strony”, „N stron” – zależnie od liczby).
 | Wysoka | 6 stron | 12 stron |
 
 W krótszych dokumentach uszkodzenia wewnątrz stron są naprawiane, ale utrata
-całej strony oznacza utratę pliku. Ta obietnica jest celowo ostrożna
-i z dokumentu może dać się odzyskać więcej, niż obiecuje.
+całej strony oznacza utratę pliku. Ta obietnica jest celowo ostrożna:
+z dokumentu może dać się odzyskać więcej, niż ona zapowiada.
 
 ### Największy plik { #the-largest-file }
 

@@ -72,7 +72,7 @@ zostanie odczytany, razem z paskiem postępu i etapem, na którym jest:
 
 Pasek liczy etapy, a nie sekundy: może zatrzymać się na jednym etapie, a potem
 skoczyć, ale nigdy nie cofa się. „Usuń z listy” przerywa odczyt skanu.
-Odczytany skan staje się swoją stroną albo trafia do sekcji nieczytelnych.
+Odczytany skan zostaje przypisany do swojej strony albo trafia do sekcji „Nieczytelne”.
 
 ## Stany stron { #page-states }
 
@@ -100,7 +100,7 @@ Pasek pokazuje stan całego dokumentu.
 | Nie zgadza się z odciskiem na papierze | Wszystkie strony zostały odczytane, ale plik nie jest oryginałem, bo część danych zdekodowano błędnie. Zeskanuj strony ponownie, zaczynając od oznaczonych jako „Naprawiona”. |
 | Do odzyskania: brak strony 3, można ją odtworzyć z pozostałych | Dokument z ochroną: brakuje stron, ale odczytane strony powinny wystarczyć, by je odtworzyć. |
 | Do odzyskania: brak strony 3, odtworzona z pozostałych · zgadza się z odciskiem | Odtworzenie zostało wykonane i sprawdzone. Dalej podany jest rozmiar i to, co zrobiła naprawa. |
-| Przetwarzanie… Odczytano 3 z 6 skanów | Skany są jeszcze odczytywane. Jeśli dokument ma już stan do pokazania, licznik stoi po nim: „Plik odzyskany i zweryfikowany · N bajtów · Odczytano 3 z 6 skanów”. |
+| Przetwarzanie… odczytano 3 z 6 skanów | Skany są jeszcze odczytywane. Jeśli dokument ma już stan do pokazania, licznik pojawia się po nim: „Plik odzyskany i zweryfikowany · N bajtów · odczytano 3 z 6 skanów”. |
 | Sprawdzanie odcisku… | Sprawdzanie trwa w tle. |
 | Odczytano wszystkie strony: N · nie można zweryfikować (brak znacznika) | Strony pochodzą ze starego programu i nie mają odcisku. |
 | 4 z 6 stron w porządku · 1 uszkodzona · 1 brakująca | W pozostałych przypadkach – zestawienie liczbowe. |
@@ -113,7 +113,7 @@ Jeśli naprawa się nie powiedzie, okno
 podaje strony, które trzeba dodać lub zeskanować ponownie.
 
 !!! info "Co znaczy „zweryfikowany”"
-    „Zweryfikowany” zawsze oznacza, że odcisk odzyskanego pliku zgodził się
+    „Zweryfikowany” zawsze oznacza, że odcisk odzyskanego pliku był zgodny
     z odciskiem na papierze. Nigdy nie oznacza tylko tego, że naprawa nie
     zgłosiła błędu.
 
