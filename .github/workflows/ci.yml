@@ -3,9 +3,13 @@ name: CI
 on:
   # A branch with an open pull request is tested once, by the pull request;
   # pushes are tested only on master, after a merge.
+  # A change that touches only the documentation does not start these jobs:
+  # the Docs workflow builds the site and runs the tests that read the pages.
   push:
     branches: [master]
+    paths-ignore: ["docs/**", "mkdocs.yml", ".github/workflows/docs.yml"]
   pull_request:
+    paths-ignore: ["docs/**", "mkdocs.yml", ".github/workflows/docs.yml"]
 
 # A newer commit on the same pull request (or on master) replaces the run in
 # progress, so superseded runs do not hold the scarce macOS machines.

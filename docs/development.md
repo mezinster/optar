@@ -48,3 +48,37 @@ The pages are the Markdown files in `docs/`, built with MkDocs:
     .venv/bin/mkdocs serve
 
 A push to `master` that changes `docs/` publishes the site.
+
+## Translations
+
+The application and this site are available in nine languages: `en`, `ru`,
+`uk`, `be`, `pl`, `ka`, `tr`, `it`, `es`. English is the source.
+
+**The wording of the programs** is in `src/optar/locale/<code>.toml`, one file
+per language with the same keys. To add or change a string, edit
+`en.toml` and every other catalogue in the same pull request; a plural entry
+has the categories of its language (`optar.i18n.categories(code)`).
+`tests/unit/test_catalogues.py` checks that the catalogues agree. To see the
+command-line program in another language set `OPTAR_LANG`, for example
+`OPTAR_LANG=ru optar --help`; the application has a language menu.
+
+**The pages** are `docs/<page>.<code>.md` beside the English `docs/<page>.md`.
+A translated page has `source_hash` in its front matter, the English id on
+every heading and code blocks equal to English. To see which pages are
+behind, run `python tools/translation_status.py`. To refresh a stale page,
+read what changed in the English page (`git diff` against the commit of its
+`source_hash`), change the translation to match, then set `source_hash` to
+`git hash-object docs/<page>.md`. `tests/unit/test_doc_translations.py` checks
+the rest. The rules for translators are in
+`docs/superpowers/translation-brief.md`.
+
+**What the site does with them**, found with a throwaway Russian page and
+language entry (removed again):
+
+- A page with no translation appears in English under `/ru/`, with the
+  translated navigation around it (`fallback_to_default`).
+- The language switcher appears in the header once there is a second
+  language.
+- Search is one index for the whole site. It lists results of every language
+  together; an untranslated page is indexed once, under its English address,
+  not again under `/ru/`.
