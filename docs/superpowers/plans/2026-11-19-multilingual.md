@@ -179,7 +179,7 @@ def test_module_reads_no_environment_and_imports_no_qt(): ...  # source scan: no
 
 **Interfaces:**
 - Consumes: `i18n.t`, `i18n.n`, `i18n.number` from Task 1.
-- Produces: every public name of `text.py` unchanged in name, signature and English result. New: `text.button(name: str) -> str` for `name` in `"ok"`, `"cancel"`, `"save"`, `"yes"`, `"no"` (English: `OK`, `Cancel`, `Save`, `Yes`, `No`); `text.LANGUAGE_MENU` (`"Language"`), `text.SYSTEM_LANGUAGE` (`"System default"`), `text.LANGUAGE_RESTART` (`"The language changes the next time optar starts."`).
+- Produces: every public name of `text.py` unchanged in name, signature and English result. New: `text.button(name: str) -> str` for `name` in `"ok"`, `"cancel"`, `"save"`, `"yes"`, `"no"` (English: `OK`, `Cancel`, `Save`, `Yes`, `No`); `text.LANGUAGE_MENU` (`"Language"`), `text.SYSTEM_LANGUAGE` (`"System default"`).
 
 - [ ] **Step 1: Record today's English.** Before touching `text.py`, write `tests/unit/test_gui_text.py::test_english_constants_are_unchanged`: a literal dict of every public upper-case string constant of `text.py` (name to value), generated once from the current module and pasted in, asserted against `getattr(text, name)`. Run it: PASS (it pins the present).
 
@@ -330,7 +330,7 @@ def test_cli_prints_the_translated_error(tmp_path, capsys, monkeypatch):
 - Modify: `src/optar_gui/__main__.py`, `main_window.py`, `dialogs.py`, `selftest.py`, `tests/gui/conftest.py`, `src/optar/locale/en.toml` (`gui.cli.*` for `optar-gui`'s terminal messages)
 
 **Interfaces:**
-- Consumes: `text.button`, `text.LANGUAGE_MENU`, `text.SYSTEM_LANGUAGE`, `text.LANGUAGE_RESTART` (Task 2); `i18n.languages`, `i18n.pick_language`, `i18n.set_language`; `cli.choose_language` (Task 3).
+- Consumes: `text.button`, `text.LANGUAGE_MENU`, `text.SYSTEM_LANGUAGE` (Task 2); `i18n.languages`, `i18n.pick_language`, `i18n.set_language`; `cli.choose_language` (Task 3).
 - Produces (`language.py`, Qt allowed):
   - `saved() -> str | None`: the saved code if it is a string in `i18n.languages()`, else `None`.
   - `save(code: str | None) -> None`: `None` removes the choice.
@@ -350,9 +350,9 @@ def test_save_and_read_back(): ...                           # save("pl") -> sav
 def test_menu_lists_every_language_by_its_own_name(qtbot):
     # MainWindow has a menu titled text.LANGUAGE_MENU whose actions are
     # [text.SYSTEM_LANGUAGE, *i18n.languages().values()]; exactly one is checked
-def test_choosing_a_language_saves_it_and_says_restart(qtbot, monkeypatch): ...
-    # trigger an action; language.saved() == its code; the message shown is text.LANGUAGE_RESTART;
-    # the window's current texts did not change
+def test_choosing_a_language_saves_it_and_applies_it_at_once(qtbot, monkeypatch): ...
+    # trigger an action; language.saved() == its code; no message; the window is in the language
+    # (Task 5b; Task 5 first showed a restart message, which the owner replaced)
 def test_message_box_buttons_come_from_the_catalogue(qtbot, monkeypatch):
     # stub ru gui.button.save = "Сохранить"; the box built by dialogs.ask with Save|Cancel
     # has a button whose text is "Сохранить"; same for the QDialogButtonBox of _buttons()
@@ -365,14 +365,134 @@ def test_self_test_runs_in_english_and_loads_every_catalogue(): ...
 
 - [ ] **Step 4: Implement.**
   - `__main__.main`: first `i18n.set_language(cli.choose_language(os.environ, sys.stderr.encoding))` for `--help`, `--version` and `MISSING_QT`; after `QApplication` exists, `i18n.set_language(language.at_start())` before `MainWindow` is imported and built. `--self-test` sets English.
-  - `main_window.py`: a menu bar with the one menu; choosing an entry calls `language.save` and shows `text.LANGUAGE_RESTART` through `dialogs.ask`.
+  - `main_window.py`: a menu bar with the one menu; choosing an entry calls `language.save` (Task 5b then applies the choice at once).
   - `dialogs.py`: `ask` and `_buttons` set each standard button's text from `text.button`.
   - `selftest.py`: after its encode and decode, load every catalogue in `i18n.languages()` and call `text.READ_TAB` in each; report lines stay English.
-  - No work on the interface thread is added; settings are read once at start.
+  - No work on the interface thread is added; settings are read at start.
 
 - [ ] **Step 5: Run** `QT_QPA_PLATFORM=offscreen .venv/bin/pytest -q -m gui`, `.venv/bin/pytest -q`, `.venv/bin/optar-gui --self-test`. Expected: PASS and exit code 0.
 
 - [ ] **Step 6: Commit** "Adds the language menu and starts the window in the saved or system language".
+
+---
+
+### Task 5b: The window changes language at once (added by the owner on 2026-11-19; replaces "takes effect after restart")
+
+**Why:** the owner requires that choosing a language in the menu changes the whole window immediately,
+without a restart. Task 5 built the menu, the saved choice and the start-up language, and shows
+`text.LANGUAGE_RESTART` after a choice. This task makes the choice apply at once and removes that message.
+
+**Files:**
+- Modify: `src/optar_gui/main_window.py`, `read_tab.py`, `write_tab.py`, `preview.py`, `dialogs.py` (only if
+  needed), `work.py`, `document.py` (only if needed), `text.py`, `language.py` (only if needed),
+  `src/optar/locale/en.toml` (remove `gui.LANGUAGE_RESTART`), `tests/gui/test_language.py`,
+  `tests/unit/test_gui_text.py` (only the lines that name `LANGUAGE_RESTART`),
+  `docs/superpowers/specs/2026-11-19-multilingual-design.md`, `docs/superpowers/plans/2026-11-19-multilingual.md`
+- Test: `tests/gui/test_language_switch.py` (new)
+
+**Behaviour:**
+1. Choosing an entry of the language menu: saves the choice (as now), sets the current language
+   (the saved code, or for "system language" what `language.at_start()` gives), and re-words the window.
+   No message box. Exactly one menu entry stays checked, and it is the chosen one.
+2. After the switch, every text the main window shows is in the new language:
+   - window title, tab titles, the language menu's own title and its "system language" entry (language
+     names stay in their own language);
+   - Write tab: buttons, radio buttons, check box, both combo boxes' items (the selected item stays
+     selected), form row labels, the reminder, the information and warning lines, the status line;
+   - Read tab: buttons, the list (title, page rows, spares, section headings, other documents, scans being
+     read with their step text, unreadable scans with their reason), the detail pane of the selected row,
+     the caution line, the summary bar including its note ("Saved ...") and a check failure;
+   - the preview's loading and failure messages if one is showing.
+3. Nothing that stays on screen may be a sentence rendered before the switch. Where the window keeps a
+   rendered string today and goes on showing it, keep the facts instead and render when showing. Known
+   places (find the rest): `ReadController.note` (`text.saved_message`), `check_error`,
+   the reason of an unreadable scan (`ScanWork.reason` made in `work.py` from `text.coarse_scan`,
+   `text.not_regular_file`, `text.NO_PAGE_DATA`, then stored by `doc.set_unreadable`), the replace-rejected
+   message, `WriteTab._read_error` and the status line (`text.created_message`, `text.create_failed`,
+   `text.file_unreadable`, `text.CREATING`), `PreviewPane._message`, errors raised with a `text.*` sentence
+   in `work.py`/`preview.py` and shown later. Task 4 gave library errors a key and values
+   (`i18n.error_text`), so a kept exception can be re-worded; use that.
+   One acceptable device, if it fits: a small value in `text.py` that holds a `text` function's name and
+   its arguments and renders in the current language when converted with `str()`; the facts must then
+   travel as that value (a Qt `Signal(str)` would render it too early: use `Signal(object)` where needed).
+   You may choose another device; the rule of point 3 is what is tested.
+4. Selection, scroll position, the current tab, entered text, running jobs and their progress are not
+   disturbed by a switch. A switch while scans are being read or a file is being saved is safe: no job is
+   restarted, nothing is read twice, and lines produced by a job that finishes after the switch are in the
+   new language.
+5. A modal dialog that is open cannot be switched under (the menu is unreachable); dialogs opened after the
+   switch are in the new language, including standard buttons (`text.button`).
+6. Rules stay where CLAUDE.md puts them: no scan is read, decoded, hashed or saved on the interface thread;
+   every user-visible string lives in `text.py`; `document.py`, `work.py`, `text.py` import no Qt; untrusted
+   text is shown as plain text. Rules about placement and health stay in `document.py`; they must not start
+   to depend on the language (compare codes or constants, never rendered sentences). Check in particular
+   that nothing compares a stored reason with a rendered sentence after this change
+   (`text._reason_key` maps the library's English constants: those stay English and are not shown raw).
+7. `gui.LANGUAGE_RESTART` and `text.LANGUAGE_RESTART` are removed everywhere (catalogue, tests, design, plan)
+   so that no translator translates it.
+8. English output of every existing `text.py` function is unchanged.
+
+- [ ] **Step 1: Write the failing tests** in `tests/gui/test_language_switch.py` (pytest-qt, marker `gui`),
+  using the `catalogues` fixture to add a stub language whose every used entry differs visibly from English
+  (build the stub from the English catalogue by prefixing each string, keeping placeholders, so that any
+  text left in English is caught without a real translation):
+
+```python
+def test_choosing_a_language_rewords_the_whole_window(qtbot): ...
+    # build MainWindow, trigger the stub language's action; walk every visible QWidget
+    # (QAbstractButton.text, QLabel.text, QTabBar tab texts, QComboBox item texts, menu and action texts,
+    # form row labels, window title, the list model's texts): each non-empty text that English would have
+    # produced carries the stub's prefix; language names are exempt
+def test_no_message_box_and_the_choice_is_saved(qtbot, monkeypatch): ...
+def test_rows_details_and_summary_follow_the_language(qtbot, tmp_path): ...
+    # a document with a good page, a missing page, an unreadable scan with a coarse-scan reason and a
+    # scan that is not a regular file; select a row; switch; rows, detail pane, caution and summary bar
+    # are in the stub language; the same row is still selected
+def test_saved_note_and_check_failure_follow_the_language(qtbot, tmp_path): ...
+def test_write_tab_status_and_warnings_follow_the_language(qtbot, tmp_path): ...
+    # after a created PDF, after a failed create, after an unreadable file; combo selections are kept
+def test_switch_while_a_scan_is_being_read(qtbot, tmp_path): ...
+    # the job is not restarted (count the reads); its row's step text switches; its final row is in the
+    # new language
+def test_switching_back_to_english_gives_the_original_texts(qtbot): ...
+    # collect all texts, switch to the stub, switch back: identical to the first collection
+def test_system_language_entry_applies_the_system_language(qtbot, monkeypatch): ...
+```
+
+- [ ] **Step 2: Run** `QT_QPA_PLATFORM=offscreen .venv/bin/pytest -q -m gui tests/gui/test_language_switch.py`.
+  Expected: FAIL.
+
+- [ ] **Step 3: Implement.** Each widget that sets wording gets one method that sets all of it (called from
+  `__init__` and on a switch) so construction and re-wording cannot drift apart. `MainWindow` calls them
+  after `i18n` has the new language. Remove the restart message.
+
+- [ ] **Step 4: Update** the design (the paragraph and the open point that speak of a restart) and the plan
+  (Task 5's restart wording; add this task after it) to say that the choice applies at once.
+
+- [ ] **Step 5: Run** `QT_QPA_PLATFORM=offscreen .venv/bin/pytest -q -m gui -n 4`, `.venv/bin/pytest -q -n auto`,
+  `.venv/bin/ruff check .`, `QT_QPA_PLATFORM=offscreen .venv/bin/optar-gui --self-test`. Expected: PASS.
+
+- [ ] **Step 6: Commit** "Changes the window's language at once, without a restart".
+
+**Pointers from the reviews of Tasks 4 and 5 (line numbers at commit 2979b2f):**
+- Sentences stored too early, to be replaced by facts worded when shown:
+  `src/optar_gui/work.py:439, 466, 493, 528, 534` (`ScanWork(..., text.error_text(e), ...)` → `ScanWork.reason` →
+  `Document.set_unreadable`); `src/optar_gui/jobs.py:43-56` (`_one_line`) and its use at `jobs.py:105` (the failed
+  signal carries a worded string to `save_failed`/`create_failed`/`check_failed`/`file_unreadable`/
+  `preview_failed`/`repair_failed` and `Document.fail_repair`); the window's own already-worded `OptarError`s at
+  `work.py:163, 182, 575, 642` and `preview.py:187, 202, 207`; `text.coarse_scan(...)` at about `work.py:457`.
+  The `IdentifyError` path already stores the English constant `e.reason` (a fact) and words it through
+  `text._reason_key`: keep that pattern.
+- `jobs._one_line` falls back to the English text when a translation is broken (logs the `KeyError`); the
+  `text.error_text(e)` calls in `work.py` do not. After this task there is one such fallback, in one helper in
+  `text.py`, used wherever an error is worded.
+- `selftest.py`: the report line "loaded the catalogues of 1 languages" reads wrongly for one language; word it
+  so that it is right for any number (the self-test's report stays English).
+- A library exception's text (`str(e)`) stays English; exceptions and their `key`/`values` may be kept by the
+  window, but never their tracebacks (do not keep frames alive: copy what is needed).
+- Known and not yours: `tests/gui/test_read_tab.py::test_a_repair_that_raises_is_shown_as_plain_text_and_not_retried`
+  fails intermittently and did so before this branch. If your change to how a failed repair is kept touches that
+  path, do not make it worse; do not chase the flake.
 
 ---
 

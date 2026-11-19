@@ -1095,7 +1095,6 @@ def test_buttons():
 def test_language_choice_wording():
     assert text.LANGUAGE_MENU == "Language"
     assert text.SYSTEM_LANGUAGE == "System default"
-    assert text.LANGUAGE_RESTART == "The language changes the next time optar starts."
 
 
 def test_every_paper_and_dot_size_has_its_words():

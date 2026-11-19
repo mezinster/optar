@@ -316,7 +316,6 @@ WAITING = "Waiting"
 # The choice of language.
 LANGUAGE_MENU = "Language"
 SYSTEM_LANGUAGE = "System default"
-LANGUAGE_RESTART = "The language changes the next time optar starts."
 
 # The terminal messages of optar-gui.
 [gui.cli]
@@ -497,6 +496,8 @@ page_number = "The label's page number does not fit this document"
 page_count = "The label's page count is not possible"
 size_mismatch = "This scan is of a different paper size than the document"
 format_mismatch = "This scan was decoded for a different paper size than the document"
+# A scan assigned to a page by hand that decodes badly whichever way up it is read.
+not_decodable = "could not be decoded in any orientation"
 
 # The detail panel of a page.
 [gui.detail]

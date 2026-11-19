@@ -2,8 +2,8 @@
 """The window's language: the saved choice, the system's language, and the start.
 
 The choice is kept in the user's settings (``QSettings``, key ``language``). It
-is read once, at start; a changed choice takes effect the next time the program
-starts.
+is read at start; a choice made in the window's menu is saved and applies at once
+(``MainWindow.choose_language``).
 """
 
 from __future__ import annotations

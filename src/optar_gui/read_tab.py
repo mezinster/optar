@@ -217,12 +217,15 @@ class ReadController(QObject):
         self._works: dict[tuple[int, str | None], ScanWork] = {}
         self._summary = self._doc.summary()
         self._verdict_key: tuple | None = None  # what the running verdict job hashes
-        self._verdict_error: tuple[tuple, str] | None = None  # (key, message) of a failed job
+        # (key, why) of a failed job; why is a text.Words, worded when shown
+        self._verdict_error: tuple[tuple, text.Words] | None = None
         self._repair_key: tuple | None = None  # what the running repair job repairs
         self._save_path: str | None = None  # while a save runs
         self._save_stop = threading.Event()
         self._closed = False
-        self.note = ""  # what the last save did, until the document changes
+        # What the last save did (a text.Words, worded when shown), until the
+        # document changes; "" for none.
+        self.note: text.Words | str = ""
         self.refreshes = 0  # for tests: how often ``changed`` was emitted
 
     # --- Reading -----------------------------------------------------------------
@@ -254,8 +257,8 @@ class ReadController(QObject):
 
     @property
     def check_error(self) -> str:
-        """Why the check of the current pages failed, or ""."""
-        return self._verdict_error[1] if self._verdict_error is not None else ""
+        """Why the check of the current pages failed, or "", in the current language."""
+        return str(self._verdict_error[1]) if self._verdict_error is not None else ""
 
     def summary_text(self) -> str:
         """The bottom bar's text."""
@@ -266,7 +269,7 @@ class ReadController(QObject):
             line = text.with_reading(text.REPAIRING, s)
         else:
             line = text.summary_line(self._summary)
-        return text.summary_bar(line, self.note)
+        return text.summary_bar(line, str(self.note))
 
     @property
     def saving(self) -> bool:
@@ -639,12 +642,12 @@ class ReadController(QObject):
             return
         if work.header is not None and work.info.tag is None:  # a version-1 page
             if work.payload is None:
-                doc.set_unreadable(scan_id, work.reason or text.NO_PAGE_DATA)
+                doc.set_unreadable(scan_id, work.reason or text.Words.constant("NO_PAGE_DATA"))
                 return
             doc.set_payload(scan_id, work.payload)
         doc.set_outcome(scan_id, work.outcome)
 
-    def _on_failed(self, scan_id: int, message: str) -> None:
+    def _on_failed(self, scan_id: int, message: text.Words) -> None:
         fmt = self._decoding_in.pop(scan_id, None)
         try:
             self._doc.set_working(scan_id, False)
@@ -669,11 +672,11 @@ class ReadController(QObject):
             self._schedule(changed=False)  # a verdict does not change the pages
             return
         path, self._save_path = self._save_path, None
-        self.note = text.saved_message(path, result)
+        self.note = text.Words(text.saved_message, path, result)
         self.refresh()
         self.save_finished.emit(path, result)
 
-    def _on_task_failed(self, job: int, message: str) -> None:
+    def _on_task_failed(self, job: int, message: text.Words) -> None:
         if job == _REPAIR_JOB:
             key, self._repair_key = self._repair_key, None
             if key is not None:
@@ -688,7 +691,7 @@ class ReadController(QObject):
             return
         self._save_path = None
         self.refresh()
-        self.save_failed.emit(message)
+        self.save_failed.emit(str(message))  # shown at once, in a message box
 
 
 # A row of the list: (kind, key, text, bar). ``bar`` is (fraction, name, step) for
@@ -891,7 +894,7 @@ class ReadTab(QWidget):
         self.page_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.page_list.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.page_list.selectionModel().selectionChanged.connect(self._on_selection)
-        self.add_button = QPushButton(text.ADD_SCANS, objectName="addButton")
+        self.add_button = QPushButton(objectName="addButton")
         self.add_button.clicked.connect(self._on_add)
 
         self.preview = ScanPreview(self.controller.preview_runner)
@@ -900,24 +903,22 @@ class ReadTab(QWidget):
         self.detail.setTextFormat(Qt.TextFormat.PlainText)
         self.detail.setWordWrap(True)
         self.detail.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.remove_button = QPushButton(text.REMOVE_SCAN, objectName="removeButton")
+        self.remove_button = QPushButton(objectName="removeButton")
         self.remove_button.clicked.connect(self._on_remove)
-        self.replace_button = QPushButton(text.REPLACE_SCAN, objectName="replaceButton")
+        self.replace_button = QPushButton(objectName="replaceButton")
         self.replace_button.clicked.connect(self._on_replace)
-        self.use_spare_button = QPushButton(text.USE_SPARE, objectName="useSpareButton")
+        self.use_spare_button = QPushButton(objectName="useSpareButton")
         self.use_spare_button.clicked.connect(self._on_use_spare)
-        self.switch_button = QPushButton(text.SWITCH_DOCUMENT, objectName="switchButton")
+        self.switch_button = QPushButton(objectName="switchButton")
         self.switch_button.clicked.connect(self._on_switch)
-        self.assign_button = QPushButton(text.ASSIGN_PAGE, objectName="assignButton")
+        self.assign_button = QPushButton(objectName="assignButton")
         self.assign_button.clicked.connect(self._on_assign)
-        self.start_by_hand_button = QPushButton(
-            text.START_BY_HAND, objectName="startByHandButton"
-        )
+        self.start_by_hand_button = QPushButton(objectName="startByHandButton")
         self.start_by_hand_button.clicked.connect(self._on_start_by_hand)
 
         self.summary = QLabel(objectName="summaryLabel")
         self.summary.setTextFormat(Qt.TextFormat.PlainText)
-        self.save_button = QPushButton(text.SAVE_FILE, objectName="saveButton")
+        self.save_button = QPushButton(objectName="saveButton")
         self.save_button.clicked.connect(self._on_save)
 
         left = QWidget()
@@ -958,6 +959,25 @@ class ReadTab(QWidget):
         self.controller.changed.connect(self.refresh)
         self.controller.save_failed.connect(self._on_save_failed)
         self.controller.replace_rejected.connect(self._on_replace_rejected)
+        self.retranslate()
+
+    def retranslate(self) -> None:
+        """Sets all of the tab's wording in the current language: its buttons, then,
+        through ``refresh``, the list, the detail, the caution and the bar, and the
+        preview's message. Called when the tab is made and when the language changes;
+        the selection, the scroll position and running work are left as they are."""
+        for button, words in (
+            (self.add_button, text.ADD_SCANS),
+            (self.start_by_hand_button, text.START_BY_HAND),
+            (self.replace_button, text.REPLACE_SCAN),
+            (self.use_spare_button, text.USE_SPARE),
+            (self.switch_button, text.SWITCH_DOCUMENT),
+            (self.assign_button, text.ASSIGN_PAGE),
+            (self.remove_button, text.REMOVE_SCAN),
+            (self.save_button, text.SAVE_FILE),
+        ):
+            button.setText(words)
+        self.preview.retranslate()
         self.refresh()
 
     # --- Interaction points tests replace -------------------------------------------

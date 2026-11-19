@@ -89,6 +89,7 @@ __all__ = [
     "ScanWork",
     "TOO_LARGE_TO_PROTECT",
     "TOO_MANY_PAGES",
+    "WindowError",
     "dot_choices",
     "encode_to_pdf",
     "name_only_preview",
@@ -119,6 +120,18 @@ _TURN_POLL_S = 0.1
 
 class Cancelled(Exception):
     """The work was cancelled before it finished."""
+
+
+class WindowError(OptarError):
+    """An error the window words itself: ``words`` (a ``text.Words``) says it, in
+    the language current whenever it is shown; ``str(e)`` words it then too."""
+
+    def __init__(self, words: text.Words) -> None:
+        super().__init__()
+        self.words = words
+
+    def __str__(self) -> str:
+        return str(self.words)
 
 
 def _never() -> bool:
@@ -156,11 +169,16 @@ def _irregular(path: str) -> bool:
         return False
 
 
+def _not_regular(path: str) -> text.Words:
+    """Why ``path`` is not read: a folder, a named pipe or a device."""
+    return text.Words(text.not_regular_file, path)
+
+
 def regular_file(path: str) -> None:
     """Raises OptarError when ``path`` exists but is not a regular file (a folder,
     a named pipe, a device), without opening it."""
     if _irregular(path):
-        raise OptarError(text.not_regular_file(path))
+        raise WindowError(_not_regular(path))
 
 
 def _open_regular(path: str):
@@ -179,7 +197,7 @@ def _open_regular(path: str):
         raise io_error("read", path, e) from e
     try:
         if not stat.S_ISREG(os.fstat(fd).st_mode):
-            raise OptarError(text.not_regular_file(path))
+            raise WindowError(_not_regular(path))
         if nonblock:
             os.set_blocking(fd, True)
         return os.fdopen(fd, "rb")
@@ -197,7 +215,9 @@ class ScanWork:
 
     ``info`` is None when the scan was not identified (always for a scan
     assigned by hand); ``reason`` is empty when it was identified and decoded,
-    else why not. ``outcome`` is None when the page was not decoded.
+    else why not: a code (the library's English constants, ``NOT_DECODABLE``) or a
+    ``text.Words`` that words it when shown, never a finished sentence, so that it
+    follows the window's language. ``outcome`` is None when the page was not decoded.
     ``rotation`` is the counter-clockwise quarter turns that make the scan
     upright. ``marks`` holds the (x, y) scan-pixel positions (float32, shape
     (n, 2), pixel centres at integers) of every bit error correction changed,
@@ -217,7 +237,7 @@ class ScanWork:
     """
 
     info: ScanInfo | None
-    reason: str
+    reason: str | text.Words
     outcome: PageOutcome | None
     rotation: int
     marks: np.ndarray | None
@@ -413,7 +433,7 @@ def process_scan(
 
     An unreadable file comes back with ``info=None`` and the reading error as
     the reason; a scan that is not identified with ``info=None`` and the
-    reason "no page found" or "label unreadable" (``text.coarse_scan`` instead
+    reason "no page found" or "label unreadable" (``text.coarse_scan``'s words instead
     when the resolution a page outline gave is ``too_coarse`` for any dots), with
     its ``scan_dpi`` when known; an identified scan that does
     not decode with its ``info``, no outcome and the decoder's message. A
@@ -432,11 +452,11 @@ def process_scan(
     if report is not None:
         report(STEP_OPEN, 0, 1)
     if _irregular(path):
-        return ScanWork(None, text.not_regular_file(path), None, 0, None, (0, 0))
+        return ScanWork(None, _not_regular(path), None, 0, None, (0, 0))
     try:
         image = read_scan(path)
     except OptarError as e:
-        return ScanWork(None, text.error_text(e), None, 0, None, (0, 0))
+        return ScanWork(None, text.Words.error(e), None, 0, None, (0, 0))
     _check(cancelled)
     turn = _take_turn(image.size, cancelled)
 
@@ -459,11 +479,11 @@ def process_scan(
         except IdentifyError as e:
             reason = e.reason
             if too_coarse(e.scan_dpi, None, unreadable=True):
-                reason = text.coarse_scan(e.scan_dpi, None, slow_tried=e.slow_tried)
+                reason = text.Words(text.coarse_scan, e.scan_dpi, None, e.slow_tried)
             size = _upright_size(image, 0)
             return ScanWork(None, reason, None, 0, None, size, scan_dpi=e.scan_dpi)
         except DecodeError as e:
-            return ScanWork(None, text.error_text(e), None, 0, None, _upright_size(image, 0))
+            return ScanWork(None, text.Words.error(e), None, 0, None, _upright_size(image, 0))
         rotation = identity.rotation
         size = _upright_size(image, rotation)
         del image
@@ -490,7 +510,7 @@ def process_scan(
             try:
                 result = decode_located(grid, detail=True)
             except DecodeError as e:
-                return ScanWork(info, text.error_text(e), None, rotation, None, size, **found)
+                return ScanWork(info, text.Words.error(e), None, rotation, None, size, **found)
             finally:
                 del grid
         else:
@@ -521,17 +541,17 @@ def process_unlabelled(
     """
     fmt = PageFormat.parse(format)
     if _irregular(path):
-        return ScanWork(None, text.not_regular_file(path), None, 0, None, (0, 0))
+        return ScanWork(None, _not_regular(path), None, 0, None, (0, 0))
     try:
         image = read_scan(path)
     except OptarError as e:
-        return ScanWork(None, text.error_text(e), None, 0, None, (0, 0))
+        return ScanWork(None, text.Words.error(e), None, 0, None, (0, 0))
     _check(cancelled)
     turn = _take_turn(image.size, cancelled)
     try:
         rotation, result = decode_unlabelled(image, fmt, detail=True)
     except DecodeError as e:
-        return ScanWork(None, text.error_text(e), None, 0, None, _upright_size(image, 0))
+        return ScanWork(None, text.Words.error(e), None, 0, None, _upright_size(image, 0))
     finally:
         if turn:
             _LARGE_SCAN_TURN.release()
@@ -572,7 +592,7 @@ def encode_to_pdf(
     ``src`` itself, and before reading the file when it is too large.
     """
     if same_file(src, dest):
-        raise OptarError(text.DEST_IS_SOURCE)
+        raise WindowError(text.Words.constant("DEST_IS_SOURCE"))
     if not compatible:
         return _encode_wrapped(src, dest, paper_name, name, cancelled, dots, protect)
     paper = get_paper(paper_name)

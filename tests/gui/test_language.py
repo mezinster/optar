@@ -18,7 +18,6 @@ RU = {
         "READ_TAB": "Чтение",
         "LANGUAGE_MENU": "Язык",
         "SYSTEM_LANGUAGE": "Как в системе",
-        "LANGUAGE_RESTART": "Язык сменится при следующем запуске.",
         "button": {"save": "Сохранить", "cancel": "Отмена", "ok": "ОК"},
         "cli": {"missing_qt": "Нужен PySide6.", "description": "d", "version_help": "v"},
     },
@@ -89,7 +88,7 @@ def test_the_saved_language_is_the_checked_entry(qtbot, catalogues):
     assert checked == ["ru"]
 
 
-def test_choosing_a_language_saves_it_and_says_restart(qtbot, catalogues, monkeypatch):
+def test_choosing_a_language_saves_it_and_applies_it_at_once(qtbot, catalogues, monkeypatch):
     catalogues.add("ru", RU)
     shown = []
     monkeypatch.setattr(
@@ -97,15 +96,16 @@ def test_choosing_a_language_saves_it_and_says_restart(qtbot, catalogues, monkey
     )
     window = main_window.MainWindow()
     qtbot.addWidget(window)
-    tab_before = window.tabs.tabText(0)
     ru = next(a for a in menu_actions(window) if a.data() == "ru")
     ru.trigger()
     assert language.saved() == "ru"
-    assert shown == [text.LANGUAGE_RESTART]
-    assert window.tabs.tabText(0) == tab_before
-    assert window.language_menu.title() == "Language"
-    menu_actions(window)[0].trigger()  # back to the system's language
+    assert shown == []  # no message: the window has changed already
+    assert window.tabs.tabText(0) == "Чтение"
+    assert window.language_menu.title() == "Язык"
+    assert menu_actions(window)[0].text() == "Как в системе"
+    menu_actions(window)[0].trigger()  # back to the system's language (English here)
     assert language.saved() is None
+    assert window.language_menu.title() == "Language"
 
 
 def test_message_box_buttons_come_from_the_catalogue(qtbot, catalogues, monkeypatch):

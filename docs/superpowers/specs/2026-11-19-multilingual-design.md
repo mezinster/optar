@@ -168,10 +168,19 @@ reasons `text._REASONS` holds today (the reviewer counted about 61 raise and
 - **Window.** Order: the saved choice; else the system's language (Qt's
   `QLocale`, read in `__main__.py`, which is allowed Qt); else English. A
   "Language" menu lists the nine languages by their own names plus "System
-  default". The choice is saved with `QSettings` and takes effect the next
-  time the application starts; the menu says so in a short message. *My call:
-  rebuilding a live window would have to carry loaded scans across, and that
-  is not worth it for a setting changed once.*
+  default". The choice is saved with `QSettings` and applies at once: the
+  whole window is worded again in the new language, without a restart and
+  without a message (*the owner's decision, 2026-11-19*). Nothing else
+  changes: loaded scans, the selection, the current tab, entered text and
+  running work stay as they are. Each widget has one method that sets all of
+  its wording, called when it is made and on a switch. Nothing on screen may
+  be a sentence worded before the switch: wherever the window keeps something
+  to show again later (an unreadable scan's reason, the "Saved …" note, a
+  failed check or repair, the writing tab's status line, the preview's
+  message, an error a background job reports), it keeps the facts, as a
+  `text.Words` value that words itself in the current language each time it
+  is shown, and the library's own errors by their key and values. Rules in
+  `document.py` never compare such a value with a sentence.
 - **Words Qt draws itself.** The standard buttons (Yes/No in
   `main_window.py`, Save/Cancel in `read_tab.py`, OK/Cancel in `dialogs.py`)
   are labelled from the catalogue, so they are right in all nine languages;
@@ -275,5 +284,5 @@ not yet on `master`).
   into templates, as long as English output is unchanged.
 - How argparse's own words are translated, and how far.
 - The matching mechanism for library messages that contain values.
-- Exact wording of the "takes effect after restart" message and the menu.
+- Exact wording of the menu.
 - Whether translated pages are produced page by page or in larger batches.

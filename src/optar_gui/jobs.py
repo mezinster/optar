@@ -24,7 +24,6 @@ from functools import partial
 
 from PySide6.QtCore import QEventLoop, QObject, Qt, QThreadPool, QTimer, Signal
 
-from optar.errors import OptarError
 from optar_gui import text
 from optar_gui.work import Cancelled
 
@@ -41,17 +40,9 @@ def default_max_workers() -> int:
 
 
 def _one_line(e: BaseException) -> str:
-    """The first line of an error's message, an optar error's in the window's language."""
-    message = str(e)
-    if isinstance(e, OptarError):
-        try:
-            message = text.error_text(e)
-        except KeyError:  # a broken translation: logged, and the English shown
-            log.exception("the message of %r could not be translated", e)
-    line = next((line.strip() for line in message.splitlines() if line.strip()), "")
-    if isinstance(e, OptarError) and line:
-        return line
-    return f"{type(e).__name__}: {line}" if line else type(e).__name__
+    """The first line of an error's message, an optar error's in the window's
+    language now (``text.Words.error_line``, which a failed job carries)."""
+    return str(text.Words.error_line(e))
 
 
 class _Job:
@@ -102,7 +93,9 @@ def _run(channel: _Channel, job: _Job) -> None:
         payload, kind = None, _CANCELLED
     except BaseException as e:
         log.error("background job for scan %d failed", job.scan_id, exc_info=e)
-        payload, kind = _one_line(e), _FAILED
+        # What the error says, kept as facts: worded when shown, in the language
+        # current then. Neither the exception nor its traceback is kept.
+        payload, kind = text.Words.error_line(e), _FAILED
     job.fn = None
     channel.deliver(job.serial, kind, payload)
 
@@ -113,7 +106,8 @@ class JobRunner(QObject):
     Signals, all emitted on the thread that owns the runner: ``started(scan
     id)`` when a job's function is handed to a worker, ``finished(scan id,
     result)`` when it returns, ``failed(scan id, message)`` when it raises
-    (a one-line message; the traceback goes to the ``logging`` module),
+    (a ``text.Words`` of the error's first line, worded when shown; the traceback
+    goes to the ``logging`` module),
     ``progress(scan id, payload)`` when a job submitted with ``reports`` calls
     its ``report(payload)`` while it runs, and ``idle()`` when no job is waiting
     or running any more. A job's reports arrive before its result.
@@ -141,7 +135,7 @@ class JobRunner(QObject):
     started = Signal(int)
     progress = Signal(int, object)
     finished = Signal(int, object)
-    failed = Signal(int, str)
+    failed = Signal(int, object)
     idle = Signal()
 
     def __init__(self, parent: QObject | None = None, max_workers: int | None = None) -> None:

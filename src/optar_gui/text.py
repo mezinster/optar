@@ -15,6 +15,7 @@ agree in number with their noun.
 
 from __future__ import annotations
 
+import logging
 import math
 import os
 from typing import TYPE_CHECKING
@@ -39,6 +40,8 @@ if TYPE_CHECKING:
     from optar.container import Unwrapped
     from optar.format import Layout
     from optar_gui.document import Document
+
+log = logging.getLogger(__name__)
 
 # Loading the optar package loads numpy, which importing this module must not:
 # optar.i18n (and the rest of optar) is imported inside the functions below.
@@ -89,10 +92,134 @@ def _name(key: str, default: str) -> str:
 
 def error_text(e: BaseException) -> str:
     """A library error's message in the current language (``optar.errors``: the
-    message of its key, filled with its values), else its text."""
+    message of its key, filled with its values), else its text. A translation that
+    cannot be filled (it names a placeholder the error does not give) is logged
+    once and the English text shown: the one such fallback of the window."""
     from optar import i18n
 
-    return i18n.error_text(e)
+    try:
+        return i18n.error_text(e)
+    except KeyError:
+        key = getattr(e, "key", None)
+        if key not in _BROKEN:
+            _BROKEN.add(key)
+            # Not wording (this module holds none): a note for the log.
+            log.exception("untranslatable:%r", e)
+        return str(e)
+
+
+# The keys of errors whose translation could not be filled, logged once each.
+_BROKEN: set[object] = set()
+
+
+class _KeptError:
+    """What the window keeps of an error to word it later: its kind, key, values
+    and English text (or the ``Words`` of a window error), never the exception and
+    its traceback. ``error_text`` reads it as it reads an error."""
+
+    __slots__ = ("kind", "optar", "key", "values", "english", "words")
+
+    def __init__(self, e: BaseException) -> None:
+        from optar.errors import OptarError
+
+        self.kind = type(e).__name__
+        self.optar = isinstance(e, OptarError)
+        self.key = getattr(e, "key", None)
+        self.values = dict(getattr(e, "values", None) or {})
+        self.words = getattr(e, "words", None)
+        self.english = "" if self.words is not None else str(e)
+
+    def __str__(self) -> str:
+        return str(self.words) if self.words is not None else self.english
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, _KeptError):
+            return NotImplemented
+        return all(getattr(self, a) == getattr(other, a) for a in self.__slots__)
+
+    __hash__ = None  # type: ignore[assignment]
+
+
+def _error_message(kept: _KeptError) -> str:
+    return error_text(kept)
+
+
+def _error_line(kept: _KeptError) -> str:
+    """The first line of an error's message; another error than an optar one is
+    named by its kind before it."""
+    message = error_text(kept)
+    line = next((part.strip() for part in message.splitlines() if part.strip()), "")
+    if kept.optar and line:
+        return line
+    return " ".join((f"{kept.kind}:", line)) if line else kept.kind
+
+
+def _constant(name: str) -> str:
+    return __getattr__(name)
+
+
+class Words:
+    """A sentence kept as what it says, worded in the current language each time it
+    is shown: ``str(words)`` calls ``fn(*args)`` (a function of this module) then,
+    with any ``Words`` among the arguments worded first. The window keeps these, not
+    finished sentences, wherever it shows something again later, so that a change
+    of language re-words it; a Qt signal that carries one must be ``Signal(object)``.
+
+    Two are equal when they say the same thing. Read as a string (equal to one,
+    ``in``, ``startswith`` and the other methods of ``str``), it is the string it
+    says now; that is for tests and for code that only reads what is shown: the
+    program never compares one with a worded sentence to decide anything.
+    """
+
+    __slots__ = ("fn", "args")
+
+    def __init__(self, fn, *args: object) -> None:
+        self.fn = fn
+        self.args = args
+
+    @classmethod
+    def constant(cls, name: str) -> Words:
+        """A constant of this module such as ``NO_PAGE_DATA``."""
+        return cls(_constant, name)
+
+    @classmethod
+    def error(cls, e: BaseException) -> Words:
+        """An error's message (``error_text``)."""
+        return cls(_error_message, _KeptError(e))
+
+    @classmethod
+    def error_line(cls, e: BaseException) -> Words:
+        """The first line of an error's message, named by its kind unless it is an
+        optar error: what a failed background job reports."""
+        return cls(_error_line, _KeptError(e))
+
+    def __str__(self) -> str:
+        return self.fn(*(str(a) if isinstance(a, Words) else a for a in self.args))
+
+    def __format__(self, spec: str) -> str:
+        return format(str(self), spec)
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, Words):
+            return self.fn is other.fn and self.args == other.args
+        if isinstance(other, str):
+            return str(self) == other
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        return hash(str(self))  # equal to the string it says
+
+    def __contains__(self, part: str) -> bool:
+        return part in str(self)
+
+    def __getattr__(self, name: str):
+        """The methods of ``str`` (``startswith``, ``strip``…), on what it says now."""
+        if name.startswith("_"):
+            raise AttributeError(name)
+        return getattr(str(self), name)
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}{(self.fn, *self.args)!r}"
 
 
 def __getattr__(name: str) -> str:
@@ -232,7 +359,7 @@ def _state_line(s: Summary) -> str:
         line = _t("gui.state.mismatch")
         return " · ".join((line, repair_line(repair))) if repair is not None else line
     if s.repair_error:
-        return repair_failed(s.repair_error)
+        return repair_failed(str(s.repair_error))
     if repair is not None:
         return _t(
             "gui.state.advice_with_repair",
@@ -322,9 +449,13 @@ def untagged_caution() -> str:
     return _t("gui.caution.untagged")
 
 
-def _reason_key(reason: str) -> str | None:
-    """The catalogue's key (under ``gui.reason``) for a reason the program gives."""
+def _reason_key(reason: str | Words) -> str | None:
+    """The catalogue's key (under ``gui.reason``) for a reason the program gives as
+    a code (the library's English constants, never shown as they are)."""
+    if not isinstance(reason, str):
+        return None  # a reason that words itself
     from optar.identify import LABEL_UNREADABLE, NO_PAGE
+    from optar_gui.work import NOT_DECODABLE
 
     return {
         NO_PAGE: "no_page",
@@ -333,13 +464,15 @@ def _reason_key(reason: str) -> str | None:
         COUNT_OUT_OF_RANGE: "page_count",
         SIZE_MISMATCH: "size_mismatch",
         FORMAT_MISMATCH: "format_mismatch",
+        NOT_DECODABLE: "not_decodable",
     }.get(reason)
 
 
-def unreadable_reason(reason: str) -> str:
-    """The library's reason for an unreadable scan, in plain words."""
+def unreadable_reason(reason: str | Words) -> str:
+    """Why a scan is unreadable, in plain words: a code the program gives, worded
+    by the catalogue, or a reason that words itself (``Words``)."""
     key = _reason_key(reason)
-    return reason if key is None else _t(f"gui.reason.{key}")
+    return str(reason) if key is None else _t(f"gui.reason.{key}")
 
 
 def detail_text(
@@ -485,7 +618,7 @@ def replace_rejected(
         ))  # fmt: skip
         return _t("gui.rejected.other_document", name=name, page=page_shown,
                   other=_num(info.page), printout=printout)  # fmt: skip
-    why = unreadable_reason(scan.reason) if scan.reason.strip() else _t("gui.rejected.unread")
+    why = unreadable_reason(scan.reason) if str(scan.reason).strip() else _t("gui.rejected.unread")
     return _t("gui.rejected.not_used", name=name, page=page_shown, why=_sentence(why))
 
 

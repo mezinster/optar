@@ -132,7 +132,12 @@ def _catalogues_check() -> bool:
             ok = ok and i18n.set_language(code) == code and bool(text.READ_TAB)
     finally:
         i18n.set_language(previous)
-    return _report(f"loaded the catalogues of {len(codes)} languages", ok)
+    # The report is English, whatever the number of languages.
+    if len(codes) == 1:
+        loaded = "loaded the catalogue of 1 language"
+    else:
+        loaded = f"loaded the catalogues of {len(codes)} languages"
+    return _report(loaded, ok)
 
 
 def _checks(folder: str) -> bool:
