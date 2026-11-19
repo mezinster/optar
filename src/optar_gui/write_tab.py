@@ -157,6 +157,9 @@ class WriteTab(QWidget):
         # The form's row labels, by the name of their wording in ``text``.
         labels = self._field_labels = {name: QLabel() for name in _FIELDS}
         form = QFormLayout()
+        # A field too wide to sit beside its label (a wide font, a long translation)
+        # goes under it, so the form never makes the window wider than it starts.
+        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         form.addRow(labels["FILE_FIELD"], file_row)
         form.addRow(labels["PAPER_FIELD"], paper_row)
         form.addRow(labels["DOTS_FIELD"], self.dots_box)

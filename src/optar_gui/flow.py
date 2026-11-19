@@ -1,9 +1,10 @@
 # (c) GPL 2007 Karel 'Clock' Kulhavy, Twibright Labs; Python port 2026
 """A row of widgets that wraps onto further lines when it is too narrow.
 
-The order is kept and the items start at the left. Its minimum width is the
-narrowest that still fits all of them on two lines, so a narrow pane never asks
-for the width of the whole row, and nothing is clipped at that width.
+The order is kept and the items start at the left. Its minimum width is that of
+its widest item (one item a line at the narrowest), so a narrow pane never asks
+for more than one item's width whatever the font and the language, and its
+minimum height is what the items need at that width, so nothing is clipped.
 """
 
 from __future__ import annotations
@@ -56,18 +57,11 @@ class FlowLayout(QLayout):
         return self._with_margins(QSize(width, max((s.height() for s in sizes), default=0)))
 
     def minimumSize(self) -> QSize:  # noqa: N802
-        """The narrowest width that fits the items on two lines, with two lines' height."""
-        sizes = [item.minimumSize() for item in self._items if not item.isEmpty()]
-        widths = [s.width() for s in sizes]
-        gap = self._gap()
-        best = sum(widths) + gap * max(0, len(widths) - 1)
-        for k in range(1, len(widths)):
-            first = sum(widths[:k]) + gap * (k - 1)
-            rest = sum(widths[k:]) + gap * (len(widths) - k - 1)
-            best = min(best, max(first, rest))
-        line = max((s.height() for s in sizes), default=0)
-        lines = 1 if len(widths) < 2 else 2
-        return self._with_margins(QSize(best, lines * line + (lines - 1) * gap))
+        """The widest item's width, with the height the items need at that width."""
+        widths = [item.sizeHint().width() for item in self._items if not item.isEmpty()]
+        margins = self.contentsMargins()
+        width = max(widths, default=0) + margins.left() + margins.right()
+        return QSize(width, self.heightForWidth(width))
 
     def _gap(self) -> int:
         return self.spacing() if self.spacing() >= 0 else _SPACING

@@ -11,6 +11,7 @@ import optar_gui.__main__ as entry
 import optar_gui.main_window as main_window
 from optar import i18n
 from optar_gui import dialogs, language, selftest, text
+from tests.gui.conftest import _OFFSCREEN_FONT_WARNINGS as OFFSCREEN_FONT_WARNINGS
 
 RU = {
     "language": {"name": "Русский"},
@@ -145,3 +146,27 @@ def test_self_test_runs_in_english_and_loads_every_catalogue(qapp, catalogues, c
     assert f"ok loaded the catalogues of {len(i18n.ORDER)} languages" in out
     assert "ok created a PDF" in out
     assert i18n.language() == "ru"
+
+
+@pytest.mark.qt_log_ignore(
+    "This plugin does not support propagateSizeHints", *OFFSCREEN_FONT_WARNINGS
+)
+@pytest.mark.parametrize("code", i18n.ORDER)
+def test_the_dialogs_show_their_prompt_whole_at_their_smallest(qtbot, code):
+    """A wrapped prompt was cut at the dialog's minimum size; in every language it
+    now has the height it needs there (and wider, as it needs fewer lines)."""
+    from PySide6.QtWidgets import QLabel
+
+    i18n.set_language(code)
+    made = (dialogs.AssignPageDialog(12, 3, "scan " * 12 + "0001.png"),
+            dialogs.StartByHandDialog("a4"))  # fmt: skip
+    for dialog in made:
+        qtbot.addWidget(dialog)
+        dialog.show()
+        qtbot.waitExposed(dialog)
+        (prompt,) = [label for label in dialog.findChildren(QLabel) if label.wordWrap()]
+        for size in (dialog.minimumSizeHint(), dialog.minimumSize()):
+            dialog.resize(size)
+            qtbot.wait(1)
+            assert prompt.height() >= prompt.heightForWidth(prompt.width()), (
+                code, type(dialog).__name__, size)

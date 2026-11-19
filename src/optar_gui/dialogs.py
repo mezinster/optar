@@ -27,6 +27,9 @@ from optar_gui.document import MAX_TOTAL_PAGES
 
 __all__ = ["AssignPageDialog", "StartByHandDialog", "ask"]
 
+# The width, in average characters, a prompt wraps to at its dialog's smallest.
+_PROMPT_CHARS = 45
+
 # The standard buttons the application uses: Qt's name for each, and the name
 # text.button knows it by.
 _BUTTON_NAMES = {"Ok": "ok", "Cancel": "cancel", "Save": "save", "Yes": "yes", "No": "no"}
@@ -87,6 +90,11 @@ def _prompt(words: str) -> QLabel:
     label.setTextFormat(Qt.TextFormat.PlainText)  # it may hold a scan's file name
     label.setText(words)
     label.setWordWrap(True)
+    # A dialog's smallest size gives a wrapped label too little height: it is given
+    # a minimum width and the height it needs there, so the prompt is always whole.
+    metrics = label.fontMetrics()
+    width = min(metrics.horizontalAdvance(words), _PROMPT_CHARS * metrics.averageCharWidth())
+    label.setMinimumSize(width, label.heightForWidth(width))
     return label
 
 

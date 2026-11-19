@@ -833,21 +833,50 @@ class _RowDelegate(QStyledItemDelegate):
             self._widest = (key, widest + self._SLACK)
         return self._widest[1]
 
+    @staticmethod
+    def _text_area(option: QStyleOptionViewItem, widget: QWidget | None) -> QRect:
+        style = widget.style() if widget is not None else QApplication.style()
+        area = style.subElementRect(QStyle.SubElement.SE_ItemViewItemText, option, widget)
+        return area.adjusted(2, 0, -2, 0)
+
+    @staticmethod
+    def _step_height(metrics, step: str, width: int) -> int:
+        """The height of the step wrapped at ``width``: one line, or more when the
+        font and the language make it longer than the row is wide (never elided)."""
+        flags = Qt.TextFlag.TextWordWrap | Qt.AlignmentFlag.AlignLeft
+        wrapped = metrics.boundingRect(QRect(0, 0, max(width, 1), 0), flags, step).height()
+        return max(metrics.height(), wrapped)
+
+    def _row_height(self, metrics, step: str, width: int) -> int:
+        return metrics.height() + self.LINE_GAP + self._step_height(metrics, step, width) + 2
+
     def sizeHint(self, option: QStyleOptionViewItem, index: QModelIndex) -> QSize:  # noqa: N802
         """The width is the list's own (a long row is elided, never scrolled); a scan
-        being read is two lines high: its name and bar, then its step."""
+        being read is two lines high or more: its name and bar, then its step, wrapped
+        at the list's width."""
         size = super().sizeHint(option, index)
         size.setWidth(0)
-        if index.data(FRACTION_ROLE) is not None:
-            size.setHeight(2 * QFontMetrics(option.font).height() + self.LINE_GAP + 2)
+        parts = index.data(_PARTS_ROLE)
+        if index.data(FRACTION_ROLE) is not None and parts is not None:
+            widget = option.widget
+            opt = QStyleOptionViewItem(option)
+            self.initStyleOption(opt, index)
+            opt.text = ""  # as paint measures it
+            if isinstance(widget, QAbstractItemView):
+                opt.rect = QRect(0, 0, widget.viewport().width(), size.height())
+            width = self._text_area(opt, widget).width()
+            size.setHeight(self._row_height(QFontMetrics(option.font), parts[1], width))
         return size
 
-    def layout(self, area: QRect, metrics, name: str, column: int) -> tuple[QRect, QRect, QRect]:
+    def layout(
+        self, area: QRect, metrics, name: str, column: int, step: str = ""
+    ) -> tuple[QRect, QRect, QRect]:
         """The rectangles of the name, the bar and the step of a scan being read in
         ``area``: the name and the bar share the first line, the step has the whole
-        width of the second."""
+        width of the lines below, as many as it needs wrapped."""
         line = metrics.height()
-        top = area.top() + max(0, (area.height() - 2 * line - self.LINE_GAP) // 2)
+        step_height = self._step_height(metrics, step, area.width())
+        top = area.top() + max(0, (area.height() - line - step_height - self.LINE_GAP) // 2)
         width = area.width()
         column = max(column, metrics.horizontalAdvance(name) + self._SLACK)
         name_width = max(0, min(column, int(width * self.NAME_SHARE)))
@@ -857,7 +886,7 @@ class _RowDelegate(QStyledItemDelegate):
         bar_rect = QRect(
             name_rect.right() + 1 + self.GAP, top + (line - bar_height) // 2, bar_width, bar_height
         )
-        step_rect = QRect(area.left(), top + line + self.LINE_GAP, width, line)
+        step_rect = QRect(area.left(), top + line + self.LINE_GAP, width, step_height)
         return name_rect, bar_rect, step_rect
 
     def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex) -> None:
@@ -873,11 +902,10 @@ class _RowDelegate(QStyledItemDelegate):
         style = widget.style() if widget is not None else QApplication.style()
         opt.text = ""  # the row's panel, selection and focus only
         style.drawControl(QStyle.ControlElement.CE_ItemViewItem, opt, painter, widget)
-        area = style.subElementRect(QStyle.SubElement.SE_ItemViewItemText, opt, widget)
-        area = area.adjusted(2, 0, -2, 0)
+        area = self._text_area(opt, widget)
         metrics = QFontMetrics(opt.font)
         name_rect, bar_rect, step_rect = self.layout(
-            area, metrics, name, self._name_column(index, metrics, opt.font)
+            area, metrics, name, self._name_column(index, metrics, opt.font), step
         )
         selected = bool(opt.state & QStyle.StateFlag.State_Selected)
         role = QPalette.ColorRole.HighlightedText if selected else QPalette.ColorRole.Text
@@ -910,8 +938,8 @@ class _RowDelegate(QStyledItemDelegate):
             style.drawControl(QStyle.ControlElement.CE_ProgressBar, bar, painter, widget)
             painter.drawText(
                 step_rect,
-                align,
-                metrics.elidedText(step, Qt.TextElideMode.ElideRight, step_rect.width()),
+                Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft | Qt.TextFlag.TextWordWrap,
+                step,
             )
         finally:
             painter.restore()
@@ -969,6 +997,10 @@ class ReadTab(QWidget):
 
         self.summary = QLabel(objectName="summaryLabel")
         self.summary.setTextFormat(Qt.TextFormat.PlainText)
+        # It wraps and never sets the window's minimum width: a saved file's note,
+        # a long translation or a long file name (whole in the tooltip) cannot widen it.
+        self.summary.setWordWrap(True)
+        self.summary.setMinimumWidth(1)
         self.save_button = QPushButton(objectName="saveButton")
         self.save_button.clicked.connect(self._on_save)
 
@@ -1144,7 +1176,9 @@ class ReadTab(QWidget):
         caution = text.caution(doc)
         self.caution.setText(caution or "")
         self.caution.setVisible(caution is not None)
-        self.summary.setText(self.controller.summary_text())
+        bar_text = self.controller.summary_text()
+        self.summary.setText(bar_text)
+        self.summary.setToolTip(_plain_tooltip(bar_text))
         self.save_button.setEnabled(self.controller.can_save)
         self.start_by_hand_button.setEnabled(doc.can_start_by_hand)
         self._show_selection()
