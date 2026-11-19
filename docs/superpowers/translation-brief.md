@@ -129,8 +129,18 @@ are eleven pages. Rules:
   build sends it to the same language's page.
 - **Images.** Image paths stay unchanged. Translate the alt text. The pictures
   themselves stay English.
-- **Tables.** Same columns and rows. Translate words; leave numbers, hex
-  values, constants and code in cells unchanged.
+- **Tables.** Same columns and rows. Translate words; leave hex values,
+  constants and code in cells unchanged, and write numbers by the rule below.
+- **Numbers.** Outside code blocks, in prose and in table cells alike, a
+  number is written the way your language writes it: a number with a
+  thousands separator takes your language's separator (Russian «199 773»
+  with a no-break space, U+00A0, where English has "199,773"), and a decimal
+  takes your language's decimal mark (Russian «2,5» where English has
+  "2.5"). Version numbers (0.2.0) are names and stay as they are. Inside
+  code blocks, in commands, and in anything a user would type (option
+  values, format strings, file names), nothing changes. The format page is
+  the one exception: there every number stays exactly as in English (see
+  below).
 - **Admonitions** (`!!! note "..."`): keep the type word (`note`, `warning`),
   translate the title and body.
 - Names, numbers, versions, option names and file names are not translated.
@@ -146,10 +156,54 @@ your language and linking to the English page. A relative link `format.md`
 would lead to the translated page itself, so use the full address
 `https://mezinster.github.io/optar/format/`. It
 then keeps **every number, constant, table cell of numbers and worked example
-unchanged**. Translate the prose around them only. When in doubt about a
+unchanged**, decimal points included, whatever the number rule above says for
+the other pages: the English page and the code write them that way, and the
+tests compare them. Translate the prose around them only. When in doubt about a
 technical sentence, translate less, not more.
 
-## 4. Self-check
+## 4. Lessons from the first translation
+
+The Russian translation and its independent native read found these. They
+hold for every language.
+
+- **Page lists are not plurals.** The entries about a list of pages
+  (`gui.state.recoverable`, `gui.state.recovered`, `gui.rescan.add`,
+  `gui.rescan.worst`, `cli.summary.missing`, `cli.too_few.rescan`,
+  `cli.rescan_advice`) have the keys `single` and `several`, not plural
+  categories. `single` is a list of exactly one page; `several` is any list
+  of two or more, even "21". Give them exactly these two keys, whatever your
+  plural categories are, and write singular and plural nouns and pronouns
+  freely.
+- **Plural tables carry exactly your language's categories**, the ones
+  `i18n._CATEGORIES` lists for it: Russian has `one`, `few` and `many`, and
+  no `other`. The tests reject a missing or an extra category.
+- **Library errors (`err.*`) have no plural forms.** A raw number stands
+  before a noun (`{size} bytes`, `{rows} rows`, `{width} x {height}
+  pixels`) and the template cannot inflect it. Use a label-like form
+  (Russian «размер в байтах — {size}») or a unit abbreviation (Russian
+  «пикс.»).
+- **Dot-size names are inserted in the nominative only** (`{dots}` in
+  `gui.write.dot_size`, `err.page_size`, `err.strip_too_large`; `{name}` in
+  `cli.dot_need`). Keep them in label-like positions, where the nominative
+  reads right.
+- **Phrases joined by « · » have no subject.** `gui.state.recovered` +
+  `gui.state.matches`, `gui.state.repaired`, `gui.state.slow`,
+  `gui.health.damaged` and their kind agree with a noun that is not in the
+  string; the comment above each entry in `en.toml` names it. Take gender
+  and number from that noun.
+- **Catalogue comments stay in English**, identical to `en.toml`'s. They are
+  notes for translators and maintainers.
+- **Numbers** follow the rule of section 3 (your separators outside code,
+  nothing changed inside code and on the format page).
+- **`gui.reason.not_decodable` must be a full sentence** with a subject and
+  a capital letter, as the other `gui.reason.*` are: the window shows it as
+  a sentence of its own after "Scan … was not used for page 3.", even though
+  the English entry is a lower-case fragment.
+- **Quote the catalogue, not the English page.** When a page quotes the
+  window or the command line, copy the wording from your catalogue (after
+  your own edits), so the page and the program say the same thing.
+
+## 5. Self-check
 
 Before you finish, run, with your language's code in place of the tests'
 parametrisation (they pick up your files by themselves):
@@ -166,7 +220,7 @@ that exist, and (for the format page) says English is normative and keeps the
 numbers. Do not edit the tests or the English files to make them pass. If a
 test seems wrong, say so in your hand-back.
 
-## 5. What to hand back
+## 6. What to hand back
 
 - The files: the glossary, `src/optar/locale/<code>.toml`, and the eleven
   `docs/<page>.<code>.md`.

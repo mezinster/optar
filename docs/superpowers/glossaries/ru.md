@@ -24,10 +24,12 @@ words were rejected and why); the morphology notes are Russian-only.
   the range; ellipsis «…» as one character, as in English. The letter «ё» is
   written («повреждён», «ещё»).
 - **Numbers.** The catalogue's thousands separator is a no-break space
-  (`[format].group`). In page prose, write Russian numbers (200 000, 0,36);
-  in tables and in all of `format.ru.md` numbers stay exactly as in English,
-  as the brief requires. Percent: «18%» without a space, as most Russian
-  software does.
+  (`[format].group`). Outside code blocks, in prose and in table cells
+  alike, write Russian numbers: a no-break space between thousands
+  («199 773», «200 000») and a decimal comma («0,36»). Inside code blocks,
+  commands and anything a user types, and in all of `format.ru.md`, numbers
+  stay exactly as in English, as the brief requires. Percent: «18%» without
+  a space, as most Russian software does.
 - **optar** is always lower-case, also at the start of a sentence, as in
   English. It is not declined: «в optar», «программа optar».
 - **«Страница»** is a sheet of paper carrying dots. A page of this website is
