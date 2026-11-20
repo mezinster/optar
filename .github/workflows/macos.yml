@@ -1,0 +1,91 @@
+name: macOS
+
+# Everything that needs a macOS machine, apart from the other workflows.
+# GitHub's macOS machines are often unavailable for this repository, and a
+# job waiting for one must not keep CI or a release from finishing.
+#
+# - Started by the Release workflow with a tag: tests and builds that tag and
+#   adds the macOS files to its release.
+# - Started by hand: with a tag, the same (for a release whose macOS files are
+#   missing); without one, tests and builds the branch it is started on and
+#   keeps the files as workflow artifacts.
+# - Weekly: tests and builds master, so a macOS problem shows up between
+#   releases.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: A release tag (such as v0.6.0) whose release gets the macOS files; empty to test only
+        required: false
+        default: ''
+        type: string
+  schedule:
+    - cron: '17 3 * * 1'
+
+# One run at a time; a new one waits rather than cancelling a run that may
+# have waited hours for its machine.
+concurrency:
+  group: macos
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || '' }}
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.15"
+      - run: pip install -e '.[dev]'
+      - run: pytest -q -m "not gs and not slow and not gui"
+
+  gui:
+    runs-on: macos-15
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || '' }}
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.15"
+      - run: pip install -e '.[dev,gui-dev]'
+      - run: pytest -q -m gui
+
+  build:
+    uses: ./.github/workflows/build.yml
+    with:
+      os: macos-15
+      asset: macos-arm64
+      tag: ${{ inputs.tag || '' }}
+
+  # The files go to the release once the build's own checks pass (the smoke
+  # test and the application's self-test), as on Linux and Windows; the test
+  # jobs above report on their own and do not hold the files back.
+  publish:
+    needs: build
+    if: (inputs.tag || '') != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: '*-macos-arm64'
+          path: release-files
+          merge-multiple: true
+      - name: Add the macOS files to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || '' }}
+        run: gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber release-files/*
