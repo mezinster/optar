@@ -946,10 +946,14 @@ def test_a_failed_repair_advises_rescanning_and_saves_only_after_a_warning(
 def test_a_repair_that_raises_is_shown_as_plain_text_and_not_retried(
     qtbot, make_tab, v1_printouts, monkeypatch
 ):
+    # The pages each repair was for. A repair may start once the first scan is
+    # read and again as each other scan lands (the pages in use changed), so
+    # how many run depends on timing; what is never allowed is a second repair
+    # for the same pages.
     calls = []
 
     def broken(self, cancelled=lambda: False):
-        calls.append(1)
+        calls.append(self.key)
         raise ValueError("<b>boom</b>")
 
     monkeypatch.setattr(document_module.RepairJob, "__call__", broken)
@@ -960,10 +964,13 @@ def test_a_repair_that_raises_is_shown_as_plain_text_and_not_retried(
     assert tab.summary.text() == text.repair_failed("ValueError: <b>boom</b>")
     all_plain(tab)
     assert not tab.save_button.isEnabled()
+    assert len(calls) == len(set(calls))
+    assert all(page is not None for page in calls[-1][1])  # the last had all three
+    before = list(calls)
     for _ in range(3):
         tab.controller.refresh()
     qtbot.wait(300)
-    assert len(calls) == 1 and not tab.controller.checking
+    assert calls == before and not tab.controller.checking
 
 
 def test_closing_or_removing_while_repairing_stops_cleanly(

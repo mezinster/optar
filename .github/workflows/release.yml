@@ -32,16 +32,6 @@ jobs:
       asset: ${{ matrix.asset }}
       ext: ${{ matrix.ext }}
 
-  # macOS is built apart from the others: GitHub's macOS machines are not
-  # always available, and a release must not wait for them. Its files are
-  # added to the release when they are built; if this job is cancelled for
-  # want of a machine, "Re-run failed jobs" on the run adds them later.
-  build-macos:
-    uses: ./.github/workflows/build.yml
-    with:
-      os: macos-15
-      asset: macos-arm64
-
   publish:
     needs: build
     if: startsWith(github.ref, 'refs/tags/')
@@ -52,7 +42,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
-          # The Linux and Windows files; the macOS files may not exist yet.
+          # The Linux and Windows files; the macOS workflow adds its own.
           pattern: '*-x86_64'
           path: release-files
           merge-multiple: true
@@ -61,22 +51,23 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" --generate-notes \
-            --notes "The executables are unsigned, so macOS and Windows may warn on first run. Run chmod +x before first use on the Linux files and on the macOS command-line file (optar-...-macos-arm64), not on the zipped application. On macOS, unzip optar-gui and try to open it; if macOS refuses, open System Settings, Privacy & Security, and choose Open Anyway (on older macOS versions, right-click the application and choose Open). The macOS files are added to this release when their build finishes, which can be later than the others." \
+            --notes "The executables are unsigned, so macOS and Windows may warn on first run. Run chmod +x before first use on the Linux files and on the macOS command-line file (optar-...-macos-arm64), not on the zipped application. On macOS, unzip optar-gui and try to open it; if macOS refuses, open System Settings, Privacy & Security, and choose Open Anyway (on older macOS versions, right-click the application and choose Open). The macOS files are added to this release by a separate build, which can finish hours or days later than the others." \
             release-files/*
 
-  publish-macos:
-    needs: [publish, build-macos]
-    if: startsWith(github.ref, 'refs/tags/')
+  # macOS is built by its own workflow: GitHub's macOS machines are often
+  # unavailable, and the release must not wait for them. That workflow adds
+  # the macOS files to this release when it has built and tested them. If it
+  # never gets a machine, start it again by hand with this tag.
+  start-macos:
+    needs: publish
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      actions: write
     steps:
-      - uses: actions/download-artifact@v8
-        with:
-          pattern: '*-macos-arm64'
-          path: release-files
-          merge-multiple: true
-      - name: Add the macOS files to the release
+      - name: Start the macOS workflow for this tag
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber release-files/*
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          gh workflow run macos.yml --repo "$GITHUB_REPOSITORY" \
+            --ref "$DEFAULT_BRANCH" -f tag="$GITHUB_REF_NAME"

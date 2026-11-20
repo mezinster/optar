@@ -1247,7 +1247,11 @@ def test_process_scan_reports_the_steps_of_an_ordinary_scan(tmp_path, clean_work
     assert np.array_equal(w.marks, clean_work.marks)
 
 
-def test_process_scan_reports_the_slower_reader(coarse_case):
+def test_process_scan_reports_the_slower_reader(coarse_case, monkeypatch):
+    # Every round of the fit is expected below, so nothing may be dropped as
+    # too soon after the last report: on a fast or busy machine a round can
+    # take less than PROGRESS_INTERVAL_S. The throttle has its own tests.
+    monkeypatch.setattr(work, "PROGRESS_INTERVAL_S", 0.0)
     case, path = coarse_case
     reports = []
     w = process_scan(path, on_progress=reports.append)
